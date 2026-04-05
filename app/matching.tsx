@@ -15,7 +15,7 @@ import Animated, {
 import { AppButton } from '@/components/app-button';
 import { AppScreen } from '@/components/app-screen';
 import { AppText } from '@/components/app-text';
-import { BlobShape, RingStack, StarBurst } from '@/components/decorative-shapes';
+import { RingStack, StarBurst } from '@/components/decorative-shapes';
 import { PulseCircle } from '@/components/static-map';
 import { theme } from '@/theme';
 
