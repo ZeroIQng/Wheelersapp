@@ -1,50 +1,64 @@
-# Welcome to your Expo app 👋
+# Wheleers
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Native Expo prototype rebuild of the Wheleers decentralized ride-hailing experience. The UI is implemented in React Native with `expo-router`, `expo-font`, `react-native-reanimated`, and `react-native-svg`. No WebViews or raw HTML are used.
 
-## Get started
+## Stack
 
-1. Install dependencies
+- Expo SDK 54
+- Expo Router for file-based navigation
+- Expo Font with Syne, DM Sans, and Space Mono
+- React Native Reanimated for motion
+- React Native SVG for decorative shapes
+
+## Project structure
+
+```text
+app/
+  _layout.tsx
+  index.tsx
+  splash.tsx
+  role-selection.tsx
+  phone-auth.tsx
+  otp-verify.tsx
+  kyc.tsx
+  rider-home.tsx
+  destination-search.tsx
+  ride-selection.tsx
+  matching.tsx
+  driver-found.tsx
+components/
+  app-badge.tsx
+  app-button.tsx
+  app-card.tsx
+  app-screen.tsx
+  app-text.tsx
+  decorative-shapes.tsx
+  flow-header.tsx
+  progress-dots.tsx
+  static-map.tsx
+data/
+  mock.ts
+theme.ts
+```
+
+## Setup
+
+1. Install dependencies:
 
    ```bash
    npm install
    ```
 
-2. Start the app
+2. Start the Expo dev server:
 
    ```bash
-   npx expo start
+   npm run start
    ```
 
-In the output, you'll find options to open the app in a
+3. Open the app in Expo Go, iOS Simulator, or Android Emulator from the Expo CLI.
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+## Notes
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
-
-```bash
-npm run reset-project
-```
-
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
-
-## Learn more
-
-To learn more about developing your project with Expo, look at the following resources:
-
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+- The map screens use a static native mock layout for now.
+- Mock data drives ride types, recent places, driver info, fare, and ETA.
+- Fonts load before the router mounts, so headings and labels render with the intended brand typography from first paint.
