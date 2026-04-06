@@ -10,6 +10,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useFonts } from 'expo-font';
 import { useEffect } from 'react';
+import { useColorScheme } from 'react-native';
 import 'react-native-reanimated';
 
 import { theme } from '@/theme';
@@ -17,6 +18,7 @@ import { theme } from '@/theme';
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
+  const colorScheme = useColorScheme();
   const [loaded] = useFonts({
     DMSans_400Regular,
     DMSans_500Medium,
@@ -39,12 +41,15 @@ export default function RootLayout() {
 
   return (
     <>
-      <StatusBar style="dark" backgroundColor={theme.colors.offWhite} />
+      <StatusBar
+        style={colorScheme === 'dark' ? 'light' : 'dark'}
+        backgroundColor={colorScheme === 'dark' ? theme.colors.black : theme.colors.offWhite}
+      />
       <Stack
         screenOptions={{
           headerShown: false,
           contentStyle: {
-            backgroundColor: theme.colors.offWhite,
+            backgroundColor: colorScheme === 'dark' ? theme.colors.black : theme.colors.offWhite,
           },
           animation: 'slide_from_right',
         }}

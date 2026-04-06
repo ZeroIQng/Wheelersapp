@@ -1,7 +1,7 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, TextInput, View } from 'react-native';
+import { StyleSheet, TextInput, View, useColorScheme } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 
 import { AppButton } from '@/components/app-button';
@@ -13,13 +13,21 @@ import { theme } from '@/theme';
 
 export default function PhoneAuthScreen() {
   const router = useRouter();
+  const colorScheme = useColorScheme();
   const [phone, setPhone] = useState('801 234 5678');
+  const isDark = colorScheme === 'dark';
+  const backgroundColor = isDark ? theme.colors.black : theme.colors.offWhite;
+  const textColor = isDark ? theme.colors.offWhite : theme.colors.black;
+  const mutedColor = isDark ? '#AAA39B' : theme.colors.mutedLight;
+  const borderColor = isDark ? '#2F2F2F' : theme.colors.black;
+  const fieldBackground = isDark ? '#151515' : theme.colors.white;
+  const prefixBackground = isDark ? '#25160D' : theme.colors.orangeLight;
 
   return (
-    <AppScreen backgroundColor={theme.colors.offWhite} scroll contentStyle={styles.container}>
-      <StatusBar style="dark" backgroundColor={theme.colors.offWhite} />
-      <RingStack color="rgba(255,92,0,0.08)" width={88} height={88} style={styles.rings} />
-      <CrossShape color="rgba(13,13,13,0.12)" style={styles.cross} />
+    <AppScreen backgroundColor={backgroundColor} scroll contentStyle={styles.container}>
+      <StatusBar style={isDark ? 'light' : 'dark'} backgroundColor={backgroundColor} />
+      <RingStack color={isDark ? 'rgba(255,92,0,0.16)' : 'rgba(255,92,0,0.08)'} width={88} height={88} style={styles.rings} />
+      <CrossShape color={isDark ? 'rgba(255,255,255,0.1)' : 'rgba(13,13,13,0.12)'} style={styles.cross} />
       <Animated.View entering={FadeInDown.duration(420)} style={styles.content}>
         <FlowHeader
           showBack
@@ -27,29 +35,33 @@ export default function PhoneAuthScreen() {
           title={"What's your\nnumber?"}
           subtitle="We'll send a one-time code to verify your phone."
           progress={{ count: 5, active: 2 }}
+          light={isDark}
         />
 
-        <View style={styles.phoneField}>
-          <View style={styles.prefix}>
+        <View style={[styles.phoneField, { borderColor, backgroundColor: fieldBackground }]}>
+          <View style={[styles.prefix, { backgroundColor: prefixBackground, borderRightColor: borderColor }]}>
             <AppText style={styles.flag}>🇳🇬</AppText>
-            <AppText variant="mono">+234</AppText>
+            <AppText variant="mono" color={textColor}>
+              +234
+            </AppText>
           </View>
           <TextInput
             keyboardType="number-pad"
             onChangeText={setPhone}
             selectionColor={theme.colors.orange}
-            style={styles.input}
+            placeholderTextColor={mutedColor}
+            style={[styles.input, { color: textColor }]}
             value={phone}
           />
         </View>
 
-        <AppText variant="bodySmall" color={theme.colors.mutedLight}>
+        <AppText variant="bodySmall" color={mutedColor}>
           No spam. Ever. Pinky promise.
         </AppText>
 
         <AppButton title="Send code ↗" onPress={() => router.push('/otp-verify')} />
 
-        <AppText variant="bodySmall" color={theme.colors.mutedLight} style={styles.terms}>
+        <AppText variant="bodySmall" color={mutedColor} style={styles.terms}>
           By continuing you agree to our Terms.
         </AppText>
       </Animated.View>
@@ -78,10 +90,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: theme.borders.thick,
-    borderColor: theme.colors.black,
     borderRadius: theme.radius.sm,
     overflow: 'hidden',
-    backgroundColor: theme.colors.white,
     ...theme.shadows.card,
   },
   prefix: {
@@ -90,9 +100,7 @@ const styles = StyleSheet.create({
     gap: theme.spacing.sm,
     paddingHorizontal: theme.spacing.md,
     paddingVertical: theme.spacing.md,
-    backgroundColor: theme.colors.orangeLight,
     borderRightWidth: theme.borders.thick,
-    borderRightColor: theme.colors.black,
   },
   flag: {
     fontSize: 15,
@@ -102,7 +110,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.spacing.md,
     paddingVertical: theme.spacing.md,
     ...theme.typography.mono,
-    color: theme.colors.black,
     letterSpacing: 1.8,
   },
   terms: {
