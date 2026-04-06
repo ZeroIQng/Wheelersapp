@@ -1,13 +1,13 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
-import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
+import { Pressable, StyleSheet } from 'react-native';
 
 import { AppButton } from '@/components/app-button';
 import { AppCard } from '@/components/app-card';
 import { AppScreen } from '@/components/app-screen';
 import { AppText } from '@/components/app-text';
 import { FlowHeader } from '@/components/flow-header';
+import { FloatingView, PulseView, RevealView } from '@/components/motion';
 import { RingStack, StarBurst } from '@/components/decorative-shapes';
 import { theme } from '@/theme';
 
@@ -19,18 +19,22 @@ export default function RoleSelectionScreen() {
 
   return (
     <AppScreen backgroundColor={theme.colors.offWhite} scroll contentStyle={styles.container}>
-      <RingStack color="rgba(255,92,0,0.12)" style={styles.rings} />
-      <StarBurst color="rgba(13,13,13,0.08)" width={46} height={46} style={styles.star} />
-      <Animated.View entering={FadeInDown.duration(400)} style={styles.headerWrap}>
+      <FloatingView style={styles.rings} distance={10} rotate={8}>
+        <RingStack color="rgba(255,92,0,0.12)" />
+      </FloatingView>
+      <FloatingView style={styles.star} delay={200} distance={12} rotate={-12}>
+        <StarBurst color="rgba(13,13,13,0.08)" width={46} height={46} />
+      </FloatingView>
+      <RevealView delay={40} from="down" style={styles.headerWrap}>
         <FlowHeader
           overline="WELCOME TO WHELEERS"
           title={'Ride.\nEarn.\nOwn a piece.'}
           subtitle="The first decentralized ride-hailing app."
           progress={{ count: 5, active: 1 }}
         />
-      </Animated.View>
+      </RevealView>
 
-      <Animated.View entering={FadeInUp.delay(120).duration(450)} style={styles.roles}>
+      <RevealView delay={120} style={styles.roles}>
         <RoleCard
           emoji="🛵"
           title="I want to"
@@ -46,12 +50,12 @@ export default function RoleSelectionScreen() {
           onPress={() => setSelectedRole('drive')}
           primary
         />
-      </Animated.View>
+      </RevealView>
 
-      <View style={styles.actions}>
+      <RevealView delay={220} style={styles.actions}>
         <AppButton title="Continue with Google ↗" onPress={() => router.push('/phone-auth')} />
         <AppButton title="Connect wallet" variant="ghost" />
-      </View>
+      </RevealView>
     </AppScreen>
   );
 }
@@ -66,25 +70,29 @@ type RoleCardProps = {
 };
 
 function RoleCard({ emoji, title, accent, selected, onPress, primary }: RoleCardProps) {
+  const Wrapper = selected || primary ? PulseView : FloatingView;
+
   return (
     <Pressable onPress={onPress} style={styles.rolePressable}>
-      <AppCard
-        backgroundColor={primary || selected ? theme.colors.orange : theme.colors.white}
-        style={[
-          styles.roleCard,
-          selected && !primary ? styles.roleCardSelected : null,
-          primary ? styles.roleCardPrimary : null,
-        ]}>
-        <AppText style={styles.roleEmoji}>{emoji}</AppText>
-        <AppText
-          variant="h3"
-          color={primary || selected ? theme.colors.white : theme.colors.black}
-          style={styles.roleText}>
-          {title}
-          {'\n'}
-          {accent}
-        </AppText>
-      </AppCard>
+      <Wrapper>
+        <AppCard
+          backgroundColor={primary || selected ? theme.colors.orange : theme.colors.white}
+          style={[
+            styles.roleCard,
+            selected && !primary ? styles.roleCardSelected : null,
+            primary ? styles.roleCardPrimary : null,
+          ]}>
+          <AppText style={styles.roleEmoji}>{emoji}</AppText>
+          <AppText
+            variant="h3"
+            color={primary || selected ? theme.colors.white : theme.colors.black}
+            style={styles.roleText}>
+            {title}
+            {'\n'}
+            {accent}
+          </AppText>
+        </AppCard>
+      </Wrapper>
     </Pressable>
   );
 }

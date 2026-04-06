@@ -2,13 +2,13 @@ import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { StyleSheet, TextInput, View, useColorScheme } from 'react-native';
-import Animated, { FadeInDown } from 'react-native-reanimated';
 
 import { AppButton } from '@/components/app-button';
 import { AppScreen } from '@/components/app-screen';
 import { AppText } from '@/components/app-text';
 import { CrossShape, RingStack } from '@/components/decorative-shapes';
 import { FlowHeader } from '@/components/flow-header';
+import { FloatingView, RevealView } from '@/components/motion';
 import { theme } from '@/theme';
 
 export default function PhoneAuthScreen() {
@@ -26,9 +26,13 @@ export default function PhoneAuthScreen() {
   return (
     <AppScreen backgroundColor={backgroundColor} scroll contentStyle={styles.container}>
       <StatusBar style={isDark ? 'light' : 'dark'} backgroundColor={backgroundColor} />
-      <RingStack color={isDark ? 'rgba(255,92,0,0.16)' : 'rgba(255,92,0,0.08)'} width={88} height={88} style={styles.rings} />
-      <CrossShape color={isDark ? 'rgba(255,255,255,0.1)' : 'rgba(13,13,13,0.12)'} style={styles.cross} />
-      <Animated.View entering={FadeInDown.duration(420)} style={styles.content}>
+      <FloatingView style={styles.rings} distance={10} rotate={10}>
+        <RingStack color={isDark ? 'rgba(255,92,0,0.16)' : 'rgba(255,92,0,0.08)'} width={88} height={88} />
+      </FloatingView>
+      <FloatingView style={styles.cross} delay={180} distance={9} rotate={-10}>
+        <CrossShape color={isDark ? 'rgba(255,255,255,0.1)' : 'rgba(13,13,13,0.12)'} />
+      </FloatingView>
+      <RevealView delay={40} from="down" style={styles.content}>
         <FlowHeader
           showBack
           overline="PHONE VERIFY"
@@ -38,33 +42,37 @@ export default function PhoneAuthScreen() {
           light={isDark}
         />
 
-        <View style={[styles.phoneField, { borderColor, backgroundColor: fieldBackground }]}>
-          <View style={[styles.prefix, { backgroundColor: prefixBackground, borderRightColor: borderColor }]}>
-            <AppText style={styles.flag}>🇳🇬</AppText>
-            <AppText variant="mono" color={textColor}>
-              +234
-            </AppText>
+        <RevealView delay={120}>
+          <View style={[styles.phoneField, { borderColor, backgroundColor: fieldBackground }]}>
+            <View style={[styles.prefix, { backgroundColor: prefixBackground, borderRightColor: borderColor }]}>
+              <AppText style={styles.flag}>🇳🇬</AppText>
+              <AppText variant="mono" color={textColor}>
+                +234
+              </AppText>
+            </View>
+            <TextInput
+              keyboardType="number-pad"
+              onChangeText={setPhone}
+              selectionColor={theme.colors.orange}
+              placeholderTextColor={mutedColor}
+              style={[styles.input, { color: textColor }]}
+              value={phone}
+            />
           </View>
-          <TextInput
-            keyboardType="number-pad"
-            onChangeText={setPhone}
-            selectionColor={theme.colors.orange}
-            placeholderTextColor={mutedColor}
-            style={[styles.input, { color: textColor }]}
-            value={phone}
-          />
-        </View>
+        </RevealView>
 
         <AppText variant="bodySmall" color={mutedColor}>
           No spam. Ever. Pinky promise.
         </AppText>
 
-        <AppButton title="Send code ↗" onPress={() => router.push('/otp-verify')} />
+        <RevealView delay={220}>
+          <AppButton title="Send code ↗" onPress={() => router.push('/otp-verify')} />
+        </RevealView>
 
         <AppText variant="bodySmall" color={mutedColor} style={styles.terms}>
           By continuing you agree to our Terms.
         </AppText>
-      </Animated.View>
+      </RevealView>
     </AppScreen>
   );
 }

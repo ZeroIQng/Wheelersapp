@@ -4,6 +4,7 @@ import Animated, {
   Easing,
   useAnimatedStyle,
   useSharedValue,
+  withSequence,
   withDelay,
   withRepeat,
   withTiming,
@@ -51,20 +52,60 @@ export function MapTopChip({ label }: { label: string }) {
 }
 
 export function MapPin({ centered }: { centered?: boolean }) {
+  const lift = useSharedValue(0);
+
+  useEffect(() => {
+    lift.value = withRepeat(
+      withSequence(
+        withTiming(-4, {
+          duration: 900,
+          easing: Easing.inOut(Easing.ease),
+        }),
+        withTiming(0, {
+          duration: 900,
+          easing: Easing.inOut(Easing.ease),
+        })
+      ),
+      -1,
+      false
+    );
+  }, [lift]);
+
+  const pinStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: lift.value }],
+  }));
+
   return (
     <>
       <PulseCircle size={30} color={theme.colors.orange} style={centered ? styles.pinPulseCenter : styles.pinPulseLeft} />
-      <View style={centered ? styles.centeredPinWrap : styles.pinWrap}>
+      <Animated.View style={[centered ? styles.centeredPinWrap : styles.pinWrap, pinStyle]}>
         <View style={styles.pin} />
-      </View>
+      </Animated.View>
     </>
   );
 }
 
 export function MapRoute() {
+  const dash = useSharedValue(0);
+
+  useEffect(() => {
+    dash.value = withRepeat(
+      withTiming(1, {
+        duration: 1800,
+        easing: Easing.linear,
+      }),
+      -1,
+      false
+    );
+  }, [dash]);
+
+  const routeStyle = useAnimatedStyle(() => ({
+    opacity: 0.78 + dash.value * 0.22,
+  }));
+
   return (
     <>
-      <View style={styles.route} />
+      <Animated.View style={[styles.route, routeStyle]} />
       <View style={styles.routeStart} />
       <View style={styles.routeEnd} />
     </>

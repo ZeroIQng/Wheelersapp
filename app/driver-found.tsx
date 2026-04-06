@@ -1,13 +1,13 @@
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { StyleSheet, View } from 'react-native';
-import Animated, { FadeInUp } from 'react-native-reanimated';
 
 import { AppBadge } from '@/components/app-badge';
 import { AppButton } from '@/components/app-button';
 import { AppCard } from '@/components/app-card';
 import { AppScreen } from '@/components/app-screen';
 import { AppText } from '@/components/app-text';
+import { FloatingView, PulseView, RevealView } from '@/components/motion';
 import { StaticMap, MovingVehicle } from '@/components/static-map';
 import { driver } from '@/data/mock';
 import { theme } from '@/theme';
@@ -18,17 +18,19 @@ export default function DriverFoundScreen() {
   return (
     <AppScreen backgroundColor={theme.colors.offWhite} contentStyle={styles.container}>
       <StatusBar style="dark" backgroundColor="#D4E6D4" />
-      <View style={styles.mapWrap}>
+      <RevealView style={styles.mapWrap}>
         <StaticMap height={232}>
           <MovingVehicle />
-          <View style={styles.centerPin} />
-          <View style={styles.etaChip}>
+          <PulseView style={styles.centerPinWrap} scaleTo={1.08}>
+            <View style={styles.centerPin} />
+          </PulseView>
+          <FloatingView style={styles.etaChip} distance={6}>
             <AppText variant="monoSmall">ETA: 2 min</AppText>
-          </View>
+          </FloatingView>
         </StaticMap>
-      </View>
+      </RevealView>
 
-      <Animated.View entering={FadeInUp.duration(420)} style={styles.content}>
+      <RevealView delay={120} style={styles.content}>
         <View style={styles.headerRow}>
           <AppBadge label="DRIVER MATCHED" />
           <AppText variant="monoSmall" color={theme.colors.green}>
@@ -37,11 +39,13 @@ export default function DriverFoundScreen() {
         </View>
 
         <View style={styles.driverRow}>
-          <View style={styles.avatar}>
-            <AppText variant="h3" color={theme.colors.white}>
-              {driver.initials}
-            </AppText>
-          </View>
+          <PulseView>
+            <View style={styles.avatar}>
+              <AppText variant="h3" color={theme.colors.white}>
+                {driver.initials}
+              </AppText>
+            </View>
+          </PulseView>
           <View style={styles.driverText}>
             <AppText variant="h3">{driver.name}</AppText>
             <AppText variant="bodySmall" color={theme.colors.muted}>
@@ -57,16 +61,22 @@ export default function DriverFoundScreen() {
         </View>
 
         <View style={styles.statsRow}>
-          <StatCard value={`${driver.etaMinutes}`} label="MIN AWAY" accent />
-          <StatCard value={driver.fare} label="FARE" />
-          <StatCard value={`${driver.tripMinutes}`} label="MIN TRIP" />
+          <RevealView delay={180} style={styles.statSlot}>
+            <StatCard value={`${driver.etaMinutes}`} label="MIN AWAY" accent />
+          </RevealView>
+          <RevealView delay={240} style={styles.statSlot}>
+            <StatCard value={driver.fare} label="FARE" />
+          </RevealView>
+          <RevealView delay={300} style={styles.statSlot}>
+            <StatCard value={`${driver.tripMinutes}`} label="MIN TRIP" />
+          </RevealView>
         </View>
 
         <View style={styles.actions}>
           <AppButton title="Call" variant="ghost" />
           <AppButton title="Cancel" variant="danger" onPress={() => router.replace('/rider-home')} />
         </View>
-      </Animated.View>
+      </RevealView>
     </AppScreen>
   );
 }
@@ -95,17 +105,19 @@ const styles = StyleSheet.create({
     borderBottomColor: theme.colors.black,
   },
   centerPin: {
-    position: 'absolute',
-    top: '50%',
-    left: '50%',
     width: 14,
     height: 14,
-    marginLeft: -7,
-    marginTop: -7,
     backgroundColor: theme.colors.orange,
     borderWidth: theme.borders.thick,
     borderColor: theme.colors.black,
     borderRadius: theme.radius.pill,
+  },
+  centerPinWrap: {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    marginLeft: -7,
+    marginTop: -7,
   },
   etaChip: {
     position: 'absolute',
@@ -167,6 +179,9 @@ const styles = StyleSheet.create({
   statsRow: {
     flexDirection: 'row',
     gap: theme.spacing.sm,
+  },
+  statSlot: {
+    flex: 1,
   },
   statCard: {
     flex: 1,
