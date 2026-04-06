@@ -2,6 +2,7 @@ import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { StyleSheet, View } from 'react-native';
 
+import { BackArrow } from '@/components/back-arrow';
 import { AppBadge } from '@/components/app-badge';
 import { AppButton } from '@/components/app-button';
 import { AppCard } from '@/components/app-card';
@@ -21,6 +22,9 @@ export default function DriverFoundScreen() {
       <RevealView style={styles.mapWrap}>
         <StaticMap height={232}>
           <MovingVehicle />
+          <FloatingView style={styles.backButton} distance={5}>
+            <BackArrow />
+          </FloatingView>
           <PulseView style={styles.centerPinWrap} scaleTo={1.08}>
             <View style={styles.centerPin} />
           </PulseView>
@@ -122,7 +126,7 @@ const styles = StyleSheet.create({
   etaChip: {
     position: 'absolute',
     top: 12,
-    left: theme.spacing.gutter,
+    left: 66,
     backgroundColor: theme.colors.white,
     borderWidth: theme.borders.thick,
     borderColor: theme.colors.black,
@@ -130,6 +134,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.spacing.sm,
     paddingVertical: 4,
     ...theme.shadows.card,
+  },
+  backButton: {
+    position: 'absolute',
+    top: 12,
+    left: theme.spacing.gutter,
+    zIndex: 10,
   },
   content: {
     flex: 1,

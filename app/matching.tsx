@@ -12,9 +12,11 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
+import { BackArrow } from '@/components/back-arrow';
 import { AppButton } from '@/components/app-button';
 import { AppScreen } from '@/components/app-screen';
 import { AppText } from '@/components/app-text';
+import { FloatingView, RevealView } from '@/components/motion';
 import { RingStack, StarBurst } from '@/components/decorative-shapes';
 import { PulseCircle } from '@/components/static-map';
 import { theme } from '@/theme';
@@ -33,8 +35,15 @@ export default function MatchingScreen() {
   return (
     <AppScreen backgroundColor={theme.colors.offWhite} contentStyle={styles.container}>
       <StatusBar style="dark" backgroundColor={theme.colors.offWhite} />
-      <RingStack color="rgba(255,92,0,0.08)" width={100} height={100} style={styles.rings} />
-      <StarBurst color="rgba(255,92,0,0.1)" width={60} height={60} style={styles.star} />
+      <FloatingView style={styles.backButton} distance={5}>
+        <BackArrow />
+      </FloatingView>
+      <FloatingView style={styles.rings} distance={9} rotate={8}>
+        <RingStack color="rgba(255,92,0,0.08)" width={100} height={100} />
+      </FloatingView>
+      <FloatingView style={styles.star} delay={180} distance={11} rotate={-12}>
+        <StarBurst color="rgba(255,92,0,0.1)" width={60} height={60} />
+      </FloatingView>
       <View style={styles.radarWrap}>
         <PulseCircle size={160} color={theme.colors.orange} />
         <PulseCircle size={120} color={theme.colors.orange} delay={300} style={styles.radarInner} />
@@ -46,14 +55,14 @@ export default function MatchingScreen() {
         <BlobDot emoji="🚗" style={styles.dotTwo} delay={500} />
         <BlobDot emoji="🚗" style={styles.dotThree} delay={700} />
       </View>
-      <View style={styles.copy}>
+      <RevealView delay={120} style={styles.copy}>
         <AppText variant="h1" style={styles.centerText}>
           Finding your{'\n'}driver...
         </AppText>
         <AppText variant="bodySmall" color={theme.colors.muted} style={styles.centerText}>
           3 drivers nearby • Usually less than 2 min
         </AppText>
-      </View>
+      </RevealView>
       <View style={styles.blinkRow}>
         <BlinkDot delay={0} />
         <BlinkDot delay={200} />
@@ -107,6 +116,12 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 18,
     right: 16,
+  },
+  backButton: {
+    position: 'absolute',
+    top: 18,
+    left: 18,
+    zIndex: 10,
   },
   star: {
     position: 'absolute',

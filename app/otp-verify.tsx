@@ -1,7 +1,7 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, TextInput, View, useColorScheme } from 'react-native';
+import { StyleSheet, TextInput, View } from 'react-native';
 
 import { AppButton } from '@/components/app-button';
 import { AppScreen } from '@/components/app-screen';
@@ -13,15 +13,13 @@ import { theme } from '@/theme';
 
 export default function OtpVerifyScreen() {
   const router = useRouter();
-  const colorScheme = useColorScheme();
   const [digits, setDigits] = useState(['3', '7', '2', '']);
-  const isDark = colorScheme === 'dark';
-  const backgroundColor = isDark ? theme.colors.black : theme.colors.offWhite;
-  const textColor = isDark ? theme.colors.offWhite : theme.colors.black;
-  const mutedColor = isDark ? '#8E8780' : theme.colors.muted;
-  const inactiveBorder = isDark ? '#333333' : '#DCCFC3';
-  const inputBackground = isDark ? '#141414' : theme.colors.white;
-  const placeholderColor = isDark ? '#464646' : '#C2B6AB';
+  const backgroundColor = theme.colors.offWhite;
+  const textColor = theme.colors.black;
+  const mutedColor = theme.colors.muted;
+  const inactiveBorder = '#DCCFC3';
+  const inputBackground = theme.colors.white;
+  const placeholderColor = '#C2B6AB';
 
   const updateDigit = (value: string, index: number) => {
     const next = [...digits];
@@ -31,22 +29,21 @@ export default function OtpVerifyScreen() {
 
   return (
     <AppScreen backgroundColor={backgroundColor} contentStyle={styles.container}>
-      <StatusBar style={isDark ? 'light' : 'dark'} backgroundColor={backgroundColor} />
+      <StatusBar style="dark" backgroundColor={backgroundColor} />
       <FloatingView style={styles.blob} distance={12} rotate={6}>
-        <BlobShape color={isDark ? 'rgba(255,92,0,0.08)' : 'rgba(255,92,0,0.06)'} />
+        <BlobShape color="rgba(255,92,0,0.06)" />
       </FloatingView>
       <FloatingView style={styles.star} delay={180} distance={10} rotate={-10}>
-        <StarBurst color={isDark ? 'rgba(255,92,0,0.14)' : 'rgba(13,13,13,0.1)'} width={44} height={44} />
+        <StarBurst color="rgba(13,13,13,0.1)" width={44} height={44} />
       </FloatingView>
 
       <RevealView delay={40} from="down" style={styles.content}>
         <FlowHeader
           showBack
-          light={isDark}
           overline="VERIFICATION"
           title={'Enter the\n4-digit code'}
           subtitle="Sent to +234 801 234 5678"
-          progress={{ count: 5, active: 3, dark: isDark }}
+          progress={{ count: 5, active: 3 }}
         />
 
         <AppText variant="monoSmall" color={theme.colors.orange}>

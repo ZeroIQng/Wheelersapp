@@ -2,6 +2,7 @@ import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Pressable, StyleSheet, View } from 'react-native';
 
+import { BackArrow } from '@/components/back-arrow';
 import { AppScreen } from '@/components/app-screen';
 import { AppText } from '@/components/app-text';
 import { TriangleShape, StarBurst } from '@/components/decorative-shapes';
@@ -26,7 +27,10 @@ export default function RiderHomeScreen() {
             <StarBurst color="rgba(13,13,13,0.12)" width={38} height={38} />
           </FloatingView>
           <View style={styles.mapTopRow}>
-            <AppText variant="h2">Wheleers</AppText>
+            <View style={styles.titleRow}>
+              <BackArrow style={styles.backButton} />
+              <AppText variant="h2">Wheleers</AppText>
+            </View>
             <FloatingView style={styles.balance} distance={6}>
               <AppText variant="monoSmall">{walletBalance}</AppText>
               <AppText variant="bodySmall" color={theme.colors.muted}>
@@ -83,6 +87,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.sm,
+  },
+  backButton: {
+    width: 34,
+    height: 34,
   },
   balance: {
     backgroundColor: theme.colors.white,
