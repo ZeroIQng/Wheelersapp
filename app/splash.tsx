@@ -5,87 +5,130 @@ import { StyleSheet, View } from 'react-native';
 import Animated, {
   Easing,
   FadeIn,
-  FadeInDown,
   useAnimatedStyle,
   useSharedValue,
   withRepeat,
+  withSequence,
   withTiming,
   ZoomIn,
 } from 'react-native-reanimated';
 
 import { AppScreen } from '@/components/app-screen';
 import { AppText } from '@/components/app-text';
-import { BlobShape, DiamondPair, StarBurst } from '@/components/decorative-shapes';
+import { BlobShape } from '@/components/decorative-shapes';
 import { theme } from '@/theme';
 
 export default function SplashScreen() {
   const router = useRouter();
   const floatY = useSharedValue(0);
-  const spin = useSharedValue(0);
+  const dotOne = useSharedValue(0.35);
+  const dotTwo = useSharedValue(0.35);
+  const dotThree = useSharedValue(0.35);
 
   useEffect(() => {
     floatY.value = withRepeat(
-      withTiming(-10, {
-        duration: 1500,
-        easing: Easing.inOut(Easing.ease),
-      }),
+      withSequence(
+        withTiming(-6, {
+          duration: 900,
+          easing: Easing.inOut(Easing.ease),
+        }),
+        withTiming(0, {
+          duration: 900,
+          easing: Easing.inOut(Easing.ease),
+        })
+      ),
       -1,
-      true
+      false
     );
-    spin.value = withRepeat(
-      withTiming(1, {
-        duration: 9000,
-        easing: Easing.linear,
-      }),
+
+    dotOne.value = withRepeat(
+      withSequence(
+        withTiming(1, { duration: 260 }),
+        withTiming(0.35, { duration: 260 }),
+        withTiming(0.35, { duration: 520 })
+      ),
+      -1,
+      false
+    );
+    dotTwo.value = withRepeat(
+      withSequence(
+        withTiming(0.35, { duration: 260 }),
+        withTiming(1, { duration: 260 }),
+        withTiming(0.35, { duration: 260 }),
+        withTiming(0.35, { duration: 260 })
+      ),
+      -1,
+      false
+    );
+    dotThree.value = withRepeat(
+      withSequence(
+        withTiming(0.35, { duration: 520 }),
+        withTiming(1, { duration: 260 }),
+        withTiming(0.35, { duration: 260 })
+      ),
       -1,
       false
     );
 
     const timer = setTimeout(() => {
       router.replace('/role-selection');
-    }, 2200);
+    }, 2000);
 
     return () => clearTimeout(timer);
-  }, [floatY, router, spin]);
+  }, [dotOne, dotThree, dotTwo, floatY, router]);
 
   const logoStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: floatY.value }],
   }));
 
-  const starStyle = useAnimatedStyle(() => ({
-    transform: [{ rotate: `${spin.value * 360}deg` }],
+  const dotOneStyle = useAnimatedStyle(() => ({
+    opacity: dotOne.value,
+    transform: [{ scale: 0.85 + dotOne.value * 0.2 }],
+  }));
+
+  const dotTwoStyle = useAnimatedStyle(() => ({
+    opacity: dotTwo.value,
+    transform: [{ scale: 0.85 + dotTwo.value * 0.2 }],
+  }));
+
+  const dotThreeStyle = useAnimatedStyle(() => ({
+    opacity: dotThree.value,
+    transform: [{ scale: 0.85 + dotThree.value * 0.2 }],
   }));
 
   return (
-    <AppScreen backgroundColor={theme.colors.orange} contentStyle={styles.container}>
-      <StatusBar style="light" backgroundColor={theme.colors.orange} />
-      <BlobShape color="rgba(255,255,255,0.18)" style={styles.blobTop} />
-      <Animated.View style={[styles.starRight, starStyle]}>
-        <StarBurst color="rgba(255,255,255,0.22)" width={54} height={54} />
-      </Animated.View>
-      <DiamondPair color="rgba(255,255,255,0.18)" style={styles.diamondLeft} />
+    <AppScreen backgroundColor={theme.colors.offWhite} contentStyle={styles.container}>
+      <StatusBar style="dark" backgroundColor={theme.colors.offWhite} />
+      <BlobShape color="rgba(255,92,0,0.08)" style={styles.blobTop} />
+
       <View style={styles.center}>
-        <Animated.View entering={ZoomIn.duration(500)} style={[styles.logoWrap, logoStyle]}>
-          <View style={styles.logoOuter}>
-            <View style={styles.logoInner}>
-              <AppText variant="h1" color={theme.colors.white}>
-                W
-              </AppText>
+        <Animated.View entering={ZoomIn.duration(420)} style={[styles.logoWrap, logoStyle]}>
+          <View style={styles.logoHalo}>
+            <View style={styles.logoOuter}>
+              <View style={styles.logoInner}>
+                <AppText variant="h1" color={theme.colors.offWhite}>
+                  W
+                </AppText>
+              </View>
             </View>
           </View>
         </Animated.View>
-        <Animated.View entering={FadeInDown.delay(100).duration(500)} style={styles.titleBlock}>
-          <AppText variant="display" color={theme.colors.white} style={styles.centerText}>
-            WHELEERS
+
+        <Animated.View entering={FadeIn.delay(100).duration(260)} style={styles.titleBlock}>
+          <AppText variant="h2" style={styles.centerText}>
+            Wheleers
           </AppText>
-          <AppText variant="monoSmall" color="rgba(255,255,255,0.74)" style={styles.tagline}>
+          <AppText variant="bodySmall" color={theme.colors.muted}>
             ride. earn. own.
           </AppText>
         </Animated.View>
       </View>
-      <Animated.View entering={FadeIn.delay(250).duration(450)} style={styles.bottom}>
-        <View style={styles.loaderTrack}>
-          <Animated.View style={styles.loaderBar} />
+
+      <Animated.View entering={FadeIn.delay(180).duration(260)} style={styles.bottom}>
+        <View style={styles.loaderRow}>
+          <Animated.View style={[styles.loaderDot, dotOneStyle]} />
+          <Animated.View style={[styles.loaderDot, dotTwoStyle]} />
+          <Animated.View style={[styles.loaderDot, dotThreeStyle]} />
         </View>
       </Animated.View>
     </AppScreen>
@@ -104,66 +147,62 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     width: '100%',
+    gap: theme.spacing.lg,
   },
   logoWrap: {
-    marginBottom: theme.spacing.lg,
+    marginBottom: theme.spacing.sm,
   },
-  logoOuter: {
-    width: 92,
-    height: 92,
+  logoHalo: {
+    width: 112,
+    height: 112,
     borderRadius: theme.radius.pill,
-    backgroundColor: 'rgba(255,255,255,0.18)',
+    backgroundColor: 'rgba(255,92,0,0.08)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  logoInner: {
-    width: 66,
-    height: 66,
+  logoOuter: {
+    width: 84,
+    height: 84,
     borderRadius: theme.radius.pill,
-    backgroundColor: 'rgba(255,255,255,0.14)',
+    backgroundColor: theme.colors.orange,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...theme.shadows.card,
+  },
+  logoInner: {
+    width: 58,
+    height: 58,
+    borderRadius: theme.radius.pill,
+    backgroundColor: 'rgba(255,255,255,0.16)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   titleBlock: {
     alignItems: 'center',
-    gap: theme.spacing.sm,
+    gap: 2,
   },
   centerText: {
     textAlign: 'center',
   },
-  tagline: {
-    letterSpacing: 1.4,
-  },
   bottom: {
+    minHeight: 20,
     width: '100%',
     alignItems: 'center',
   },
   blobTop: {
     position: 'absolute',
     top: -18,
-    left: -20,
+    left: -24,
   },
-  starRight: {
-    position: 'absolute',
-    right: 20,
-    bottom: 108,
+  loaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
-  diamondLeft: {
-    position: 'absolute',
-    top: 68,
-    left: 28,
-  },
-  loaderTrack: {
-    width: 112,
+  loaderDot: {
+    width: 8,
     height: 8,
     borderRadius: theme.radius.pill,
-    backgroundColor: 'rgba(255,255,255,0.24)',
-    overflow: 'hidden',
-  },
-  loaderBar: {
-    width: '72%',
-    height: '100%',
-    borderRadius: theme.radius.pill,
-    backgroundColor: theme.colors.white,
+    backgroundColor: theme.colors.orange,
   },
 });

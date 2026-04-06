@@ -2,12 +2,12 @@ import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { Pressable, StyleSheet, View } from 'react-native';
-import Animated, { FadeInUp } from 'react-native-reanimated';
 
 import { AppButton } from '@/components/app-button';
 import { AppCard } from '@/components/app-card';
 import { AppScreen } from '@/components/app-screen';
 import { AppText } from '@/components/app-text';
+import { FloatingView, PulseView, RevealView } from '@/components/motion';
 import { MapRoute, StaticMap } from '@/components/static-map';
 import { rideOptions } from '@/data/mock';
 import { theme } from '@/theme';
@@ -20,15 +20,16 @@ export default function RideSelectionScreen() {
   return (
     <AppScreen backgroundColor={theme.colors.offWhite} contentStyle={styles.container}>
       <StatusBar style="dark" backgroundColor="#D4E6D4" />
-      <View style={styles.mapSection}>
+      <RevealView style={styles.mapSection}>
         <StaticMap height={210}>
           <MapRoute />
-          <View style={styles.distanceChip}>
+          <FloatingView style={styles.distanceChip} distance={6}>
             <AppText variant="monoSmall">5.2 km</AppText>
-          </View>
+          </FloatingView>
         </StaticMap>
-      </View>
-      <Animated.View entering={FadeInUp.duration(400)} style={styles.content}>
+      </RevealView>
+
+      <RevealView delay={120} style={styles.content}>
         <Pressable onPress={() => router.back()} style={styles.inlineBack}>
           <AppText variant="h3">←</AppText>
         </Pressable>
@@ -36,34 +37,44 @@ export default function RideSelectionScreen() {
           Choose your ride
         </AppText>
         <View style={styles.list}>
-          {rideOptions.map((ride) => {
+          {rideOptions.map((ride, index) => {
             const selected = ride.id === selectedRide;
+            const Wrapper = selected ? PulseView : FloatingView;
+
             return (
-              <Pressable key={ride.id} onPress={() => setSelectedRide(ride.id)}>
-                <AppCard
-                  backgroundColor={selected ? theme.colors.orange : theme.colors.white}
-                  style={[styles.rideCard, selected ? styles.rideCardActive : null]}>
-                  <View style={[styles.rideIcon, selected ? styles.rideIconActive : null]}>
-                    <AppText style={styles.emoji}>{ride.emoji}</AppText>
-                  </View>
-                  <View style={styles.rideText}>
-                    <AppText variant="h3" color={selected ? theme.colors.white : theme.colors.black}>
-                      {ride.name}
-                    </AppText>
-                    <AppText variant="bodySmall" color={selected ? 'rgba(255,255,255,0.72)' : theme.colors.muted}>
-                      {ride.meta}
-                    </AppText>
-                  </View>
-                  <AppText variant="mono" color={selected ? theme.colors.white : theme.colors.black}>
-                    {ride.price}
-                  </AppText>
-                </AppCard>
-              </Pressable>
+              <RevealView key={ride.id} delay={160 + index * 70}>
+                <Pressable onPress={() => setSelectedRide(ride.id)}>
+                  <Wrapper>
+                    <AppCard
+                      backgroundColor={selected ? theme.colors.orange : theme.colors.white}
+                      style={[styles.rideCard, selected ? styles.rideCardActive : null]}>
+                      <View style={[styles.rideIcon, selected ? styles.rideIconActive : null]}>
+                        <AppText style={styles.emoji}>{ride.emoji}</AppText>
+                      </View>
+                      <View style={styles.rideText}>
+                        <AppText variant="h3" color={selected ? theme.colors.white : theme.colors.black}>
+                          {ride.name}
+                        </AppText>
+                        <AppText
+                          variant="bodySmall"
+                          color={selected ? 'rgba(255,255,255,0.72)' : theme.colors.muted}>
+                          {ride.meta}
+                        </AppText>
+                      </View>
+                      <AppText variant="mono" color={selected ? theme.colors.white : theme.colors.black}>
+                        {ride.price}
+                      </AppText>
+                    </AppCard>
+                  </Wrapper>
+                </Pressable>
+              </RevealView>
             );
           })}
         </View>
-        <AppButton title={`Book ${activeRide.name} ↗`} onPress={() => router.push('/matching')} />
-      </Animated.View>
+        <RevealView delay={360}>
+          <AppButton title={`Book ${activeRide.name} ↗`} onPress={() => router.push('/matching')} />
+        </RevealView>
+      </RevealView>
     </AppScreen>
   );
 }

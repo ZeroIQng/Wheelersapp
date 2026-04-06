@@ -1,19 +1,27 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, TextInput, View } from 'react-native';
-import Animated, { FadeInDown } from 'react-native-reanimated';
+import { StyleSheet, TextInput, View, useColorScheme } from 'react-native';
 
 import { AppButton } from '@/components/app-button';
 import { AppScreen } from '@/components/app-screen';
 import { AppText } from '@/components/app-text';
 import { BlobShape, StarBurst } from '@/components/decorative-shapes';
 import { FlowHeader } from '@/components/flow-header';
+import { FloatingView, PulseView, RevealView } from '@/components/motion';
 import { theme } from '@/theme';
 
 export default function OtpVerifyScreen() {
   const router = useRouter();
+  const colorScheme = useColorScheme();
   const [digits, setDigits] = useState(['3', '7', '2', '']);
+  const isDark = colorScheme === 'dark';
+  const backgroundColor = isDark ? theme.colors.black : theme.colors.offWhite;
+  const textColor = isDark ? theme.colors.offWhite : theme.colors.black;
+  const mutedColor = isDark ? '#8E8780' : theme.colors.muted;
+  const inactiveBorder = isDark ? '#333333' : '#DCCFC3';
+  const inputBackground = isDark ? '#141414' : theme.colors.white;
+  const placeholderColor = isDark ? '#464646' : '#C2B6AB';
 
   const updateDigit = (value: string, index: number) => {
     const next = [...digits];
@@ -22,48 +30,68 @@ export default function OtpVerifyScreen() {
   };
 
   return (
-    <AppScreen backgroundColor={theme.colors.black} contentStyle={styles.container}>
-      <StatusBar style="light" backgroundColor={theme.colors.black} />
-      <BlobShape color="rgba(255,92,0,0.08)" style={styles.blob} />
-      <StarBurst color="rgba(255,92,0,0.14)" width={44} height={44} style={styles.star} />
-      <Animated.View entering={FadeInDown.duration(450)} style={styles.content}>
+    <AppScreen backgroundColor={backgroundColor} contentStyle={styles.container}>
+      <StatusBar style={isDark ? 'light' : 'dark'} backgroundColor={backgroundColor} />
+      <FloatingView style={styles.blob} distance={12} rotate={6}>
+        <BlobShape color={isDark ? 'rgba(255,92,0,0.08)' : 'rgba(255,92,0,0.06)'} />
+      </FloatingView>
+      <FloatingView style={styles.star} delay={180} distance={10} rotate={-10}>
+        <StarBurst color={isDark ? 'rgba(255,92,0,0.14)' : 'rgba(13,13,13,0.1)'} width={44} height={44} />
+      </FloatingView>
+
+      <RevealView delay={40} from="down" style={styles.content}>
         <FlowHeader
           showBack
-          light
+          light={isDark}
           overline="VERIFICATION"
           title={'Enter the\n4-digit code'}
           subtitle="Sent to +234 801 234 5678"
-          progress={{ count: 5, active: 3, dark: true }}
+          progress={{ count: 5, active: 3, dark: isDark }}
         />
+
         <AppText variant="monoSmall" color={theme.colors.orange}>
           CHANGE NUMBER?
         </AppText>
+
         <View style={styles.digitsRow}>
           {digits.map((digit, index) => (
-            <TextInput
-              key={index}
-              keyboardType="number-pad"
-              maxLength={1}
-              onChangeText={(value) => updateDigit(value, index)}
-              placeholder="—"
-              placeholderTextColor="#464646"
-              selectionColor={theme.colors.orange}
-              style={[
-                styles.digitInput,
-                index === 2 ? styles.digitInputActive : null,
-              ]}
-              value={digit}
-            />
+            <PulseView key={index} delay={index * 120} scaleTo={index === 2 ? 1.05 : 1.015}>
+              <TextInput
+                keyboardType="number-pad"
+                maxLength={1}
+                onChangeText={(value) => updateDigit(value, index)}
+                placeholder="—"
+                placeholderTextColor={placeholderColor}
+                selectionColor={theme.colors.orange}
+                style={[
+                  styles.digitInput,
+                  {
+                    backgroundColor: inputBackground,
+                    borderColor: inactiveBorder,
+                    color: textColor,
+                  },
+                  index === 2 ? styles.digitInputActive : null,
+                ]}
+                value={digit}
+              />
+            </PulseView>
           ))}
         </View>
-        <AppText variant="monoLarge" color={theme.colors.orange} style={styles.timer}>
-          0:38
-        </AppText>
-        <AppButton title="Verify ↗" onPress={() => router.push('/kyc')} />
-        <AppText variant="bodySmall" color="#555" style={styles.resend}>
+
+        <PulseView>
+          <AppText variant="monoLarge" color={theme.colors.orange} style={styles.timer}>
+            0:38
+          </AppText>
+        </PulseView>
+
+        <RevealView delay={180}>
+          <AppButton title="Verify ↗" onPress={() => router.push('/kyc')} />
+        </RevealView>
+
+        <AppText variant="bodySmall" color={mutedColor} style={styles.resend}>
           Didn&apos;t receive it? Resend
         </AppText>
-      </Animated.View>
+      </RevealView>
     </AppScreen>
   );
 }
@@ -97,10 +125,8 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 58,
     borderWidth: theme.borders.thick,
-    borderColor: '#333333',
     borderRadius: theme.radius.sm,
     textAlign: 'center',
-    color: theme.colors.white,
     ...theme.typography.monoLarge,
   },
   digitInputActive: {
