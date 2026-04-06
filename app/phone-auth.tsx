@@ -1,7 +1,7 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, TextInput, View, useColorScheme } from 'react-native';
+import { StyleSheet, TextInput, View } from 'react-native';
 
 import { AppButton } from '@/components/app-button';
 import { AppScreen } from '@/components/app-screen';
@@ -13,24 +13,22 @@ import { theme } from '@/theme';
 
 export default function PhoneAuthScreen() {
   const router = useRouter();
-  const colorScheme = useColorScheme();
   const [phone, setPhone] = useState('801 234 5678');
-  const isDark = colorScheme === 'dark';
-  const backgroundColor = isDark ? theme.colors.black : theme.colors.offWhite;
-  const textColor = isDark ? theme.colors.offWhite : theme.colors.black;
-  const mutedColor = isDark ? '#AAA39B' : theme.colors.mutedLight;
-  const borderColor = isDark ? '#2F2F2F' : theme.colors.black;
-  const fieldBackground = isDark ? '#151515' : theme.colors.white;
-  const prefixBackground = isDark ? '#25160D' : theme.colors.orangeLight;
+  const backgroundColor = theme.colors.offWhite;
+  const textColor = theme.colors.black;
+  const mutedColor = theme.colors.mutedLight;
+  const borderColor = theme.colors.black;
+  const fieldBackground = theme.colors.white;
+  const prefixBackground = theme.colors.orangeLight;
 
   return (
     <AppScreen backgroundColor={backgroundColor} scroll contentStyle={styles.container}>
-      <StatusBar style={isDark ? 'light' : 'dark'} backgroundColor={backgroundColor} />
+      <StatusBar style="dark" backgroundColor={backgroundColor} />
       <FloatingView style={styles.rings} distance={10} rotate={10}>
-        <RingStack color={isDark ? 'rgba(255,92,0,0.16)' : 'rgba(255,92,0,0.08)'} width={88} height={88} />
+        <RingStack color="rgba(255,92,0,0.08)" width={88} height={88} />
       </FloatingView>
       <FloatingView style={styles.cross} delay={180} distance={9} rotate={-10}>
-        <CrossShape color={isDark ? 'rgba(255,255,255,0.1)' : 'rgba(13,13,13,0.12)'} />
+        <CrossShape color="rgba(13,13,13,0.12)" />
       </FloatingView>
       <RevealView delay={40} from="down" style={styles.content}>
         <FlowHeader
@@ -39,7 +37,6 @@ export default function PhoneAuthScreen() {
           title={"What's your\nnumber?"}
           subtitle="We'll send a one-time code to verify your phone."
           progress={{ count: 5, active: 2 }}
-          light={isDark}
         />
 
         <RevealView delay={120}>
