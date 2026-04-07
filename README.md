@@ -26,6 +26,20 @@ app/
   ride-selection.tsx
   matching.tsx
   driver-found.tsx
+  rider/
+    _layout.tsx
+    active-trip.tsx
+    trip-rating.tsx
+    wallet.tsx
+  driver/
+    _layout.tsx
+    dashboard.tsx
+    incoming-request.tsx
+    navigation.tsx
+    arrived.tsx
+    active-trip.tsx
+    payout.tsx
+    earnings.tsx
 components/
   app-badge.tsx
   app-button.tsx
@@ -34,10 +48,21 @@ components/
   app-text.tsx
   decorative-shapes.tsx
   flow-header.tsx
+  EarningsBarChart.tsx
+  InstructionCard.tsx
+  MapMock.tsx
+  MetricCard.tsx
   progress-dots.tsx
+  RideRequestSheet.tsx
+  SectionHeader.tsx
   static-map.tsx
+  StatusPill.tsx
+  TripProgressBar.tsx
+  WalletBalanceCard.tsx
 data/
   mock.ts
+constants/
+  theme.ts
 theme.ts
 ```
 
@@ -60,5 +85,9 @@ theme.ts
 ## Notes
 
 - The map screens use a static native mock layout for now.
-- Mock data drives ride types, recent places, driver info, fare, and ETA.
+- `data/mock.ts` now drives Batch 1 and Batch 2 rider and driver flows, including wallet, payout, request, and earnings states.
+- `constants/theme.ts` is the centralized design token source. `theme.ts` re-exports it for the existing `@/theme` imports.
+- Rider and driver Batch 2 screens live under `app/rider` and `app/driver` and are connected from the existing flow:
+  - Rider: `splash -> role-selection -> phone-auth -> otp-verify -> kyc -> rider-home -> destination-search -> ride-selection -> matching -> driver-found -> rider/active-trip -> rider/trip-rating -> rider/wallet`
+  - Driver: `role-selection (drive) -> driver/dashboard -> driver/incoming-request -> driver/navigation -> driver/arrived -> driver/active-trip -> driver/payout -> driver/earnings`
 - Fonts load before the router mounts, so headings and labels render with the intended brand typography from first paint.
