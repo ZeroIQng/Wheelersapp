@@ -1,4 +1,4 @@
-import { useRouter } from 'expo-router';
+import { Href, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Pressable, StyleSheet, View } from 'react-native';
 
@@ -13,6 +13,7 @@ import { theme } from '@/theme';
 
 export default function DriverArrivedScreen() {
   const router = useRouter();
+  const activeTripRoute = '/driver/active-trip' as Href;
 
   return (
     <AppScreen backgroundColor={theme.colors.offWhite} contentStyle={styles.container}>
@@ -53,7 +54,7 @@ export default function DriverArrivedScreen() {
         progress={driverArrivalState.waitProgress}
       />
 
-      <AppButton title="Start trip ↗" onPress={() => router.push('/driver/active-trip')} />
+      <AppButton title="Start trip ↗" onPress={() => router.push(activeTripRoute)} />
     </AppScreen>
   );
 }

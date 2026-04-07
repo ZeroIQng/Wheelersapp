@@ -1,4 +1,4 @@
-import { useRouter } from 'expo-router';
+import { Href, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { StyleSheet, View } from 'react-native';
 
@@ -15,6 +15,7 @@ import { theme } from '@/theme';
 
 export default function DriverActiveTripScreen() {
   const router = useRouter();
+  const payoutRoute = '/driver/payout' as Href;
 
   return (
     <AppScreen backgroundColor={theme.colors.offWhite} contentStyle={styles.container}>
@@ -52,7 +53,7 @@ export default function DriverActiveTripScreen() {
 
         <InstructionCard instruction={driverActiveTripDetails.instruction} />
 
-        <AppButton title="End ride ✓" onPress={() => router.push('/driver/payout')} />
+        <AppButton title="End ride ✓" onPress={() => router.push(payoutRoute)} />
       </View>
     </AppScreen>
   );

@@ -1,4 +1,4 @@
-import { useRouter } from 'expo-router';
+import { Href, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Pressable, StyleSheet, View } from 'react-native';
 
@@ -16,6 +16,7 @@ import { theme } from '@/theme';
 
 export default function RiderActiveTripScreen() {
   const router = useRouter();
+  const ratingRoute = '/rider/trip-rating' as Href;
 
   return (
     <AppScreen backgroundColor={theme.colors.offWhite} contentStyle={styles.container}>
@@ -68,7 +69,7 @@ export default function RiderActiveTripScreen() {
           <AppButton title="Share trip ↗" variant="ghost" style={styles.shareButton} />
         </View>
 
-        <AppButton title="Arrived at destination ↗" onPress={() => router.push('/rider/trip-rating')} />
+        <AppButton title="Arrived at destination ↗" onPress={() => router.push(ratingRoute)} />
       </View>
     </AppScreen>
   );

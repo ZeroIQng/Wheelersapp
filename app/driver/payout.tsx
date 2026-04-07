@@ -1,4 +1,4 @@
-import { useRouter } from 'expo-router';
+import { Href, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Pressable, StyleSheet, View } from 'react-native';
 
@@ -13,6 +13,8 @@ import { theme } from '@/theme';
 
 export default function DriverPayoutScreen() {
   const router = useRouter();
+  const earningsRoute = '/driver/earnings' as Href;
+  const dashboardRoute = '/driver/dashboard' as Href;
 
   return (
     <AppScreen backgroundColor={theme.colors.offWhite} contentStyle={styles.container}>
@@ -23,7 +25,7 @@ export default function DriverPayoutScreen() {
 
       <SectionHeader
         actionLabel="View earnings"
-        onActionPress={() => router.push('/driver/earnings')}
+        onActionPress={() => router.push(earningsRoute)}
         subtitle={driverPayoutSummary.fiatApprox}
         title="Ride complete"
       />
@@ -52,7 +54,7 @@ export default function DriverPayoutScreen() {
         </View>
       </AppCard>
 
-      <AppButton title="Next ride ↗" onPress={() => router.replace('/driver/dashboard')} />
+      <AppButton title="Next ride ↗" onPress={() => router.replace(dashboardRoute)} />
       <Pressable style={styles.offlineButton}>
         <AppText variant="label" color={theme.colors.offWhite}>
           Go offline

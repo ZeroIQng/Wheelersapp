@@ -1,4 +1,4 @@
-import { useRouter } from 'expo-router';
+import { Href, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
@@ -15,6 +15,7 @@ const tips = ['$0.50', '$1.00', '$2.00', 'Skip'];
 
 export default function TripRatingScreen() {
   const router = useRouter();
+  const walletRoute = '/rider/wallet' as Href;
   const [rating, setRating] = useState(4);
   const [tip, setTip] = useState('$1.00');
 
@@ -87,7 +88,7 @@ export default function TripRatingScreen() {
         </View>
       </View>
 
-      <AppButton title="Submit rating ↗" onPress={() => router.push('/rider/wallet')} />
+      <AppButton title="Submit rating ↗" onPress={() => router.push(walletRoute)} />
     </AppScreen>
   );
 }

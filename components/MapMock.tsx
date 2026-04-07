@@ -1,5 +1,5 @@
 import { PropsWithChildren, useEffect } from 'react';
-import { StyleSheet, Text, View, ViewStyle } from 'react-native';
+import { DimensionValue, StyleSheet, Text, View, ViewStyle } from 'react-native';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -17,17 +17,17 @@ import { theme } from '@/theme';
 type MapVariant = 'riderTrip' | 'driverNavigation' | 'driverDashboard' | 'driverActive';
 
 type PositionedBox = {
-  top?: string;
-  left?: string;
-  right?: string;
-  bottom?: string;
+  top?: DimensionValue;
+  left?: DimensionValue;
+  right?: DimensionValue;
+  bottom?: DimensionValue;
   width: number;
   height: number;
 };
 
 type VariantConfig = {
-  roadsH: Array<{ top: string; height: number }>;
-  roadsV: Array<{ left: string; width: number }>;
+  roadsH: Array<{ top: DimensionValue; height: number }>;
+  roadsV: Array<{ left: DimensionValue; width: number }>;
   blocks: PositionedBox[];
   routeStyle: ViewStyle;
   routeDashed?: boolean;

@@ -1,4 +1,4 @@
-import { useRouter } from 'expo-router';
+import { Href, useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, StyleSheet } from 'react-native';
 
@@ -16,6 +16,7 @@ type Role = 'ride' | 'drive';
 export default function RoleSelectionScreen() {
   const router = useRouter();
   const [selectedRole, setSelectedRole] = useState<Role>('drive');
+  const nextRoute = (selectedRole === 'ride' ? '/phone-auth' : '/driver/dashboard') as Href;
 
   return (
     <AppScreen backgroundColor={theme.colors.offWhite} scroll contentStyle={styles.container}>
@@ -55,9 +56,7 @@ export default function RoleSelectionScreen() {
       <RevealView delay={220} style={styles.actions}>
         <AppButton
           title="Continue with Google ↗"
-          onPress={() =>
-            router.push(selectedRole === 'ride' ? '/phone-auth' : '/driver/dashboard')
-          }
+          onPress={() => router.push(nextRoute)}
         />
         <AppButton title="Connect wallet" variant="ghost" />
       </RevealView>

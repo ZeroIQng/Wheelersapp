@@ -1,4 +1,4 @@
-import { useRouter } from 'expo-router';
+import { Href, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { StyleSheet, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
@@ -12,6 +12,8 @@ import { theme } from '@/theme';
 
 export default function IncomingRequestScreen() {
   const router = useRouter();
+  const navigationRoute = '/driver/navigation' as Href;
+  const dashboardRoute = '/driver/dashboard' as Href;
 
   return (
     <AppScreen backgroundColor={theme.colors.orange} contentStyle={styles.container}>
@@ -38,8 +40,8 @@ export default function IncomingRequestScreen() {
 
       <View style={styles.sheetWrap}>
         <RideRequestSheet
-          onAccept={() => router.push('/driver/navigation')}
-          onDecline={() => router.replace('/driver/dashboard')}
+          onAccept={() => router.push(navigationRoute)}
+          onDecline={() => router.replace(dashboardRoute)}
         />
       </View>
     </AppScreen>

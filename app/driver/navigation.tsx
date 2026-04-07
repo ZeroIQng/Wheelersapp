@@ -1,4 +1,4 @@
-import { useRouter } from 'expo-router';
+import { Href, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { StyleSheet, View } from 'react-native';
 
@@ -13,6 +13,7 @@ import { theme } from '@/theme';
 
 export default function DriverNavigationScreen() {
   const router = useRouter();
+  const arrivedRoute = '/driver/arrived' as Href;
 
   return (
     <AppScreen backgroundColor={theme.colors.offWhite} contentStyle={styles.container}>
@@ -48,7 +49,7 @@ export default function DriverNavigationScreen() {
           ))}
         </View>
 
-        <AppButton title="I've arrived ✓" onPress={() => router.push('/driver/arrived')} />
+        <AppButton title="I've arrived ✓" onPress={() => router.push(arrivedRoute)} />
       </View>
     </AppScreen>
   );

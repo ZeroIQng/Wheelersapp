@@ -1,4 +1,4 @@
-import { useRouter } from 'expo-router';
+import { Href, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { StyleSheet, View } from 'react-native';
 
@@ -15,6 +15,7 @@ import { theme } from '@/theme';
 
 export default function DriverFoundScreen() {
   const router = useRouter();
+  const activeTripRoute = '/rider/active-trip' as Href;
 
   return (
     <AppScreen backgroundColor={theme.colors.offWhite} contentStyle={styles.container}>
@@ -79,7 +80,7 @@ export default function DriverFoundScreen() {
         <View style={styles.actions}>
           <AppButton
             title="Track trip ↗"
-            onPress={() => router.push('/rider/active-trip')}
+            onPress={() => router.push(activeTripRoute)}
             style={styles.primaryAction}
           />
           <View style={styles.secondaryActions}>

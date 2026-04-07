@@ -1,4 +1,4 @@
-import { useRouter } from 'expo-router';
+import { Href, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Pressable, StyleSheet, View } from 'react-native';
 
@@ -14,6 +14,7 @@ import { theme } from '@/theme';
 
 export default function DriverDashboardScreen() {
   const router = useRouter();
+  const requestRoute = '/driver/incoming-request' as Href;
 
   return (
     <AppScreen backgroundColor={theme.colors.offWhite} scroll contentStyle={styles.container}>
@@ -35,14 +36,14 @@ export default function DriverDashboardScreen() {
         ))}
       </View>
 
-      <Pressable onPress={() => router.push('/driver/incoming-request')} style={styles.mapPressable}>
+      <Pressable onPress={() => router.push(requestRoute)} style={styles.mapPressable}>
         <MapMock height={220} showPulse variant="driverDashboard" />
         <AppText variant="bodySmall" color={theme.colors.muted} style={styles.nearbyLabel}>
           {driverDashboardSummary.nearbyLabel}
         </AppText>
       </Pressable>
 
-      <AppButton title="Open incoming request ↗" onPress={() => router.push('/driver/incoming-request')} />
+      <AppButton title="Open incoming request ↗" onPress={() => router.push(requestRoute)} />
 
       <Pressable style={styles.offlineButton}>
         <AppText variant="label" color={theme.colors.offWhite}>

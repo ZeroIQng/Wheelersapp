@@ -1,4 +1,4 @@
-import { useRouter } from 'expo-router';
+import { Href, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
@@ -15,14 +15,17 @@ import { theme } from '@/theme';
 
 export default function DriverEarningsScreen() {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState(earningsSummary.activeTab);
+  const dashboardRoute = '/driver/dashboard' as Href;
+  const [activeTab, setActiveTab] = useState<(typeof earningsSummary.tabs)[number]>(
+    earningsSummary.activeTab
+  );
 
   return (
     <AppScreen backgroundColor={theme.colors.offWhite} scroll contentStyle={styles.container}>
       <StatusBar style="dark" backgroundColor={theme.colors.offWhite} />
       <SectionHeader
         actionLabel="Dashboard"
-        onActionPress={() => router.replace('/driver/dashboard')}
+        onActionPress={() => router.replace(dashboardRoute)}
         title="Earnings"
         titleVariant="h1"
       />
