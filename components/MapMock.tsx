@@ -7,7 +7,7 @@ import Animated, {
   withRepeat,
   withTiming,
 } from 'react-native-reanimated';
-import Svg, { Circle, Ellipse, Line, Path, Polygon, Rect } from 'react-native-svg';
+import Svg, { Circle, Ellipse, Path, Polygon, Rect } from 'react-native-svg';
 
 import { InstructionCard } from '@/components/InstructionCard';
 import { AppText } from '@/components/app-text';
@@ -26,8 +26,8 @@ type PositionedBox = {
 };
 
 type VariantConfig = {
-  roadsH: Array<{ top: DimensionValue; height: number }>;
-  roadsV: Array<{ left: DimensionValue; width: number }>;
+  roadsH: { top: DimensionValue; height: number }[];
+  roadsV: { left: DimensionValue; width: number }[];
   blocks: PositionedBox[];
   routeStyle: ViewStyle;
   routeDashed?: boolean;
