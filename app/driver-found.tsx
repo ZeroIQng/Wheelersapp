@@ -77,8 +77,20 @@ export default function DriverFoundScreen() {
         </View>
 
         <View style={styles.actions}>
-          <AppButton title="Call" variant="ghost" />
-          <AppButton title="Cancel" variant="danger" onPress={() => router.replace('/rider-home')} />
+          <AppButton
+            title="Track trip ↗"
+            onPress={() => router.push('/rider/active-trip')}
+            style={styles.primaryAction}
+          />
+          <View style={styles.secondaryActions}>
+            <AppButton title="Call" variant="ghost" style={styles.secondaryButton} />
+            <AppButton
+              title="Cancel"
+              variant="danger"
+              onPress={() => router.replace('/rider-home')}
+              style={styles.secondaryButton}
+            />
+          </View>
         </View>
       </RevealView>
     </AppScreen>
@@ -200,8 +212,17 @@ const styles = StyleSheet.create({
     paddingVertical: theme.spacing.sm,
   },
   actions: {
-    flexDirection: 'row',
     gap: theme.spacing.sm,
     marginTop: theme.spacing.sm,
+  },
+  primaryAction: {
+    width: '100%',
+  },
+  secondaryActions: {
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+  },
+  secondaryButton: {
+    flex: 1,
   },
 });

@@ -53,7 +53,12 @@ export default function RoleSelectionScreen() {
       </RevealView>
 
       <RevealView delay={220} style={styles.actions}>
-        <AppButton title="Continue with Google ↗" onPress={() => router.push('/phone-auth')} />
+        <AppButton
+          title="Continue with Google ↗"
+          onPress={() =>
+            router.push(selectedRole === 'ride' ? '/phone-auth' : '/driver/dashboard')
+          }
+        />
         <AppButton title="Connect wallet" variant="ghost" />
       </RevealView>
     </AppScreen>
