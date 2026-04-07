@@ -1,53 +1,203 @@
-/**
- * Below are the colors that are used in the app. The colors are defined in the light and dark mode.
- * There are many other ways to style your app. For example, [Nativewind](https://www.nativewind.dev/), [Tamagui](https://tamagui.dev/), [unistyles](https://reactnativeunistyles.vercel.app), etc.
- */
+import { Platform, TextStyle, ViewStyle } from 'react-native';
 
-import { Platform } from 'react-native';
+const colors = {
+  orange: '#FF5C00',
+  orangeLight: '#FFF0E8',
+  black: '#0D0D0D',
+  offWhite: '#FFFAF5',
+  green: '#00C48C',
+  white: '#FFFFFF',
+  muted: '#786F68',
+  mutedLight: '#B5ACA4',
+  borderLight: '#E8DDD3',
+  danger: '#CC3333',
+  mapBase: '#D4E6D4',
+  mapBlock: 'rgba(185,208,185,0.85)',
+  mapRoad: 'rgba(255,255,255,0.62)',
+} as const;
 
-const tintColorLight = '#0a7ea4';
-const tintColorDark = '#fff';
+const spacing = {
+  xxs: 2,
+  xs: 4,
+  sm: 8,
+  md: 12,
+  lg: 16,
+  xl: 20,
+  xxl: 28,
+  xxxl: 36,
+  gutter: 20,
+} as const;
+
+const radii = {
+  xs: 8,
+  sm: 10,
+  md: 14,
+  lg: 20,
+  xl: 28,
+  pill: 999,
+} as const;
+
+const borderWidths = {
+  thick: 2.5,
+  regular: 1.5,
+} as const;
+
+const cardShadow: ViewStyle = {
+  shadowColor: colors.black,
+  shadowOffset: {
+    width: 3,
+    height: 3,
+  },
+  shadowOpacity: 1,
+  shadowRadius: 0,
+  elevation: 5,
+};
+
+const subtleShadow: ViewStyle = {
+  ...cardShadow,
+  shadowOffset: {
+    width: 2,
+    height: 2,
+  },
+  elevation: 3,
+};
+
+const shadowPresets = {
+  card: cardShadow,
+  subtle: subtleShadow,
+} as const;
+
+const typography = {
+  display: {
+    fontFamily: 'Syne_800ExtraBold',
+    fontSize: 42,
+    lineHeight: 44,
+    letterSpacing: -1.3,
+  } satisfies TextStyle,
+  h1: {
+    fontFamily: 'Syne_800ExtraBold',
+    fontSize: 30,
+    lineHeight: 32,
+    letterSpacing: -0.9,
+  } satisfies TextStyle,
+  h2: {
+    fontFamily: 'Syne_700Bold',
+    fontSize: 22,
+    lineHeight: 26,
+    letterSpacing: -0.4,
+  } satisfies TextStyle,
+  h3: {
+    fontFamily: 'Syne_700Bold',
+    fontSize: 17,
+    lineHeight: 20,
+  } satisfies TextStyle,
+  body: {
+    fontFamily: 'DMSans_400Regular',
+    fontSize: 14,
+    lineHeight: 20,
+  } satisfies TextStyle,
+  bodyMedium: {
+    fontFamily: 'DMSans_500Medium',
+    fontSize: 14,
+    lineHeight: 20,
+  } satisfies TextStyle,
+  bodySmall: {
+    fontFamily: 'DMSans_400Regular',
+    fontSize: 11,
+    lineHeight: 16,
+  } satisfies TextStyle,
+  label: {
+    fontFamily: 'Syne_700Bold',
+    fontSize: 13,
+    lineHeight: 16,
+  } satisfies TextStyle,
+  mono: {
+    fontFamily: 'SpaceMono_400Regular',
+    fontSize: 13,
+    lineHeight: 18,
+  } satisfies TextStyle,
+  monoSmall: {
+    fontFamily: 'SpaceMono_700Bold',
+    fontSize: 10,
+    lineHeight: 14,
+    letterSpacing: 0.6,
+  } satisfies TextStyle,
+  monoLarge: {
+    fontFamily: 'SpaceMono_700Bold',
+    fontSize: 20,
+    lineHeight: 24,
+  } satisfies TextStyle,
+} as const;
+
+export const theme = {
+  colors,
+  spacing,
+  radii,
+  radius: radii,
+  borderWidths,
+  borders: borderWidths,
+  shadowPresets,
+  shadows: shadowPresets,
+  typography,
+  layout: {
+    screenPadding: spacing.gutter,
+    maxWidth: 560,
+    mapHeight: 280,
+  },
+  fonts: {
+    heading: typography.h1.fontFamily,
+    headingAlt: typography.h2.fontFamily,
+    body: typography.body.fontFamily,
+    bodyMedium: typography.bodyMedium.fontFamily,
+    mono: typography.mono.fontFamily,
+    monoBold: typography.monoSmall.fontFamily,
+  },
+  platform: {
+    topPadding: Platform.select({
+      android: 4,
+      default: 0,
+    }),
+  },
+} as const;
+
+export type AppTheme = typeof theme;
 
 export const Colors = {
   light: {
-    text: '#11181C',
-    background: '#fff',
-    tint: tintColorLight,
-    icon: '#687076',
-    tabIconDefault: '#687076',
-    tabIconSelected: tintColorLight,
+    text: theme.colors.black,
+    background: theme.colors.offWhite,
+    tint: theme.colors.orange,
+    icon: theme.colors.muted,
+    tabIconDefault: theme.colors.mutedLight,
+    tabIconSelected: theme.colors.orange,
   },
   dark: {
-    text: '#ECEDEE',
-    background: '#151718',
-    tint: tintColorDark,
+    text: theme.colors.offWhite,
+    background: theme.colors.black,
+    tint: theme.colors.offWhite,
     icon: '#9BA1A6',
     tabIconDefault: '#9BA1A6',
-    tabIconSelected: tintColorDark,
+    tabIconSelected: theme.colors.offWhite,
   },
-};
+} as const;
 
 export const Fonts = Platform.select({
   ios: {
-    /** iOS `UIFontDescriptorSystemDesignDefault` */
-    sans: 'system-ui',
-    /** iOS `UIFontDescriptorSystemDesignSerif` */
-    serif: 'ui-serif',
-    /** iOS `UIFontDescriptorSystemDesignRounded` */
-    rounded: 'ui-rounded',
-    /** iOS `UIFontDescriptorSystemDesignMonospaced` */
-    mono: 'ui-monospace',
+    sans: theme.fonts.body,
+    serif: theme.fonts.heading,
+    rounded: theme.fonts.headingAlt,
+    mono: theme.fonts.mono,
   },
   default: {
-    sans: 'normal',
-    serif: 'serif',
-    rounded: 'normal',
-    mono: 'monospace',
+    sans: theme.fonts.body,
+    serif: theme.fonts.heading,
+    rounded: theme.fonts.headingAlt,
+    mono: theme.fonts.mono,
   },
   web: {
-    sans: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
-    serif: "Georgia, 'Times New Roman', serif",
-    rounded: "'SF Pro Rounded', 'Hiragino Maru Gothic ProN', Meiryo, 'MS PGothic', sans-serif",
-    mono: "SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
+    sans: theme.fonts.body,
+    serif: theme.fonts.heading,
+    rounded: theme.fonts.headingAlt,
+    mono: theme.fonts.mono,
   },
 });
