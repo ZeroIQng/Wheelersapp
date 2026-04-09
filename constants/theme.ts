@@ -6,11 +6,19 @@ const colors = {
   black: '#0D0D0D',
   offWhite: '#FFFAF5',
   green: '#00C48C',
+  red: '#FF3333',
   white: '#FFFFFF',
   muted: '#786F68',
   mutedLight: '#B5ACA4',
   borderLight: '#E8DDD3',
   danger: '#CC3333',
+  dangerLight: '#FFF0F0',
+  warning: '#F59E0B',
+  successLight: '#E8FFF7',
+  darkSurface: '#111111',
+  darkSurfaceSoft: '#1A1A1A',
+  darkBorder: '#333333',
+  darkMuted: '#8E8882',
   mapBase: '#D4E6D4',
   mapBlock: 'rgba(185,208,185,0.85)',
   mapRoad: 'rgba(255,255,255,0.62)',
@@ -65,6 +73,36 @@ const subtleShadow: ViewStyle = {
 const shadowPresets = {
   card: cardShadow,
   subtle: subtleShadow,
+} as const;
+
+const status = {
+  live: colors.green,
+  urgent: colors.red,
+  pending: colors.warning,
+  inactive: colors.mutedLight,
+} as const;
+
+const cardVariants = {
+  default: {
+    backgroundColor: colors.white,
+    borderColor: colors.black,
+  },
+  accent: {
+    backgroundColor: colors.orangeLight,
+    borderColor: colors.orange,
+  },
+  muted: {
+    backgroundColor: '#F5F2ED',
+    borderColor: colors.borderLight,
+  },
+  dark: {
+    backgroundColor: colors.darkSurface,
+    borderColor: colors.darkBorder,
+  },
+  danger: {
+    backgroundColor: colors.dangerLight,
+    borderColor: colors.danger,
+  },
 } as const;
 
 const typography = {
@@ -127,6 +165,22 @@ const typography = {
     fontSize: 20,
     lineHeight: 24,
   } satisfies TextStyle,
+  screenTitle: {
+    fontFamily: 'Syne_800ExtraBold',
+    fontSize: 24,
+    lineHeight: 28,
+    letterSpacing: -0.5,
+  } satisfies TextStyle,
+  metric: {
+    fontFamily: 'SpaceMono_700Bold',
+    fontSize: 28,
+    lineHeight: 32,
+  } satisfies TextStyle,
+  caption: {
+    fontFamily: 'DMSans_500Medium',
+    fontSize: 10,
+    lineHeight: 14,
+  } satisfies TextStyle,
 } as const;
 
 export const theme = {
@@ -136,6 +190,8 @@ export const theme = {
   radius: radii,
   borderWidths,
   borders: borderWidths,
+  status,
+  cardVariants,
   shadowPresets,
   shadows: shadowPresets,
   typography,

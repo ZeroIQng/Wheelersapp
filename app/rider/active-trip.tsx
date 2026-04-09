@@ -17,6 +17,7 @@ import { theme } from '@/theme';
 export default function RiderActiveTripScreen() {
   const router = useRouter();
   const ratingRoute = '/rider/trip-rating' as Href;
+  const emergencyRoute = '/safety/emergency' as Href;
 
   return (
     <AppScreen backgroundColor={theme.colors.offWhite} contentStyle={styles.container}>
@@ -61,7 +62,7 @@ export default function RiderActiveTripScreen() {
         </AppCard>
 
         <View style={styles.actions}>
-          <Pressable style={styles.sosButton}>
+          <Pressable onPress={() => router.push(emergencyRoute)} style={styles.sosButton}>
             <AppText variant="label" color={theme.colors.offWhite}>
               SOS
             </AppText>

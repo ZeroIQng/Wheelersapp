@@ -34,6 +34,81 @@ export type EarningsBarDatum = {
   active?: boolean;
 };
 
+export type NotificationItem = {
+  id: string;
+  icon: string;
+  title: string;
+  message: string;
+  timestamp: string;
+  unread?: boolean;
+  accent?: 'orange' | 'green' | 'black';
+};
+
+export type SettingOption = {
+  id: string;
+  icon: string;
+  title: string;
+  subtitle?: string;
+  type: 'navigation' | 'toggle' | 'value' | 'danger';
+  route?: string;
+  value?: string;
+};
+
+export type SupportMessage = {
+  id: string;
+  sender: 'support' | 'user';
+  text: string;
+  timestamp: string;
+};
+
+export type DriverDocument = {
+  id: string;
+  title: string;
+  subtitle: string;
+  icon: string;
+  status: 'approved' | 'pending' | 'missing';
+};
+
+export type TokenActivity = {
+  id: string;
+  title: string;
+  timestamp: string;
+  amount: string;
+  direction: 'credit' | 'debit';
+};
+
+export type PromoOffer = {
+  id: string;
+  title: string;
+  description: string;
+  code: string;
+  expiry: string;
+  highlighted?: boolean;
+};
+
+export type HelpTopic = {
+  id: string;
+  icon: string;
+  title: string;
+  badge?: string;
+};
+
+export type EmergencyStatus = {
+  id: string;
+  icon: string;
+  title: string;
+  detail: string;
+  tone: 'live' | 'pending';
+  label?: string;
+};
+
+export type RoleMode = {
+  id: 'rider' | 'driver';
+  title: string;
+  subtitle: string;
+  icon: string;
+};
+
 export const riderTripDetails = {
   status: 'TRIP IN PROGRESS',
   substatus: 'On route',
@@ -280,3 +355,279 @@ export const kycSteps = [
     state: 'locked' as const,
   },
 ];
+
+export const notificationsFeed = {
+  unread: [
+    {
+      id: 'driver-accepted',
+      icon: '🚗',
+      title: 'Driver on the way!',
+      message: 'Emeka O. accepted your ride. ETA 2 min.',
+      timestamp: '2 min ago',
+      unread: true,
+      accent: 'orange',
+    },
+    {
+      id: 'yield-credit',
+      icon: '💰',
+      title: 'Yield credited',
+      message: '+$0.42 added to your wallet balance.',
+      timestamp: '1 hr ago',
+      unread: true,
+      accent: 'green',
+    },
+  ] satisfies NotificationItem[],
+  earlier: [
+    {
+      id: 'rating',
+      icon: '⭐',
+      title: 'Rating received',
+      message: 'Your driver rated you 5 stars.',
+      timestamp: 'Yesterday',
+      accent: 'black',
+    },
+    {
+      id: 'promo',
+      icon: '🎁',
+      title: 'Promo unlocked',
+      message: '20% off your next 3 rides.',
+      timestamp: '2d ago',
+      accent: 'black',
+    },
+  ] satisfies NotificationItem[],
+} as const;
+
+export const userProfile = {
+  initials: 'CA',
+  name: 'Chinwe Adeola',
+  email: 'chinwe@email.com',
+  verificationState: 'Verified account',
+  badges: [
+    { id: 'rider', label: 'RIDER', variant: 'orange' as const },
+    { id: 'verified', label: 'VERIFIED', variant: 'green' as const },
+  ],
+  stats: [
+    { id: 'rides', label: 'Rides', value: '128' },
+    { id: 'rating', label: 'Rating', value: '4.8' },
+  ],
+} as const;
+
+export const settingsOptions = [
+  {
+    id: 'edit-profile',
+    icon: '👤',
+    title: 'Edit profile',
+    type: 'navigation',
+  },
+  {
+    id: 'notifications',
+    icon: '🔔',
+    title: 'Notifications',
+    type: 'toggle',
+  },
+  {
+    id: 'security',
+    icon: '🔐',
+    title: 'Security & PIN',
+    type: 'navigation',
+  },
+  {
+    id: 'language',
+    icon: '🌍',
+    title: 'Language',
+    type: 'value',
+    value: 'English',
+  },
+  {
+    id: 'switch-driver',
+    icon: '🔄',
+    title: 'Switch to Driver',
+    subtitle: 'Activate driver mode',
+    type: 'navigation',
+    route: '/shared/role-switcher',
+  },
+  {
+    id: 'logout',
+    icon: '🚪',
+    title: 'Log out',
+    type: 'danger',
+  },
+] satisfies SettingOption[];
+
+export const supportChat = {
+  agentName: 'Wheleers Support',
+  status: 'Online now',
+  avatar: '🤖',
+  messages: [
+    {
+      id: 'support-1',
+      sender: 'support',
+      text: 'Hi Chinwe! 👋 How can I help you today?',
+      timestamp: '10:42 AM',
+    },
+    {
+      id: 'user-1',
+      sender: 'user',
+      text: 'I left my phone in the car after my last ride',
+      timestamp: '10:43 AM',
+    },
+    {
+      id: 'support-2',
+      sender: 'support',
+      text: "No worries! I'll contact Emeka O. right now. You can also call him directly.",
+      timestamp: '10:43 AM',
+    },
+  ] satisfies SupportMessage[],
+  quickReplies: ['Call driver', 'Report issue', 'Get refund'],
+  typing: true,
+} as const;
+
+export const driverDocuments = {
+  approved: [
+    {
+      id: 'license',
+      title: "Driver's Licence",
+      subtitle: 'Expires Mar 2027',
+      icon: '✅',
+      status: 'approved',
+    },
+    {
+      id: 'registration',
+      title: 'Vehicle Registration',
+      subtitle: 'Toyota Corolla 2020',
+      icon: '✅',
+      status: 'approved',
+    },
+  ] satisfies DriverDocument[],
+  upload: {
+    id: 'insurance',
+    title: 'Upload Insurance',
+    subtitle: 'JPG, PNG or PDF · Max 5MB',
+    icon: '📤',
+    status: 'missing',
+  } satisfies DriverDocument,
+  pending: {
+    id: 'vehicle-photo',
+    title: 'Vehicle Photo',
+    subtitle: 'Not yet uploaded',
+    icon: '📸',
+    status: 'pending',
+  } satisfies DriverDocument,
+} as const;
+
+export const tokenPortfolio = {
+  balance: '1,240 WHE',
+  fiatApprox: '≈ $18.60 USDT',
+  stakedBalance: '840 WHE',
+  apy: '12.4%',
+  dailyEarnings: '+4.20',
+  activity: [
+    {
+      id: 'ride-reward',
+      title: 'Ride reward',
+      timestamp: 'Today 2:14 PM',
+      amount: '+12 WHE',
+      direction: 'credit',
+    },
+    {
+      id: 'staking-reward',
+      title: 'Staking reward',
+      timestamp: 'Yesterday',
+      amount: '+4.20 WHE',
+      direction: 'credit',
+    },
+    {
+      id: 'swap-fee',
+      title: 'Swap fee',
+      timestamp: 'Yesterday 8:02 AM',
+      amount: '-1.20 WHE',
+      direction: 'debit',
+    },
+  ] satisfies TokenActivity[],
+} as const;
+
+export const referralProgram = {
+  headline: 'Refer & Earn',
+  supportingText: 'Invite friends. Both of you get rewarded.',
+  rewards: [
+    { id: 'you', title: 'You get', value: '$2.00', icon: '🎁', accent: true },
+    { id: 'friend', title: 'They get', value: '$1.00', icon: '🤝', accent: false },
+  ],
+  referralCode: 'WHE-CHINWE',
+  successfulReferrals: 12,
+  totalEarned: '$24.00',
+} as const;
+
+export const promoCodes = {
+  placeholder: 'PROMO CODE...',
+  active: [
+    {
+      id: 'welcome20',
+      title: '20% OFF',
+      description: 'Next 3 rides',
+      code: 'WELCOME20',
+      expiry: 'Expires in 6 days',
+      highlighted: true,
+    },
+    {
+      id: 'friend',
+      title: 'FREE RIDE',
+      description: 'Up to $3.00',
+      code: 'FRIEND',
+      expiry: 'Expires in 14 days',
+    },
+  ] satisfies PromoOffer[],
+} as const;
+
+export const helpCenter = {
+  searchPlaceholder: 'Search help articles...',
+  topics: [
+    { id: 'billing', icon: '🧾', title: 'How billing works' },
+    { id: 'security', icon: '🔐', title: 'Account security' },
+    { id: 'refunds', icon: '💸', title: 'Refund policy' },
+    { id: 'cancellations', icon: '🚗', title: 'Cancellation rules' },
+    { id: 'token-guide', icon: '🪙', title: 'WHE Token guide', badge: 'NEW' },
+  ] satisfies HelpTopic[],
+} as const;
+
+export const emergencyState = {
+  eyebrow: 'EMERGENCY',
+  title: 'Stay calm.\nHelp is coming.',
+  reassurance: 'Your location has been shared with emergency contacts.',
+  statuses: [
+    {
+      id: 'location',
+      icon: '📍',
+      title: 'Location shared',
+      detail: 'Lekki Phase 1, Lagos',
+      tone: 'live',
+      label: 'LIVE',
+    },
+    {
+      id: 'services',
+      icon: '🚓',
+      title: 'Emergency services',
+      detail: 'Being notified...',
+      tone: 'pending',
+    },
+  ] satisfies EmergencyStatus[],
+} as const;
+
+export const roleModes = {
+  activeRole: 'rider' as const,
+  roles: [
+    {
+      id: 'rider',
+      title: 'Rider Mode',
+      subtitle: 'Currently active',
+      icon: '🛵',
+    },
+    {
+      id: 'driver',
+      title: 'Driver Mode',
+      subtitle: 'Tap to activate',
+      icon: '🚗',
+    },
+  ] satisfies RoleMode[],
+  reassurance: 'Your ratings and wallet stay the same',
+} as const;

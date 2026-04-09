@@ -34,4 +34,7 @@ const styles = StyleSheet.create({
   mono: theme.typography.mono,
   monoSmall: theme.typography.monoSmall,
   monoLarge: theme.typography.monoLarge,
+  screenTitle: theme.typography.screenTitle,
+  metric: theme.typography.metric,
+  caption: theme.typography.caption,
 });

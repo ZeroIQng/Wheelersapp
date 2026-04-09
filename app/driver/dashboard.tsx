@@ -44,6 +44,11 @@ export default function DriverDashboardScreen() {
       </Pressable>
 
       <AppButton title="Open incoming request ↗" onPress={() => router.push(requestRoute)} />
+      <AppButton
+        onPress={() => router.push('/driver/docs' as Href)}
+        title="Manage docs ↗"
+        variant="ghost"
+      />
 
       <Pressable style={styles.offlineButton}>
         <AppText variant="label" color={theme.colors.offWhite}>

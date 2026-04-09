@@ -1,6 +1,6 @@
-import { useRouter } from 'expo-router';
+import { Href, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
 import { AppCard } from '@/components/app-card';
 import { AppScreen } from '@/components/app-screen';
@@ -40,6 +40,30 @@ export default function WalletScreen() {
         />
       </View>
 
+      <SectionHeader subtitle="Grow rewards, promos, and token access" title="Explore" titleVariant="h3" />
+      <View style={styles.quickLinks}>
+        <Pressable
+          onPress={() => router.push('/wallet/token' as Href)}
+          style={[styles.linkCard, styles.linkCardAccent]}>
+          <AppText variant="label">Token stake</AppText>
+          <AppText variant="bodySmall" color={theme.colors.muted}>
+            Open DeFi wallet ↗
+          </AppText>
+        </Pressable>
+        <Pressable onPress={() => router.push('/growth/referral' as Href)} style={styles.linkCard}>
+          <AppText variant="label">Referral</AppText>
+          <AppText variant="bodySmall" color={theme.colors.muted}>
+            Share your code ↗
+          </AppText>
+        </Pressable>
+        <Pressable onPress={() => router.push('/growth/promos' as Href)} style={styles.linkCard}>
+          <AppText variant="label">Promos</AppText>
+          <AppText variant="bodySmall" color={theme.colors.muted}>
+            Apply ride deals ↗
+          </AppText>
+        </Pressable>
+      </View>
+
       <SectionHeader subtitle="Your latest wallet activity" title="Recent" titleVariant="h3" />
       <AppCard style={styles.transactions}>
         {walletOverview.recentTransactions.map((transaction, index) => (
@@ -77,6 +101,22 @@ const styles = StyleSheet.create({
   metricsRow: {
     flexDirection: 'row',
     gap: theme.spacing.sm,
+  },
+  quickLinks: {
+    gap: theme.spacing.sm,
+  },
+  linkCard: {
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    borderRadius: theme.radii.md,
+    backgroundColor: theme.colors.white,
+    padding: theme.spacing.md,
+    gap: 4,
+    ...theme.shadows.card,
+  },
+  linkCardAccent: {
+    backgroundColor: theme.colors.orangeLight,
+    borderColor: theme.colors.orange,
   },
   transactions: {
     gap: theme.spacing.sm,

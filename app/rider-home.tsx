@@ -1,4 +1,4 @@
-import { useRouter } from 'expo-router';
+import { Href, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Pressable, StyleSheet, View } from 'react-native';
 
@@ -31,12 +31,28 @@ export default function RiderHomeScreen() {
               <BackArrow style={styles.backButton} />
               <AppText variant="h2">Wheleers</AppText>
             </View>
-            <FloatingView style={styles.balance} distance={6}>
-              <AppText variant="monoSmall">{walletBalance}</AppText>
-              <AppText variant="bodySmall" color={theme.colors.muted}>
-                USDT
-              </AppText>
-            </FloatingView>
+            <View style={styles.topActions}>
+              <FloatingView style={styles.balance} distance={6}>
+                <Pressable onPress={() => router.push('/rider/wallet' as Href)}>
+                  <AppText variant="monoSmall">{walletBalance}</AppText>
+                  <AppText variant="bodySmall" color={theme.colors.muted}>
+                    USDT
+                  </AppText>
+                </Pressable>
+              </FloatingView>
+              <View style={styles.accountRow}>
+                <Pressable
+                  onPress={() => router.push('/rider/notifications' as Href)}
+                  style={styles.iconButton}>
+                  <AppText variant="bodySmall">🔔</AppText>
+                </Pressable>
+                <Pressable
+                  onPress={() => router.push('/profile/settings' as Href)}
+                  style={styles.profileButton}>
+                  <AppText variant="monoSmall">CA</AppText>
+                </Pressable>
+              </View>
+            </View>
           </View>
         </StaticMap>
       </RevealView>
@@ -93,6 +109,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: theme.spacing.sm,
   },
+  topActions: {
+    alignItems: 'flex-end',
+    gap: theme.spacing.sm,
+  },
   backButton: {
     width: 34,
     height: 34,
@@ -104,6 +124,33 @@ const styles = StyleSheet.create({
     borderRadius: theme.radius.sm,
     paddingHorizontal: theme.spacing.sm,
     paddingVertical: 6,
+    ...theme.shadows.card,
+  },
+  accountRow: {
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+  },
+  iconButton: {
+    width: 38,
+    height: 38,
+    borderRadius: theme.radius.pill,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    backgroundColor: theme.colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...theme.shadows.card,
+  },
+  profileButton: {
+    minWidth: 38,
+    height: 38,
+    borderRadius: theme.radius.pill,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    backgroundColor: theme.colors.orangeLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: theme.spacing.sm,
     ...theme.shadows.card,
   },
   triangle: {
