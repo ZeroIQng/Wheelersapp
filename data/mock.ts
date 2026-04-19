@@ -34,6 +34,25 @@ export type EarningsBarDatum = {
   active?: boolean;
 };
 
+export type MapCoordinate = {
+  latitude: number;
+  longitude: number;
+};
+
+export type MapRegion = MapCoordinate & {
+  latitudeDelta: number;
+  longitudeDelta: number;
+};
+
+export type MapScene = {
+  id: string;
+  region: MapRegion;
+  route?: MapCoordinate[];
+  primaryMarker?: MapCoordinate;
+  secondaryMarker?: MapCoordinate;
+  pulseMarker?: MapCoordinate;
+};
+
 export type NotificationItem = {
   id: string;
   icon: string;
@@ -107,6 +126,14 @@ export type RoleMode = {
   title: string;
   subtitle: string;
   icon: string;
+};
+
+export type DriverWalletEntry = {
+  id: string;
+  title: string;
+  timestamp: string;
+  amount: string;
+  direction: 'credit' | 'debit';
 };
 
 export const riderTripDetails = {
@@ -630,4 +657,150 @@ export const roleModes = {
     },
   ] satisfies RoleMode[],
   reassurance: 'Your ratings and wallet stay the same',
+} as const;
+
+export const mapScenes = {
+  riderHome: {
+    id: 'rider-home',
+    region: {
+      latitude: 6.4365,
+      longitude: 3.4553,
+      latitudeDelta: 0.035,
+      longitudeDelta: 0.03,
+    },
+    primaryMarker: {
+      latitude: 6.4365,
+      longitude: 3.4553,
+    },
+  },
+  rideSelection: {
+    id: 'ride-selection',
+    region: {
+      latitude: 6.4476,
+      longitude: 3.4392,
+      latitudeDelta: 0.05,
+      longitudeDelta: 0.04,
+    },
+    route: [
+      { latitude: 6.4385, longitude: 3.4512 },
+      { latitude: 6.4412, longitude: 3.4469 },
+      { latitude: 6.4446, longitude: 3.4414 },
+      { latitude: 6.4492, longitude: 3.4358 },
+      { latitude: 6.4531, longitude: 3.4289 },
+    ],
+    primaryMarker: { latitude: 6.4385, longitude: 3.4512 },
+    secondaryMarker: { latitude: 6.4531, longitude: 3.4289 },
+  },
+  driverFound: {
+    id: 'driver-found',
+    region: {
+      latitude: 6.4404,
+      longitude: 3.4466,
+      latitudeDelta: 0.04,
+      longitudeDelta: 0.035,
+    },
+    route: [
+      { latitude: 6.4322, longitude: 3.4599 },
+      { latitude: 6.4358, longitude: 3.4555 },
+      { latitude: 6.4388, longitude: 3.4518 },
+      { latitude: 6.4404, longitude: 3.4466 },
+    ],
+    primaryMarker: { latitude: 6.4322, longitude: 3.4599 },
+    secondaryMarker: { latitude: 6.4404, longitude: 3.4466 },
+  },
+  riderTrip: {
+    id: 'rider-trip',
+    region: {
+      latitude: 6.442,
+      longitude: 3.4305,
+      latitudeDelta: 0.055,
+      longitudeDelta: 0.045,
+    },
+    route: [
+      { latitude: 6.4356, longitude: 3.4554 },
+      { latitude: 6.4378, longitude: 3.4492 },
+      { latitude: 6.4402, longitude: 3.4446 },
+      { latitude: 6.4436, longitude: 3.4388 },
+      { latitude: 6.4475, longitude: 3.4325 },
+      { latitude: 6.4511, longitude: 3.4251 },
+    ],
+    primaryMarker: { latitude: 6.4356, longitude: 3.4554 },
+    secondaryMarker: { latitude: 6.4511, longitude: 3.4251 },
+  },
+  driverDashboard: {
+    id: 'driver-dashboard',
+    region: {
+      latitude: 6.4478,
+      longitude: 3.4401,
+      latitudeDelta: 0.05,
+      longitudeDelta: 0.04,
+    },
+    pulseMarker: { latitude: 6.4478, longitude: 3.4401 },
+  },
+  driverNavigation: {
+    id: 'driver-navigation',
+    region: {
+      latitude: 6.4398,
+      longitude: 3.4485,
+      latitudeDelta: 0.045,
+      longitudeDelta: 0.035,
+    },
+    route: [
+      { latitude: 6.4308, longitude: 3.4631 },
+      { latitude: 6.4336, longitude: 3.4584 },
+      { latitude: 6.4365, longitude: 3.4542 },
+      { latitude: 6.4391, longitude: 3.4501 },
+      { latitude: 6.4419, longitude: 3.4463 },
+    ],
+    primaryMarker: { latitude: 6.4308, longitude: 3.4631 },
+    secondaryMarker: { latitude: 6.4419, longitude: 3.4463 },
+  },
+  driverActive: {
+    id: 'driver-active',
+    region: {
+      latitude: 6.4472,
+      longitude: 3.4319,
+      latitudeDelta: 0.055,
+      longitudeDelta: 0.045,
+    },
+    route: [
+      { latitude: 6.4419, longitude: 3.4463 },
+      { latitude: 6.4446, longitude: 3.4415 },
+      { latitude: 6.4478, longitude: 3.4378 },
+      { latitude: 6.4501, longitude: 3.4332 },
+      { latitude: 6.4528, longitude: 3.4275 },
+    ],
+    primaryMarker: { latitude: 6.4419, longitude: 3.4463 },
+    secondaryMarker: { latitude: 6.4528, longitude: 3.4275 },
+  },
+} as const satisfies Record<string, MapScene>;
+
+export const driverWalletOverview = {
+  availableBalance: '$42.80',
+  pendingPayouts: '$6.20',
+  lifetimeEarnings: '$318.40',
+  instantCashout: 'Available',
+  activity: [
+    {
+      id: 'ride-payout',
+      title: 'Ride payout',
+      timestamp: 'Today, 5:40 PM',
+      amount: '+$3.11',
+      direction: 'credit',
+    },
+    {
+      id: 'cashout',
+      title: 'Instant cashout',
+      timestamp: 'Yesterday, 9:15 PM',
+      amount: '-$12.00',
+      direction: 'debit',
+    },
+    {
+      id: 'bonus',
+      title: 'Driver bonus',
+      timestamp: 'Yesterday',
+      amount: '+$4.50',
+      direction: 'credit',
+    },
+  ] satisfies DriverWalletEntry[],
 } as const;

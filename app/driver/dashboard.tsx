@@ -3,18 +3,20 @@ import { StatusBar } from 'expo-status-bar';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { AppButton } from '@/components/app-button';
+import { AppCard } from '@/components/app-card';
 import { AppScreen } from '@/components/app-screen';
 import { AppText } from '@/components/app-text';
 import { MapMock } from '@/components/MapMock';
 import { MetricCard } from '@/components/MetricCard';
 import { SectionHeader } from '@/components/SectionHeader';
 import { StatusPill } from '@/components/StatusPill';
-import { driverDashboardSummary } from '@/data/mock';
+import { driverDashboardSummary, driverWalletOverview } from '@/data/mock';
 import { theme } from '@/theme';
 
 export default function DriverDashboardScreen() {
   const router = useRouter();
   const requestRoute = '/driver/incoming-request' as Href;
+  const walletRoute = '/driver/wallet' as Href;
 
   return (
     <AppScreen backgroundColor={theme.colors.offWhite} scroll contentStyle={styles.container}>
@@ -41,6 +43,20 @@ export default function DriverDashboardScreen() {
         <AppText variant="bodySmall" color={theme.colors.muted} style={styles.nearbyLabel}>
           {driverDashboardSummary.nearbyLabel}
         </AppText>
+      </Pressable>
+
+      <Pressable onPress={() => router.push(walletRoute)}>
+        <AppCard backgroundColor={theme.colors.orangeLight} borderColor={theme.colors.orange} style={styles.walletCard}>
+          <View style={styles.walletCopy}>
+            <AppText variant="h3">Driver wallet</AppText>
+            <AppText variant="bodySmall" color={theme.colors.muted}>
+              Balance, payouts, and recent transfers ↗
+            </AppText>
+          </View>
+          <AppText variant="monoLarge" color={theme.colors.orange}>
+            {driverWalletOverview.availableBalance}
+          </AppText>
+        </AppCard>
       </Pressable>
 
       <AppButton title="Open incoming request ↗" onPress={() => router.push(requestRoute)} />
@@ -86,6 +102,16 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingVertical: theme.spacing.sm,
     backgroundColor: theme.colors.white,
+  },
+  walletCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: theme.spacing.md,
+  },
+  walletCopy: {
+    flex: 1,
+    gap: 2,
   },
   offlineButton: {
     minHeight: 52,

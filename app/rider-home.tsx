@@ -7,7 +7,7 @@ import { AppScreen } from '@/components/app-screen';
 import { AppText } from '@/components/app-text';
 import { TriangleShape, StarBurst } from '@/components/decorative-shapes';
 import { FloatingView, PulseView, RevealView } from '@/components/motion';
-import { StaticMap, MapPin } from '@/components/static-map';
+import { StaticMap } from '@/components/static-map';
 import { quickPlaces, walletBalance } from '@/data/mock';
 import { theme } from '@/theme';
 
@@ -18,8 +18,7 @@ export default function RiderHomeScreen() {
     <AppScreen backgroundColor={theme.colors.offWhite} contentStyle={styles.container}>
       <StatusBar style="dark" backgroundColor="#D4E6D4" />
       <RevealView style={styles.mapWrap}>
-        <StaticMap height={380}>
-          <MapPin centered />
+        <StaticMap height={380} scene="riderHome">
           <FloatingView style={styles.triangle} distance={12} rotate={8}>
             <TriangleShape color="rgba(255,92,0,0.15)" />
           </FloatingView>

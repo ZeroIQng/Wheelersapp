@@ -8,7 +8,7 @@ import { AppCard } from '@/components/app-card';
 import { AppScreen } from '@/components/app-screen';
 import { AppText } from '@/components/app-text';
 import { FloatingView, PulseView, RevealView } from '@/components/motion';
-import { MapRoute, StaticMap } from '@/components/static-map';
+import { StaticMap } from '@/components/static-map';
 import { rideOptions } from '@/data/mock';
 import { theme } from '@/theme';
 
@@ -21,8 +21,7 @@ export default function RideSelectionScreen() {
     <AppScreen backgroundColor={theme.colors.offWhite} contentStyle={styles.container}>
       <StatusBar style="dark" backgroundColor="#D4E6D4" />
       <RevealView style={styles.mapSection}>
-        <StaticMap height={210}>
-          <MapRoute />
+        <StaticMap height={210} scene="rideSelection">
           <FloatingView style={styles.distanceChip} distance={6}>
             <AppText variant="monoSmall">5.2 km</AppText>
           </FloatingView>

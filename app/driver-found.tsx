@@ -9,7 +9,7 @@ import { AppCard } from '@/components/app-card';
 import { AppScreen } from '@/components/app-screen';
 import { AppText } from '@/components/app-text';
 import { FloatingView, PulseView, RevealView } from '@/components/motion';
-import { StaticMap, MovingVehicle } from '@/components/static-map';
+import { StaticMap } from '@/components/static-map';
 import { driver } from '@/data/mock';
 import { theme } from '@/theme';
 
@@ -21,14 +21,10 @@ export default function DriverFoundScreen() {
     <AppScreen backgroundColor={theme.colors.offWhite} contentStyle={styles.container}>
       <StatusBar style="dark" backgroundColor="#D4E6D4" />
       <RevealView style={styles.mapWrap}>
-        <StaticMap height={232}>
-          <MovingVehicle />
+        <StaticMap height={232} scene="driverFound">
           <FloatingView style={styles.backButton} distance={5}>
             <BackArrow />
           </FloatingView>
-          <PulseView style={styles.centerPinWrap} scaleTo={1.08}>
-            <View style={styles.centerPin} />
-          </PulseView>
           <FloatingView style={styles.etaChip} distance={6}>
             <AppText variant="monoSmall">ETA: 2 min</AppText>
           </FloatingView>
@@ -120,21 +116,6 @@ const styles = StyleSheet.create({
   mapWrap: {
     borderBottomWidth: theme.borders.thick,
     borderBottomColor: theme.colors.black,
-  },
-  centerPin: {
-    width: 14,
-    height: 14,
-    backgroundColor: theme.colors.orange,
-    borderWidth: theme.borders.thick,
-    borderColor: theme.colors.black,
-    borderRadius: theme.radius.pill,
-  },
-  centerPinWrap: {
-    position: 'absolute',
-    top: '50%',
-    left: '50%',
-    marginLeft: -7,
-    marginTop: -7,
   },
   etaChip: {
     position: 'absolute',

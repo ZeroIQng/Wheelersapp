@@ -16,6 +16,7 @@ import { theme } from '@/theme';
 export default function DriverEarningsScreen() {
   const router = useRouter();
   const dashboardRoute = '/driver/dashboard' as Href;
+  const walletRoute = '/driver/wallet' as Href;
   const [activeTab, setActiveTab] = useState<(typeof earningsSummary.tabs)[number]>(
     earningsSummary.activeTab
   );
@@ -76,7 +77,7 @@ export default function DriverEarningsScreen() {
         <EarningsBarChart data={dailyEarningsChart} />
       </View>
 
-      <AppButton title="Withdraw earnings ↗" />
+      <AppButton onPress={() => router.push(walletRoute)} title="Open wallet ↗" />
     </AppScreen>
   );
 }

@@ -1,23 +1,35 @@
 import { PropsWithChildren, useEffect } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Platform, StyleSheet, View } from 'react-native';
 import Animated, {
   Easing,
   useAnimatedStyle,
   useSharedValue,
-  withSequence,
   withDelay,
   withRepeat,
+  withSequence,
   withTiming,
 } from 'react-native-reanimated';
+import MapView, { Circle, Marker, Polyline } from 'react-native-maps';
 
+import { mapScenes, MapScene } from '@/data/mock';
 import { theme } from '@/theme';
+
+type StaticScene = 'riderHome' | 'rideSelection' | 'driverFound';
 
 type StaticMapProps = PropsWithChildren<{
   height?: number;
   roundedTop?: boolean;
+  scene?: StaticScene;
 }>;
 
-export function StaticMap({ children, height = 280, roundedTop }: StaticMapProps) {
+export function StaticMap({
+  children,
+  height = 280,
+  roundedTop,
+  scene = 'riderHome',
+}: StaticMapProps) {
+  const mapScene: MapScene = mapScenes[scene];
+
   return (
     <View
       style={[
@@ -28,15 +40,43 @@ export function StaticMap({ children, height = 280, roundedTop }: StaticMapProps
           borderTopRightRadius: roundedTop ? theme.radius.lg : 0,
         },
       ]}>
-      <View style={[styles.roadHorizontal, { top: '38%', height: 9 }]} />
-      <View style={[styles.roadHorizontal, { top: '62%', height: 6 }]} />
-      <View style={[styles.roadVertical, { left: '32%', width: 9 }]} />
-      <View style={[styles.roadVertical, { left: '62%', width: 6 }]} />
-      <View style={[styles.block, { top: '14%', left: '6%', width: 52, height: 38 }]} />
-      <View style={[styles.block, { top: '15%', right: '8%', width: 38, height: 52 }]} />
-      <View style={[styles.block, { top: '48%', left: '38%', width: 44, height: 32 }]} />
-      <View style={[styles.block, { top: '68%', right: '20%', width: 36, height: 44 }]} />
-      {children}
+      <MapView
+        initialRegion={mapScene.region}
+        mapPadding={Platform.select({ ios: undefined, default: undefined })}
+        rotateEnabled={false}
+        scrollEnabled
+        showsBuildings
+        showsCompass={false}
+        showsIndoors={false}
+        showsTraffic
+        style={StyleSheet.absoluteFill}
+        toolbarEnabled={false}>
+        {mapScene.route ? (
+          <Polyline coordinates={mapScene.route} strokeColor={theme.colors.orange} strokeWidth={5} />
+        ) : null}
+        {mapScene.route?.[0] ? (
+          <Circle
+            center={mapScene.route[0]}
+            fillColor="rgba(0,196,140,0.15)"
+            radius={55}
+            strokeColor={theme.colors.green}
+            strokeWidth={1.5}
+          />
+        ) : null}
+        {mapScene.primaryMarker ? (
+          <Marker coordinate={mapScene.primaryMarker}>
+            <View style={[styles.marker, styles.startMarker]} />
+          </Marker>
+        ) : null}
+        {mapScene.secondaryMarker ? (
+          <Marker coordinate={mapScene.secondaryMarker}>
+            <View style={[styles.marker, styles.endMarker]} />
+          </Marker>
+        ) : null}
+      </MapView>
+      <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
+        {children}
+      </View>
     </View>
   );
 }
@@ -44,9 +84,7 @@ export function StaticMap({ children, height = 280, roundedTop }: StaticMapProps
 export function MapTopChip({ label }: { label: string }) {
   return (
     <View style={styles.mapChip}>
-      <View>
-        <Animated.Text style={styles.mapChipText}>{label}</Animated.Text>
-      </View>
+      <Animated.Text style={styles.mapChipText}>{label}</Animated.Text>
     </View>
   );
 }
@@ -77,7 +115,11 @@ export function MapPin({ centered }: { centered?: boolean }) {
 
   return (
     <>
-      <PulseCircle size={30} color={theme.colors.orange} style={centered ? styles.pinPulseCenter : styles.pinPulseLeft} />
+      <PulseCircle
+        color={theme.colors.orange}
+        size={30}
+        style={centered ? styles.pinPulseCenter : styles.pinPulseLeft}
+      />
       <Animated.View style={[centered ? styles.centeredPinWrap : styles.pinWrap, pinStyle]}>
         <View style={styles.pin} />
       </Animated.View>
@@ -86,30 +128,7 @@ export function MapPin({ centered }: { centered?: boolean }) {
 }
 
 export function MapRoute() {
-  const dash = useSharedValue(0);
-
-  useEffect(() => {
-    dash.value = withRepeat(
-      withTiming(1, {
-        duration: 1800,
-        easing: Easing.linear,
-      }),
-      -1,
-      false
-    );
-  }, [dash]);
-
-  const routeStyle = useAnimatedStyle(() => ({
-    opacity: 0.78 + dash.value * 0.22,
-  }));
-
-  return (
-    <>
-      <Animated.View style={[styles.route, routeStyle]} />
-      <View style={styles.routeStart} />
-      <View style={styles.routeEnd} />
-    </>
-  );
+  return null;
 }
 
 export function MovingVehicle() {
@@ -184,30 +203,9 @@ export function PulseCircle({ size, color, style, delay = 0 }: PulseCircleProps)
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#D4E6D4',
+    backgroundColor: theme.colors.mapBase,
     overflow: 'hidden',
     position: 'relative',
-  },
-  roadHorizontal: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    backgroundColor: 'rgba(255,255,255,0.62)',
-    borderRadius: 3,
-  },
-  roadVertical: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(255,255,255,0.62)',
-    borderRadius: 3,
-  },
-  block: {
-    position: 'absolute',
-    backgroundColor: 'rgba(190,210,190,0.85)',
-    borderWidth: 1,
-    borderColor: 'rgba(150,180,150,0.5)',
-    borderRadius: 4,
   },
   mapChip: {
     backgroundColor: theme.colors.white,
@@ -221,6 +219,19 @@ const styles = StyleSheet.create({
   mapChipText: {
     ...theme.typography.monoSmall,
     color: theme.colors.black,
+  },
+  marker: {
+    width: 18,
+    height: 18,
+    borderRadius: theme.radius.pill,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+  },
+  startMarker: {
+    backgroundColor: theme.colors.green,
+  },
+  endMarker: {
+    backgroundColor: theme.colors.orange,
   },
   pinWrap: {
     position: 'absolute',
@@ -255,37 +266,6 @@ const styles = StyleSheet.create({
   pinPulseCenter: {
     top: '49%',
     left: '49%',
-  },
-  route: {
-    position: 'absolute',
-    top: '48%',
-    left: '22%',
-    right: '22%',
-    height: 4,
-    borderRadius: 3,
-    backgroundColor: theme.colors.orange,
-    borderWidth: theme.borders.regular,
-    borderColor: theme.colors.black,
-  },
-  routeStart: {
-    position: 'absolute',
-    top: '46.5%',
-    left: '19%',
-    width: 10,
-    height: 10,
-    borderRadius: theme.radius.pill,
-    backgroundColor: theme.colors.green,
-    borderWidth: theme.borders.regular,
-    borderColor: theme.colors.black,
-  },
-  routeEnd: {
-    position: 'absolute',
-    top: '46.5%',
-    right: '19%',
-    width: 10,
-    height: 10,
-    borderRadius: theme.radius.pill,
-    backgroundColor: theme.colors.black,
   },
   vehicle: {
     position: 'absolute',
