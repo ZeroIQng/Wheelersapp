@@ -1,7 +1,7 @@
 import { useRouter } from 'expo-router';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import Animated, {
   Easing,
   FadeIn,
@@ -22,6 +22,16 @@ export default function SplashScreen() {
   const router = useRouter();
   const floatY = useSharedValue(0);
   const spin = useSharedValue(0);
+  const hasNavigated = useRef(false);
+
+  function leaveSplash() {
+    if (hasNavigated.current) {
+      return;
+    }
+
+    hasNavigated.current = true;
+    router.replace('/role-selection');
+  }
 
   useEffect(() => {
     floatY.value = withRepeat(
@@ -42,8 +52,13 @@ export default function SplashScreen() {
     );
 
     const timer = setTimeout(() => {
+      if (hasNavigated.current) {
+        return;
+      }
+
+      hasNavigated.current = true;
       router.replace('/role-selection');
-    }, 2200);
+    }, 3000);
 
     return () => clearTimeout(timer);
   }, [floatY, router, spin]);
@@ -59,44 +74,54 @@ export default function SplashScreen() {
   return (
     <AppScreen backgroundColor={theme.colors.orange} contentStyle={styles.container}>
       <StatusBar style="light" backgroundColor={theme.colors.orange} />
-      <BlobShape color="rgba(255,255,255,0.18)" style={styles.blobTop} />
-      <Animated.View style={[styles.starRight, starStyle]}>
-        <StarBurst color="rgba(255,255,255,0.22)" width={54} height={54} />
-      </Animated.View>
-      <DiamondPair color="rgba(255,255,255,0.18)" style={styles.diamondLeft} />
-      <View style={styles.center}>
-        <Animated.View entering={ZoomIn.duration(500)} style={[styles.logoWrap, logoStyle]}>
-          <View style={styles.logoOuter}>
-            <View style={styles.logoInner}>
-              <AppText variant="h1" color={theme.colors.white}>
-                W
-              </AppText>
+      <Pressable onPress={leaveSplash} style={styles.pressable}>
+        <BlobShape color="rgba(255,255,255,0.18)" style={styles.blobTop} />
+        <Animated.View style={[styles.starRight, starStyle]}>
+          <StarBurst color="rgba(255,255,255,0.22)" width={54} height={54} />
+        </Animated.View>
+        <DiamondPair color="rgba(255,255,255,0.18)" style={styles.diamondLeft} />
+        <View style={styles.center}>
+          <Animated.View entering={ZoomIn.duration(500)} style={[styles.logoWrap, logoStyle]}>
+            <View style={styles.logoOuter}>
+              <View style={styles.logoInner}>
+                <AppText variant="h1" color={theme.colors.white}>
+                  W
+                </AppText>
+              </View>
             </View>
-          </View>
-        </Animated.View>
-        <Animated.View entering={FadeInDown.delay(100).duration(500)} style={styles.titleBlock}>
-          <AppText variant="display" color={theme.colors.white} style={styles.centerText}>
-            WHELEERS
-          </AppText>
-          <AppText variant="monoSmall" color="rgba(255,255,255,0.74)" style={styles.tagline}>
-            ride. earn. own.
-          </AppText>
-        </Animated.View>
-      </View>
-      <Animated.View entering={FadeIn.delay(250).duration(450)} style={styles.bottom}>
-        <View style={styles.loaderTrack}>
-          <Animated.View style={styles.loaderBar} />
+          </Animated.View>
+          <Animated.View entering={FadeInDown.delay(100).duration(500)} style={styles.titleBlock}>
+            <AppText variant="display" color={theme.colors.white} style={styles.centerText}>
+              WHELEERS
+            </AppText>
+            <AppText variant="monoSmall" color="rgba(255,255,255,0.74)" style={styles.tagline}>
+              ride. earn. own.
+            </AppText>
+          </Animated.View>
         </View>
-      </Animated.View>
+        <Animated.View entering={FadeIn.delay(250).duration(450)} style={styles.bottom}>
+          <View style={styles.loaderTrack}>
+            <Animated.View style={styles.loaderBar} />
+          </View>
+          <AppText variant="monoSmall" color="rgba(255,255,255,0.7)" style={styles.hint}>
+            tap anywhere to continue
+          </AppText>
+        </Animated.View>
+      </Pressable>
     </AppScreen>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
+    paddingHorizontal: 0,
+    paddingBottom: 0,
+  },
+  pressable: {
     flex: 1,
     justifyContent: 'space-between',
     alignItems: 'center',
+    width: '100%',
     paddingVertical: theme.spacing.xxxl,
   },
   center: {
@@ -137,6 +162,7 @@ const styles = StyleSheet.create({
   bottom: {
     width: '100%',
     alignItems: 'center',
+    gap: theme.spacing.sm,
   },
   blobTop: {
     position: 'absolute',
@@ -165,5 +191,8 @@ const styles = StyleSheet.create({
     height: '100%',
     borderRadius: theme.radius.pill,
     backgroundColor: theme.colors.white,
+  },
+  hint: {
+    letterSpacing: 1.2,
   },
 });

@@ -9,6 +9,7 @@ import { AppText } from '@/components/app-text';
 import { FlowHeader } from '@/components/flow-header';
 import { FloatingView, PulseView, RevealView } from '@/components/motion';
 import { RingStack, StarBurst } from '@/components/decorative-shapes';
+import { RoleMotionBadge } from '@/components/role-motion-badge';
 import { theme } from '@/theme';
 
 type Role = 'ride' | 'drive';
@@ -16,7 +17,20 @@ type Role = 'ride' | 'drive';
 export default function RoleSelectionScreen() {
   const router = useRouter();
   const [selectedRole, setSelectedRole] = useState<Role>('drive');
+  const [rideMotionKey, setRideMotionKey] = useState(0);
+  const [driveMotionKey, setDriveMotionKey] = useState(1);
   const nextRoute = (selectedRole === 'ride' ? '/phone-auth' : '/driver/dashboard') as Href;
+
+  function handleRolePress(role: Role) {
+    setSelectedRole(role);
+
+    if (role === 'ride') {
+      setRideMotionKey((current) => current + 1);
+      return;
+    }
+
+    setDriveMotionKey((current) => current + 1);
+  }
 
   return (
     <AppScreen backgroundColor={theme.colors.offWhite} scroll contentStyle={styles.container}>
@@ -37,59 +51,56 @@ export default function RoleSelectionScreen() {
 
       <RevealView delay={120} style={styles.roles}>
         <RoleCard
-          emoji="🛵"
+          role="ride"
           title="I want to"
           accent="RIDE"
           selected={selectedRole === 'ride'}
-          onPress={() => setSelectedRole('ride')}
+          motionKey={rideMotionKey}
+          onPress={() => handleRolePress('ride')}
         />
         <RoleCard
-          emoji="🚗"
+          role="drive"
           title="I want to"
           accent="DRIVE"
           selected={selectedRole === 'drive'}
-          onPress={() => setSelectedRole('drive')}
-          primary
+          motionKey={driveMotionKey}
+          onPress={() => handleRolePress('drive')}
         />
       </RevealView>
 
       <RevealView delay={220} style={styles.actions}>
-        <AppButton
-          title="Continue with Google ↗"
-          onPress={() => router.push(nextRoute)}
-        />
-        <AppButton title="Connect wallet" variant="ghost" />
+        <AppButton title="Continue with Google ↗" onPress={() => router.push(nextRoute)} />
+        <AppButton title="Connect wallet" variant="ghost" style={styles.walletButton} />
       </RevealView>
     </AppScreen>
   );
 }
 
 type RoleCardProps = {
-  emoji: string;
+  role: Role;
   title: string;
   accent: string;
   selected: boolean;
+  motionKey: number;
   onPress: () => void;
-  primary?: boolean;
 };
 
-function RoleCard({ emoji, title, accent, selected, onPress, primary }: RoleCardProps) {
-  const Wrapper = selected || primary ? PulseView : FloatingView;
+function RoleCard({ role, title, accent, selected, motionKey, onPress }: RoleCardProps) {
+  const Wrapper = selected ? PulseView : FloatingView;
 
   return (
     <Pressable onPress={onPress} style={styles.rolePressable}>
       <Wrapper>
         <AppCard
-          backgroundColor={primary || selected ? theme.colors.orange : theme.colors.white}
+          backgroundColor={selected ? theme.colors.orange : theme.colors.white}
           style={[
             styles.roleCard,
-            selected && !primary ? styles.roleCardSelected : null,
-            primary ? styles.roleCardPrimary : null,
+            selected ? styles.roleCardSelected : null,
           ]}>
-          <AppText style={styles.roleEmoji}>{emoji}</AppText>
+          <RoleMotionBadge motionKey={motionKey} role={role} selected={selected} />
           <AppText
             variant="h3"
-            color={primary || selected ? theme.colors.white : theme.colors.black}
+            color={selected ? theme.colors.white : theme.colors.black}
             style={styles.roleText}>
             {title}
             {'\n'}
@@ -133,13 +144,7 @@ const styles = StyleSheet.create({
     gap: theme.spacing.sm,
   },
   roleCardSelected: {
-    borderColor: theme.colors.orange,
-  },
-  roleCardPrimary: {
-    backgroundColor: theme.colors.orange,
-  },
-  roleEmoji: {
-    fontSize: 28,
+    borderColor: theme.colors.black,
   },
   roleText: {
     textAlign: 'center',
@@ -148,5 +153,15 @@ const styles = StyleSheet.create({
   actions: {
     gap: theme.spacing.md,
     marginTop: theme.spacing.sm,
+  },
+  walletButton: {
+    backgroundColor: theme.colors.white,
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    shadowOffset: {
+      width: 0,
+      height: 0,
+    },
+    elevation: 0,
   },
 });
