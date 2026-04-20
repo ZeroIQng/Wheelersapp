@@ -1,5 +1,5 @@
 import { PropsWithChildren, useEffect } from 'react';
-import { StyleProp, ViewStyle } from 'react-native';
+import { StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
 import Animated, {
   Easing,
   FadeInDown,
@@ -98,6 +98,9 @@ type RevealProps = PropsWithChildren<{
 }>;
 
 export function RevealView({ children, style, delay = 0, from = 'up' }: RevealProps) {
+  const flattenedStyle = StyleSheet.flatten(style);
+  const { transform, ...wrapperStyle } = flattenedStyle ?? {};
+
   return (
     <Animated.View
       entering={
@@ -105,8 +108,8 @@ export function RevealView({ children, style, delay = 0, from = 'up' }: RevealPr
           ? FadeInUp.delay(delay).duration(420)
           : FadeInDown.delay(delay).duration(420)
       }
-      style={style}>
-      {children}
+      style={wrapperStyle}>
+      {transform ? <View style={{ transform }}>{children}</View> : children}
     </Animated.View>
   );
 }

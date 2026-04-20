@@ -46,7 +46,7 @@ const storage: Storage = {
     return entries.map(([key, value]) => [stripStoragePrefix(key), parseStoredValue<T>(value)] as [string, T]);
   },
   async getItem<T = unknown>(key: string) {
-    if (volatileAppKitRestoreKeys.has(key)) {
+    if (shouldSkipRestore(key)) {
       return undefined;
     }
 

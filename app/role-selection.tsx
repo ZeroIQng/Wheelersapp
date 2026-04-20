@@ -86,7 +86,6 @@ export default function RoleSelectionScreen() {
 }
 
 function WalletConnectCard() {
-  const router = useRouter();
   const { address, chain, isConnected } = useAccount();
 
   return (
@@ -110,12 +109,6 @@ function WalletConnectCard() {
         loadingLabel="Opening wallet"
         connectStyle={styles.walletConnectButton}
         accountStyle={styles.walletConnectButton}
-      />
-      <AppButton
-        title={isConnected ? 'Continue to phone verify ↗' : 'Continue without wallet ↗'}
-        variant="ghost"
-        onPress={() => router.push('/phone-auth')}
-        style={styles.walletContinueButton}
       />
     </AppCard>
   );
@@ -248,9 +241,6 @@ const styles = StyleSheet.create({
   },
   walletConnectButton: {
     minHeight: 52,
-  },
-  walletContinueButton: {
-    backgroundColor: theme.colors.white,
   },
   walletButtonDisabled: {
     backgroundColor: theme.colors.white,
