@@ -65,11 +65,13 @@ export function WalletConnectSheet({
             </View>
           </View>
           <View style={styles.copy}>
-            <AppText variant="monoSmall" color={theme.colors.muted}>
+            <AppText variant="monoSmall" color={theme.colors.muted} style={styles.eyebrow}>
               CONNECT WALLET
             </AppText>
-            <AppText variant="h2">Choose your wallet</AppText>
-            <AppText variant="bodySmall" color={theme.colors.muted}>
+            <AppText variant="h3" style={styles.title}>
+              Choose your wallet
+            </AppText>
+            <AppText variant="bodySmall" color={theme.colors.muted} style={styles.subtitle}>
               Connect first, then continue to phone verification.
             </AppText>
           </View>
@@ -142,13 +144,13 @@ const styles = StyleSheet.create({
   },
   header: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: theme.spacing.md,
+    alignItems: 'flex-start',
+    gap: theme.spacing.sm,
   },
   markWrap: {
-    width: 64,
-    height: 64,
-    borderRadius: theme.radius.pill,
+    width: 50,
+    height: 50,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: theme.colors.orangeLight,
@@ -156,23 +158,35 @@ const styles = StyleSheet.create({
     borderColor: theme.colors.black,
   },
   markCircleOuter: {
-    width: 34,
-    height: 34,
+    width: 24,
+    height: 24,
     borderRadius: theme.radius.pill,
-    borderWidth: 3,
+    borderWidth: 2.5,
     borderColor: theme.colors.orange,
     alignItems: 'center',
     justifyContent: 'center',
   },
   markCircleInner: {
-    width: 14,
-    height: 14,
+    width: 10,
+    height: 10,
     borderRadius: theme.radius.pill,
     backgroundColor: theme.colors.orange,
   },
   copy: {
     flex: 1,
-    gap: theme.spacing.xs,
+    gap: 3,
+    paddingTop: 1,
+  },
+  eyebrow: {
+    lineHeight: 12,
+    letterSpacing: 0.8,
+  },
+  title: {
+    lineHeight: 20,
+    letterSpacing: -0.2,
+  },
+  subtitle: {
+    lineHeight: 15,
   },
   optionList: {
     gap: theme.spacing.sm,

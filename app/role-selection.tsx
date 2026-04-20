@@ -1,6 +1,6 @@
 import { Href, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
 import { AppButton } from '@/components/app-button';
 import { AppCard } from '@/components/app-card';
@@ -127,25 +127,21 @@ type RoleCardProps = {
 
 function RoleCard({ role, title, accent, selected, motionKey, onPress }: RoleCardProps) {
   const Wrapper = selected ? PulseView : FloatingView;
+  const textColor = selected ? theme.colors.white : theme.colors.black;
 
   return (
     <Pressable onPress={onPress} style={styles.rolePressable}>
       <Wrapper>
-        <AppCard
-          backgroundColor={selected ? theme.colors.orange : theme.colors.white}
-          style={[
-            styles.roleCard,
-            selected ? styles.roleCardSelected : null,
-          ]}>
+        <AppCard backgroundColor={selected ? theme.colors.orange : theme.colors.white} style={[styles.roleCard, selected ? styles.roleCardSelected : null]}>
           <RoleMotionBadge motionKey={motionKey} role={role} selected={selected} />
-          <AppText
-            variant="h3"
-            color={selected ? theme.colors.white : theme.colors.black}
-            style={styles.roleText}>
-            {title}
-            {'\n'}
-            {accent}
-          </AppText>
+          <View style={styles.roleTextBlock}>
+            <AppText variant="bodySmall" color={selected ? 'rgba(255,255,255,0.82)' : theme.colors.muted} style={styles.roleIntro}>
+              {title}
+            </AppText>
+            <AppText variant="h2" color={textColor} style={styles.roleAccent}>
+              {accent}
+            </AppText>
+          </View>
         </AppCard>
       </Wrapper>
     </Pressable>
@@ -181,14 +177,25 @@ const styles = StyleSheet.create({
     minHeight: 164,
     justifyContent: 'center',
     alignItems: 'center',
-    gap: theme.spacing.sm,
+    gap: theme.spacing.xs,
+    paddingVertical: theme.spacing.lg,
   },
   roleCardSelected: {
     borderColor: theme.colors.black,
   },
-  roleText: {
+  roleTextBlock: {
+    alignItems: 'center',
+    gap: 1,
+  },
+  roleIntro: {
     textAlign: 'center',
-    lineHeight: 18,
+    lineHeight: 14,
+    letterSpacing: 0.3,
+  },
+  roleAccent: {
+    textAlign: 'center',
+    lineHeight: 22,
+    letterSpacing: -0.2,
   },
   actions: {
     gap: theme.spacing.md,
