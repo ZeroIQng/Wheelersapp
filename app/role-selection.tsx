@@ -1,5 +1,6 @@
+import { AppKitButton, useAccount } from '@reown/appkit-react-native';
 import { Href, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { AppButton } from '@/components/app-button';
@@ -10,34 +11,20 @@ import { FlowHeader } from '@/components/flow-header';
 import { FloatingView, PulseView, RevealView } from '@/components/motion';
 import { RingStack, StarBurst } from '@/components/decorative-shapes';
 import { RoleMotionBadge } from '@/components/role-motion-badge';
-import { WalletConnectSheet } from '@/components/wallet-connect-sheet';
+import {
+  isWalletConnectConfigured,
+  walletConnectProjectIdEnvVar,
+} from '@/lib/reown';
 import { theme } from '@/theme';
 
 type Role = 'ride' | 'drive';
-type WalletProvider = 'WalletConnect' | 'MetaMask' | 'Coinbase';
 
 export default function RoleSelectionScreen() {
   const router = useRouter();
   const [selectedRole, setSelectedRole] = useState<Role>('drive');
   const [rideMotionKey, setRideMotionKey] = useState(0);
   const [driveMotionKey, setDriveMotionKey] = useState(1);
-  const [walletSheetOpen, setWalletSheetOpen] = useState(false);
-  const [connectingWallet, setConnectingWallet] = useState<WalletProvider | null>(null);
   const nextRoute = (selectedRole === 'ride' ? '/phone-auth' : '/driver/dashboard') as Href;
-
-  useEffect(() => {
-    if (!connectingWallet) {
-      return;
-    }
-
-    const timer = setTimeout(() => {
-      setWalletSheetOpen(false);
-      setConnectingWallet(null);
-      router.push('/phone-auth');
-    }, 700);
-
-    return () => clearTimeout(timer);
-  }, [connectingWallet, router]);
 
   function handleRolePress(role: Role) {
     setSelectedRole(role);
@@ -48,10 +35,6 @@ export default function RoleSelectionScreen() {
     }
 
     setDriveMotionKey((current) => current + 1);
-  }
-
-  function handleWalletConnect(provider: WalletProvider) {
-    setConnectingWallet(provider);
   }
 
   return (
@@ -92,28 +75,79 @@ export default function RoleSelectionScreen() {
 
       <RevealView delay={220} style={styles.actions}>
         <AppButton title="Continue with Google ↗" onPress={() => router.push(nextRoute)} />
-        <AppButton
-          title={connectingWallet ? `Connecting ${connectingWallet}...` : 'Connect wallet'}
-          variant="ghost"
-          onPress={() => setWalletSheetOpen(true)}
-          style={styles.walletButton}
-        />
+        {isWalletConnectConfigured ? <WalletConnectCard /> : <WalletConnectUnavailableCard />}
       </RevealView>
-
-      <WalletConnectSheet
-        visible={walletSheetOpen}
-        connecting={connectingWallet}
-        onClose={() => {
-          if (connectingWallet) {
-            return;
-          }
-
-          setWalletSheetOpen(false);
-        }}
-        onConnect={handleWalletConnect}
-      />
     </AppScreen>
   );
+}
+
+function WalletConnectCard() {
+  const router = useRouter();
+  const { address, chain, isConnected } = useAccount();
+  const wasConnected = useRef(isConnected);
+
+  useEffect(() => {
+    if (!wasConnected.current && isConnected) {
+      router.push('/phone-auth');
+    }
+
+    wasConnected.current = isConnected;
+  }, [isConnected, router]);
+
+  return (
+    <AppCard
+      backgroundColor={isConnected ? theme.colors.orangeLight : theme.colors.white}
+      borderColor={isConnected ? theme.colors.orange : theme.colors.black}
+      style={styles.walletCard}>
+      <View style={styles.walletCopy}>
+        <AppText variant="monoSmall" color={theme.colors.muted} style={styles.walletEyebrow}>
+          OFFICIAL REOWN APPKIT
+        </AppText>
+        <AppText variant="h3">Connect your wallet</AppText>
+        <AppText variant="bodySmall" color={theme.colors.muted}>
+          {isConnected
+            ? `Connected on ${chain?.name ?? 'Ethereum'} as ${truncateAddress(address)}.`
+            : 'Opens the official WalletConnect flow, then continues to phone verification.'}
+        </AppText>
+      </View>
+      <AppKitButton
+        label="Connect wallet"
+        loadingLabel="Opening wallet"
+        connectStyle={styles.walletConnectButton}
+        accountStyle={styles.walletConnectButton}
+      />
+    </AppCard>
+  );
+}
+
+function WalletConnectUnavailableCard() {
+  return (
+    <AppCard style={styles.walletCard}>
+      <View style={styles.walletCopy}>
+        <AppText variant="monoSmall" color={theme.colors.muted} style={styles.walletEyebrow}>
+          OFFICIAL REOWN APPKIT
+        </AppText>
+        <AppText variant="h3">Connect your wallet</AppText>
+        <AppText variant="bodySmall" color={theme.colors.muted}>
+          Set {walletConnectProjectIdEnvVar} to enable the official WalletConnect flow.
+        </AppText>
+      </View>
+      <AppButton
+        title="Project ID required"
+        variant="ghost"
+        disabled
+        style={styles.walletButtonDisabled}
+      />
+    </AppCard>
+  );
+}
+
+function truncateAddress(address?: string) {
+  if (!address) {
+    return 'your wallet';
+  }
+
+  return `${address.slice(0, 6)}...${address.slice(-4)}`;
 }
 
 type RoleCardProps = {
@@ -201,7 +235,20 @@ const styles = StyleSheet.create({
     gap: theme.spacing.md,
     marginTop: theme.spacing.sm,
   },
-  walletButton: {
+  walletCard: {
+    gap: theme.spacing.md,
+    paddingVertical: theme.spacing.lg,
+  },
+  walletCopy: {
+    gap: theme.spacing.xs,
+  },
+  walletEyebrow: {
+    letterSpacing: 0.8,
+  },
+  walletConnectButton: {
+    minHeight: 52,
+  },
+  walletButtonDisabled: {
     backgroundColor: theme.colors.white,
     shadowOpacity: 0,
     shadowRadius: 0,

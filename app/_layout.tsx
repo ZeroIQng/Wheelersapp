@@ -1,3 +1,4 @@
+import { AppKit, AppKitProvider } from '@reown/appkit-react-native';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
@@ -6,6 +7,7 @@ import { useEffect } from 'react';
 import { useColorScheme } from 'react-native';
 import 'react-native-reanimated';
 
+import { appKit } from '@/lib/reown';
 import { theme } from '@/theme';
 
 SplashScreen.preventAutoHideAsync();
@@ -29,7 +31,7 @@ export default function RootLayout() {
     return null;
   }
 
-  return (
+  const layout = (
     <>
       <StatusBar
         style={colorScheme === 'dark' ? 'light' : 'dark'}
@@ -45,5 +47,16 @@ export default function RootLayout() {
         }}
       />
     </>
+  );
+
+  if (!appKit) {
+    return layout;
+  }
+
+  return (
+    <AppKitProvider instance={appKit}>
+      {layout}
+      <AppKit />
+    </AppKitProvider>
   );
 }

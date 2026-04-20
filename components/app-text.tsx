@@ -22,6 +22,9 @@ export function AppText({
 const styles = StyleSheet.create({
   base: {
     color: theme.colors.black,
+    flexShrink: 1,
+    maxWidth: '100%',
+    includeFontPadding: false,
   },
   display: theme.typography.display,
   h1: theme.typography.h1,

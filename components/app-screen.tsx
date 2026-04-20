@@ -50,12 +50,16 @@ export function AppScreen({
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
+    overflow: 'hidden',
   },
   flex: {
     flex: 1,
   },
   content: {
     flexGrow: 1,
+    width: '100%',
+    maxWidth: theme.layout.maxWidth,
+    alignSelf: 'center',
     paddingHorizontal: theme.layout.screenPadding,
     paddingBottom: theme.spacing.xl,
   },
