@@ -1,5 +1,6 @@
 import { Pressable, StyleSheet, View } from 'react-native';
 import Animated, { FadeIn, FadeInDown, FadeOut, FadeOutDown } from 'react-native-reanimated';
+import Svg, { Path, Rect } from 'react-native-svg';
 
 import { AppButton } from '@/components/app-button';
 import { AppText } from '@/components/app-text';
@@ -60,9 +61,7 @@ export function WalletConnectSheet({
         <View style={styles.handle} />
         <View style={styles.header}>
           <View style={styles.markWrap}>
-            <View style={styles.markCircleOuter}>
-              <View style={styles.markCircleInner} />
-            </View>
+            <SheetMark />
           </View>
           <View style={styles.copy}>
             <AppText variant="monoSmall" color={theme.colors.muted} style={styles.eyebrow}>
@@ -90,10 +89,8 @@ export function WalletConnectSheet({
                   styles.optionCard,
                   isConnecting ? styles.optionCardActive : null,
                 ]}>
-                <View style={[styles.optionIcon, { backgroundColor: option.accent }]}>
-                  <AppText variant="label" color={theme.colors.white}>
-                    {option.label.slice(0, 1)}
-                  </AppText>
+                <View style={styles.optionIcon}>
+                  <WalletBrandIcon provider={option.id} />
                 </View>
                 <View style={styles.optionText}>
                   <AppText variant="h3">{option.label}</AppText>
@@ -114,6 +111,102 @@ export function WalletConnectSheet({
         </View>
       </Animated.View>
     </View>
+  );
+}
+
+function SheetMark() {
+  return (
+    <Svg width={26} height={26} viewBox="0 0 26 26">
+      <Path
+        d="M8 8.7C9.5 7.2 11 6.5 13 6.5C15 6.5 16.5 7.2 18 8.7"
+        fill="none"
+        stroke="#3B99FC"
+        strokeLinecap="round"
+        strokeWidth="2.4"
+      />
+      <Path
+        d="M8 17.3C9.5 18.8 11 19.5 13 19.5C15 19.5 16.5 18.8 18 17.3"
+        fill="none"
+        stroke="#3B99FC"
+        strokeLinecap="round"
+        strokeWidth="2.4"
+      />
+      <Rect
+        x="4.8"
+        y="10.2"
+        width="6.6"
+        height="5.6"
+        rx="2.6"
+        fill="none"
+        stroke="#3B99FC"
+        strokeWidth="2.2"
+      />
+      <Rect
+        x="14.6"
+        y="10.2"
+        width="6.6"
+        height="5.6"
+        rx="2.6"
+        fill="none"
+        stroke="#3B99FC"
+        strokeWidth="2.2"
+      />
+    </Svg>
+  );
+}
+
+function WalletBrandIcon({ provider }: { provider: WalletProvider }) {
+  if (provider === 'WalletConnect') {
+    return (
+      <Svg width={24} height={24} viewBox="0 0 24 24">
+        <Path
+          d="M7.4 8.4C8.7 7.2 10.1 6.7 12 6.7C13.9 6.7 15.3 7.2 16.6 8.4"
+          fill="none"
+          stroke="#3B99FC"
+          strokeLinecap="round"
+          strokeWidth="2.2"
+        />
+        <Path
+          d="M7.4 15.6C8.7 16.8 10.1 17.3 12 17.3C13.9 17.3 15.3 16.8 16.6 15.6"
+          fill="none"
+          stroke="#3B99FC"
+          strokeLinecap="round"
+          strokeWidth="2.2"
+        />
+        <Rect x="4.8" y="10" width="5.8" height="4.6" rx="2.2" fill="none" stroke="#3B99FC" strokeWidth="2" />
+        <Rect x="13.4" y="10" width="5.8" height="4.6" rx="2.2" fill="none" stroke="#3B99FC" strokeWidth="2" />
+      </Svg>
+    );
+  }
+
+  if (provider === 'MetaMask') {
+    return (
+      <Svg width={24} height={24} viewBox="0 0 24 24">
+        <Path d="M5.3 4.5L10.2 8.1L8.1 13L5.3 4.5Z" fill="#E17726" />
+        <Path d="M18.7 4.5L15.9 13L13.8 8.1L18.7 4.5Z" fill="#E27625" />
+        <Path d="M7.1 14.7L10.3 15.4L9.1 18L7.1 14.7Z" fill="#E27625" />
+        <Path d="M14.9 18L13.7 15.4L16.9 14.7L14.9 18Z" fill="#E27625" />
+        <Path d="M8.6 11.9L10.1 8.7L10.8 12.6L8.6 11.9Z" fill="#763E1A" />
+        <Path d="M15.4 11.9L13.2 12.6L13.9 8.7L15.4 11.9Z" fill="#763E1A" />
+        <Path d="M8.1 13L10.8 12.6L10.5 16.1L8.1 13Z" fill="#F6851B" />
+        <Path d="M13.2 12.6L15.9 13L13.5 16.1L13.2 12.6Z" fill="#F6851B" />
+        <Path d="M10.5 16.1L10.7 14.5H13.3L13.5 16.1L12 17.2L10.5 16.1Z" fill="#C0AD9E" />
+        <Path d="M10.7 14.5L10.8 12.6L9 13.1L10.7 14.5Z" fill="#161616" />
+        <Path d="M13.3 14.5L15 13.1L13.2 12.6L13.3 14.5Z" fill="#161616" />
+      </Svg>
+    );
+  }
+
+  return (
+    <Svg width={24} height={24} viewBox="0 0 24 24">
+      <Rect x="3" y="3" width="18" height="18" rx="6" fill="#0052FF" />
+      <Path
+        d="M15.6 12C15.6 14 14 15.6 12 15.6C10 15.6 8.4 14 8.4 12C8.4 10 10 8.4 12 8.4C14 8.4 15.6 10 15.6 12Z"
+        fill="none"
+        stroke="#FFFFFF"
+        strokeWidth="2.6"
+      />
+    </Svg>
   );
 }
 
@@ -153,24 +246,9 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: theme.colors.orangeLight,
+    backgroundColor: theme.colors.white,
     borderWidth: theme.borders.thick,
     borderColor: theme.colors.black,
-  },
-  markCircleOuter: {
-    width: 24,
-    height: 24,
-    borderRadius: theme.radius.pill,
-    borderWidth: 2.5,
-    borderColor: theme.colors.orange,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  markCircleInner: {
-    width: 10,
-    height: 10,
-    borderRadius: theme.radius.pill,
-    backgroundColor: theme.colors.orange,
   },
   copy: {
     flex: 1,
@@ -213,6 +291,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: theme.borders.thick,
     borderColor: theme.colors.black,
+    backgroundColor: theme.colors.white,
   },
   optionText: {
     flex: 1,
