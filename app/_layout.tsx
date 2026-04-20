@@ -1,10 +1,3 @@
-import {
-  DMSans_400Regular,
-  DMSans_500Medium,
-  DMSans_600SemiBold,
-} from '@expo-google-fonts/dm-sans';
-import { SpaceMono_400Regular, SpaceMono_700Bold } from '@expo-google-fonts/space-mono';
-import { Syne_700Bold, Syne_800ExtraBold } from '@expo-google-fonts/syne';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
@@ -20,13 +13,10 @@ SplashScreen.preventAutoHideAsync();
 export default function RootLayout() {
   const colorScheme = useColorScheme();
   const [loaded] = useFonts({
-    DMSans_400Regular,
-    DMSans_500Medium,
-    DMSans_600SemiBold,
-    SpaceMono_400Regular,
-    SpaceMono_700Bold,
-    Syne_700Bold,
-    Syne_800ExtraBold,
+    ClashDisplay_400Regular: require('../assets/fonts/ClashDisplay-Regular.ttf'),
+    ClashDisplay_500Medium: require('../assets/fonts/ClashDisplay-Medium.ttf'),
+    ClashDisplay_600Semibold: require('../assets/fonts/ClashDisplay-Semibold.ttf'),
+    ClashDisplay_700Bold: require('../assets/fonts/ClashDisplay-Bold.ttf'),
   });
 
   useEffect(() => {
