@@ -1,7 +1,7 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 
 import { AppButton } from '@/components/app-button';
 import { AppScreen } from '@/components/app-screen';
@@ -40,15 +40,18 @@ export default function OtpVerifyScreen() {
       <RevealView delay={40} from="down" style={styles.content}>
         <FlowHeader
           showBack
+          backHref="/phone-auth"
           overline="VERIFICATION"
           title={'Enter the\n4-digit code'}
           subtitle="Sent to +234 801 234 5678"
           progress={{ count: 5, active: 3 }}
         />
 
-        <AppText variant="monoSmall" color={theme.colors.orange}>
-          CHANGE NUMBER?
-        </AppText>
+        <Pressable onPress={() => router.replace('/phone-auth')} style={styles.changeNumberButton}>
+          <AppText variant="monoSmall" color={theme.colors.orange}>
+            CHANGE NUMBER?
+          </AppText>
+        </Pressable>
 
         <View style={styles.digitsRow}>
           {digits.map((digit, index) => (
@@ -111,6 +114,9 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     gap: theme.spacing.md,
+  },
+  changeNumberButton: {
+    alignSelf: 'flex-start',
   },
   digitsRow: {
     flexDirection: 'row',

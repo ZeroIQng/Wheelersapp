@@ -1,6 +1,6 @@
 import { AppKitButton, useAccount } from '@reown/appkit-react-native';
 import { Href, useRouter } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { AppButton } from '@/components/app-button';
@@ -21,7 +21,7 @@ type Role = 'ride' | 'drive';
 
 export default function RoleSelectionScreen() {
   const router = useRouter();
-  const [selectedRole, setSelectedRole] = useState<Role>('drive');
+  const [selectedRole, setSelectedRole] = useState<Role>('ride');
   const [rideMotionKey, setRideMotionKey] = useState(0);
   const [driveMotionKey, setDriveMotionKey] = useState(1);
   const nextRoute = (selectedRole === 'ride' ? '/phone-auth' : '/driver/dashboard') as Href;
@@ -75,7 +75,11 @@ export default function RoleSelectionScreen() {
 
       <RevealView delay={220} style={styles.actions}>
         <AppButton title="Continue with Google ↗" onPress={() => router.push(nextRoute)} />
-        {isWalletConnectConfigured ? <WalletConnectCard /> : <WalletConnectUnavailableCard />}
+        {selectedRole === 'ride'
+          ? isWalletConnectConfigured
+            ? <WalletConnectCard />
+            : <WalletConnectUnavailableCard />
+          : null}
       </RevealView>
     </AppScreen>
   );
@@ -84,15 +88,6 @@ export default function RoleSelectionScreen() {
 function WalletConnectCard() {
   const router = useRouter();
   const { address, chain, isConnected } = useAccount();
-  const wasConnected = useRef(isConnected);
-
-  useEffect(() => {
-    if (!wasConnected.current && isConnected) {
-      router.push('/phone-auth');
-    }
-
-    wasConnected.current = isConnected;
-  }, [isConnected, router]);
 
   return (
     <AppCard
@@ -107,7 +102,7 @@ function WalletConnectCard() {
         <AppText variant="bodySmall" color={theme.colors.muted}>
           {isConnected
             ? `Connected on ${chain?.name ?? 'Ethereum'} as ${truncateAddress(address)}.`
-            : 'Opens the official WalletConnect flow, then continues to phone verification.'}
+            : 'Open the official wallet flow, then continue to phone verification when you are ready.'}
         </AppText>
       </View>
       <AppKitButton
@@ -115,6 +110,12 @@ function WalletConnectCard() {
         loadingLabel="Opening wallet"
         connectStyle={styles.walletConnectButton}
         accountStyle={styles.walletConnectButton}
+      />
+      <AppButton
+        title={isConnected ? 'Continue to phone verify ↗' : 'Continue without wallet ↗'}
+        variant="ghost"
+        onPress={() => router.push('/phone-auth')}
+        style={styles.walletContinueButton}
       />
     </AppCard>
   );
@@ -247,6 +248,9 @@ const styles = StyleSheet.create({
   },
   walletConnectButton: {
     minHeight: 52,
+  },
+  walletContinueButton: {
+    backgroundColor: theme.colors.white,
   },
   walletButtonDisabled: {
     backgroundColor: theme.colors.white,

@@ -10,6 +10,7 @@ type FlowHeaderProps = {
   title: string;
   subtitle?: string;
   showBack?: boolean;
+  backHref?: '/role-selection' | '/phone-auth';
   progress?: {
     count: number;
     active: number;
@@ -23,6 +24,7 @@ export function FlowHeader({
   title,
   subtitle,
   showBack,
+  backHref,
   progress,
   light,
 }: FlowHeaderProps) {
@@ -35,7 +37,18 @@ export function FlowHeader({
       <View style={styles.topRow}>
         <View style={styles.backSlot}>
           {showBack ? (
-            <Pressable onPress={() => router.back()} style={styles.backButton}>
+            <Pressable
+              onPress={() => {
+                if (router.canGoBack()) {
+                  router.back();
+                  return;
+                }
+
+                if (backHref) {
+                  router.replace(backHref);
+                }
+              }}
+              style={styles.backButton}>
               <AppText variant="h3" color={accent}>
                 ←
               </AppText>

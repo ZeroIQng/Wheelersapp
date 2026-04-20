@@ -13,7 +13,7 @@ import { theme } from '@/theme';
 
 export default function PhoneAuthScreen() {
   const router = useRouter();
-  const [phone, setPhone] = useState('801 234 5678');
+  const [phone, setPhone] = useState('');
   const backgroundColor = theme.colors.offWhite;
   const textColor = theme.colors.black;
   const mutedColor = theme.colors.mutedLight;
@@ -33,6 +33,7 @@ export default function PhoneAuthScreen() {
       <RevealView delay={40} from="down" style={styles.content}>
         <FlowHeader
           showBack
+          backHref="/role-selection"
           overline="PHONE VERIFY"
           title={"What's your\nnumber?"}
           subtitle="We'll send a one-time code to verify your phone."
@@ -50,6 +51,7 @@ export default function PhoneAuthScreen() {
             <TextInput
               keyboardType="number-pad"
               onChangeText={setPhone}
+              placeholder="801 234 5678"
               selectionColor={theme.colors.orange}
               placeholderTextColor={mutedColor}
               style={[styles.input, { color: textColor }]}

@@ -8,6 +8,12 @@ import { mainnet } from 'viem/chains';
 
 const projectId = process.env.EXPO_PUBLIC_REOWN_PROJECT_ID;
 export const walletConnectProjectIdEnvVar = 'EXPO_PUBLIC_REOWN_PROJECT_ID';
+const storagePrefix = 'wheelers:reown:';
+const volatileRestorePrefixes = ['wc@'] as const;
+const volatileAppKitRestoreKeys = new Set([
+  '@appkit/active_namespace',
+  '@appkit/connected_connectors',
+]);
 
 const metadata = {
   name: 'Wheleers',
@@ -27,25 +33,45 @@ const ethereumNetwork: AppKitNetwork = {
 
 const storage: Storage = {
   async getKeys() {
-    return [...(await AsyncStorage.getAllKeys())];
+    const keys = await AsyncStorage.getAllKeys();
+    return keys
+      .filter((key) => key.startsWith(storagePrefix))
+      .map((key) => key.slice(storagePrefix.length))
+      .filter((key) => !shouldSkipRestore(key));
   },
   async getEntries<T = unknown>() {
-    const keys = await AsyncStorage.getAllKeys();
-    const entries = await AsyncStorage.multiGet(keys);
+    const keys = await storage.getKeys();
+    const entries = await AsyncStorage.multiGet(keys.map(createStorageKey));
 
-    return entries.map(([key, value]) => [key, parseStoredValue<T>(value)] as [string, T]);
+    return entries.map(([key, value]) => [stripStoragePrefix(key), parseStoredValue<T>(value)] as [string, T]);
   },
   async getItem<T = unknown>(key: string) {
-    const value = await AsyncStorage.getItem(key);
+    if (volatileAppKitRestoreKeys.has(key)) {
+      return undefined;
+    }
+
+    const value = await AsyncStorage.getItem(createStorageKey(key));
     return parseStoredValue<T>(value);
   },
   async setItem<T = unknown>(key: string, value: T) {
-    await AsyncStorage.setItem(key, JSON.stringify(value));
+    await AsyncStorage.setItem(createStorageKey(key), JSON.stringify(value));
   },
   async removeItem(key: string) {
-    await AsyncStorage.removeItem(key);
+    await AsyncStorage.removeItem(createStorageKey(key));
   },
 };
+
+function createStorageKey(key: string) {
+  return `${storagePrefix}${key}`;
+}
+
+function stripStoragePrefix(key: string) {
+  return key.startsWith(storagePrefix) ? key.slice(storagePrefix.length) : key;
+}
+
+function shouldSkipRestore(key: string) {
+  return volatileAppKitRestoreKeys.has(key) || volatileRestorePrefixes.some((prefix) => key.startsWith(prefix));
+}
 
 function parseStoredValue<T>(value: string | null): T | undefined {
   if (value == null) {
