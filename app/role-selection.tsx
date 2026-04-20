@@ -1,3 +1,4 @@
+import { useLoginWithOAuth, usePrivy } from '@privy-io/expo';
 import { AppKitButton, useAccount } from '@reown/appkit-react-native';
 import { Href, useRouter } from 'expo-router';
 import { useState } from 'react';
@@ -11,6 +12,12 @@ import { FlowHeader } from '@/components/flow-header';
 import { FloatingView, PulseView, RevealView } from '@/components/motion';
 import { RingStack, StarBurst } from '@/components/decorative-shapes';
 import { RoleMotionBadge } from '@/components/role-motion-badge';
+import {
+  isPrivyConfigured,
+  privyAppIdEnvVar,
+  privyClientIdEnvVar,
+  privyOAuthRedirectPath,
+} from '@/lib/privy';
 import {
   isWalletConnectConfigured,
   walletConnectProjectIdEnvVar,
@@ -74,7 +81,11 @@ export default function RoleSelectionScreen() {
       </RevealView>
 
       <RevealView delay={220} style={styles.actions}>
-        <AppButton title="Continue with Google ↗" onPress={() => router.push(nextRoute)} />
+        {isPrivyConfigured ? (
+          <GoogleContinueButton nextRoute={nextRoute} />
+        ) : (
+          <AppButton title="Continue with Google ↗" onPress={() => router.push(nextRoute)} />
+        )}
         {selectedRole === 'ride'
           ? isWalletConnectConfigured
             ? <WalletConnectCard />
@@ -85,7 +96,54 @@ export default function RoleSelectionScreen() {
   );
 }
 
+function GoogleContinueButton({ nextRoute }: { nextRoute: Href }) {
+  const router = useRouter();
+  const { user, isReady } = usePrivy();
+  const { login, state } = useLoginWithOAuth();
+  const isLoading = state.status === 'loading';
+  const errorMessage =
+    state.status === 'error' ? state.error?.message ?? 'Could not continue with Google.' : null;
+
+  async function handlePress() {
+    if (!isReady || isLoading) {
+      return;
+    }
+
+    if (user) {
+      router.push(nextRoute);
+      return;
+    }
+
+    const authenticatedUser = await login({
+      provider: 'google',
+      redirectUri: privyOAuthRedirectPath,
+    });
+
+    if (authenticatedUser) {
+      router.push(nextRoute);
+    }
+  }
+
+  return (
+    <View style={styles.googleActionBlock}>
+      <AppButton
+        title={user ? 'Continue ↗' : isLoading ? 'Opening Google…' : 'Continue with Google ↗'}
+        onPress={() => {
+          void handlePress();
+        }}
+        disabled={!isReady || isLoading}
+      />
+      {errorMessage ? (
+        <AppText variant="bodySmall" color={theme.colors.danger}>
+          {errorMessage}
+        </AppText>
+      ) : null}
+    </View>
+  );
+}
+
 function WalletConnectCard() {
+  const router = useRouter();
   const { address, chain, isConnected } = useAccount();
 
   return (
@@ -110,6 +168,14 @@ function WalletConnectCard() {
         connectStyle={styles.walletConnectButton}
         accountStyle={styles.walletConnectButton}
       />
+      {isConnected ? (
+        <AppButton
+          title="Continue to verify your phone number ↗"
+          variant="ghost"
+          onPress={() => router.push('/phone-auth')}
+          style={styles.walletContinueButton}
+        />
+      ) : null}
     </AppCard>
   );
 }
@@ -124,6 +190,9 @@ function WalletConnectUnavailableCard() {
         <AppText variant="h3">Connect your wallet</AppText>
         <AppText variant="bodySmall" color={theme.colors.muted}>
           Set {walletConnectProjectIdEnvVar} to enable the official WalletConnect flow.
+        </AppText>
+        <AppText variant="bodySmall" color={theme.colors.muted}>
+          Google auth needs {privyAppIdEnvVar} and {privyClientIdEnvVar}.
         </AppText>
       </View>
       <AppButton
@@ -229,6 +298,9 @@ const styles = StyleSheet.create({
     gap: theme.spacing.md,
     marginTop: theme.spacing.sm,
   },
+  googleActionBlock: {
+    gap: theme.spacing.xs,
+  },
   walletCard: {
     gap: theme.spacing.md,
     paddingVertical: theme.spacing.lg,
@@ -241,6 +313,9 @@ const styles = StyleSheet.create({
   },
   walletConnectButton: {
     minHeight: 52,
+  },
+  walletContinueButton: {
+    backgroundColor: theme.colors.white,
   },
   walletButtonDisabled: {
     backgroundColor: theme.colors.white,

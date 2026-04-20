@@ -1,3 +1,9 @@
+import '@ethersproject/shims';
+import 'fast-text-encoding';
+import 'react-native-get-random-values';
+import 'react-native-reanimated';
+
+import { PrivyProvider } from '@privy-io/expo';
 import { AppKit, AppKitProvider } from '@reown/appkit-react-native';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
@@ -5,8 +11,8 @@ import { StatusBar } from 'expo-status-bar';
 import { useFonts } from 'expo-font';
 import { useEffect } from 'react';
 import { useColorScheme } from 'react-native';
-import 'react-native-reanimated';
 
+import { isPrivyConfigured, privyAppId, privyClientId } from '@/lib/privy';
 import { appKit } from '@/lib/reown';
 import { theme } from '@/theme';
 
@@ -49,14 +55,22 @@ export default function RootLayout() {
     </>
   );
 
-  if (!appKit) {
-    return layout;
-  }
-
-  return (
+  const withWalletKit = appKit ? (
     <AppKitProvider instance={appKit}>
       {layout}
       <AppKit />
     </AppKitProvider>
+  ) : (
+    layout
+  );
+
+  if (!isPrivyConfigured || !privyAppId || !privyClientId) {
+    return withWalletKit;
+  }
+
+  return (
+    <PrivyProvider appId={privyAppId} clientId={privyClientId}>
+      {withWalletKit}
+    </PrivyProvider>
   );
 }
