@@ -84,17 +84,22 @@ export default function SplashScreen() {
           <Animated.View entering={ZoomIn.duration(500)} style={[styles.logoWrap, logoStyle]}>
             <View style={styles.logoOuter}>
               <View style={styles.logoInner}>
-                <AppText variant="h1" color={theme.colors.white}>
+                <AppText variant="h2" color={theme.colors.white} style={styles.markText}>
                   W
                 </AppText>
               </View>
             </View>
           </Animated.View>
           <Animated.View entering={FadeInDown.delay(100).duration(500)} style={styles.titleBlock}>
-            <AppText variant="display" color={theme.colors.white} style={styles.centerText}>
-              WHELEERS
-            </AppText>
-            <AppText variant="monoSmall" color="rgba(255,255,255,0.74)" style={styles.tagline}>
+            <View style={styles.wordmark}>
+              <AppText variant="h1" color={theme.colors.white} style={styles.titleLine}>
+                WHEEL
+              </AppText>
+              <AppText variant="h1" color={theme.colors.white} style={styles.titleLine}>
+                ERS
+              </AppText>
+            </View>
+            <AppText variant="bodySmall" color="rgba(255,255,255,0.74)" style={styles.tagline}>
               ride. earn. own.
             </AppText>
           </Animated.View>
@@ -131,33 +136,46 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   logoWrap: {
-    marginBottom: theme.spacing.lg,
+    marginBottom: theme.spacing.md,
   },
   logoOuter: {
-    width: 92,
-    height: 92,
+    width: 82,
+    height: 82,
     borderRadius: theme.radius.pill,
     backgroundColor: 'rgba(255,255,255,0.18)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   logoInner: {
-    width: 66,
-    height: 66,
+    width: 58,
+    height: 58,
     borderRadius: theme.radius.pill,
     backgroundColor: 'rgba(255,255,255,0.14)',
     alignItems: 'center',
     justifyContent: 'center',
   },
+  markText: {
+    fontSize: 25,
+    lineHeight: 25,
+    letterSpacing: -0.4,
+  },
   titleBlock: {
     alignItems: 'center',
-    gap: theme.spacing.sm,
+    gap: theme.spacing.xs,
   },
-  centerText: {
+  wordmark: {
+    alignItems: 'center',
+    gap: 0,
+  },
+  titleLine: {
     textAlign: 'center',
+    fontSize: 28,
+    lineHeight: 27,
+    letterSpacing: -0.8,
   },
   tagline: {
-    letterSpacing: 1.4,
+    letterSpacing: 0.4,
+    lineHeight: 16,
   },
   bottom: {
     width: '100%',
