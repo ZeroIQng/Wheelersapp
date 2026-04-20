@@ -1,5 +1,5 @@
 import { Href, useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet } from 'react-native';
 
 import { AppButton } from '@/components/app-button';
@@ -10,16 +10,34 @@ import { FlowHeader } from '@/components/flow-header';
 import { FloatingView, PulseView, RevealView } from '@/components/motion';
 import { RingStack, StarBurst } from '@/components/decorative-shapes';
 import { RoleMotionBadge } from '@/components/role-motion-badge';
+import { WalletConnectSheet } from '@/components/wallet-connect-sheet';
 import { theme } from '@/theme';
 
 type Role = 'ride' | 'drive';
+type WalletProvider = 'WalletConnect' | 'MetaMask' | 'Coinbase';
 
 export default function RoleSelectionScreen() {
   const router = useRouter();
   const [selectedRole, setSelectedRole] = useState<Role>('drive');
   const [rideMotionKey, setRideMotionKey] = useState(0);
   const [driveMotionKey, setDriveMotionKey] = useState(1);
+  const [walletSheetOpen, setWalletSheetOpen] = useState(false);
+  const [connectingWallet, setConnectingWallet] = useState<WalletProvider | null>(null);
   const nextRoute = (selectedRole === 'ride' ? '/phone-auth' : '/driver/dashboard') as Href;
+
+  useEffect(() => {
+    if (!connectingWallet) {
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      setWalletSheetOpen(false);
+      setConnectingWallet(null);
+      router.push('/phone-auth');
+    }, 700);
+
+    return () => clearTimeout(timer);
+  }, [connectingWallet, router]);
 
   function handleRolePress(role: Role) {
     setSelectedRole(role);
@@ -32,8 +50,12 @@ export default function RoleSelectionScreen() {
     setDriveMotionKey((current) => current + 1);
   }
 
+  function handleWalletConnect(provider: WalletProvider) {
+    setConnectingWallet(provider);
+  }
+
   return (
-    <AppScreen backgroundColor={theme.colors.offWhite} scroll contentStyle={styles.container}>
+    <AppScreen backgroundColor={theme.colors.offWhite} contentStyle={styles.container}>
       <FloatingView style={styles.rings} distance={10} rotate={8}>
         <RingStack color="rgba(255,92,0,0.12)" />
       </FloatingView>
@@ -70,8 +92,26 @@ export default function RoleSelectionScreen() {
 
       <RevealView delay={220} style={styles.actions}>
         <AppButton title="Continue with Google ↗" onPress={() => router.push(nextRoute)} />
-        <AppButton title="Connect wallet" variant="ghost" style={styles.walletButton} />
+        <AppButton
+          title={connectingWallet ? `Connecting ${connectingWallet}...` : 'Connect wallet'}
+          variant="ghost"
+          onPress={() => setWalletSheetOpen(true)}
+          style={styles.walletButton}
+        />
       </RevealView>
+
+      <WalletConnectSheet
+        visible={walletSheetOpen}
+        connecting={connectingWallet}
+        onClose={() => {
+          if (connectingWallet) {
+            return;
+          }
+
+          setWalletSheetOpen(false);
+        }}
+        onConnect={handleWalletConnect}
+      />
     </AppScreen>
   );
 }
