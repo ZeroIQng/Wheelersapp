@@ -25,12 +25,13 @@ import {
   thirdwebClientIdEnvVar,
   thirdwebWallets,
 } from "@/lib/thirdweb";
-import { theme } from "@/theme";
 import {
   ConnectButton,
+  isThirdwebRuntimeAvailable,
   useActiveAccount,
   useActiveWalletChain,
-} from "thirdweb/react";
+} from "@/lib/thirdweb-runtime";
+import { theme } from "@/theme";
 
 type Role = "ride" | "drive";
 
@@ -101,7 +102,7 @@ export default function RoleSelectionScreen() {
           />
         )}
         {selectedRole === "ride" ? (
-          isThirdwebConfigured ? (
+          isThirdwebConfigured && isThirdwebRuntimeAvailable ? (
             <ThirdwebWalletCard />
           ) : (
             <ThirdwebUnavailableCard />
@@ -194,7 +195,7 @@ function ThirdwebWalletCard() {
         <View style={styles.walletConnectButtonWrap}>
           <ConnectButton
             appMetadata={thirdwebAppMetadata}
-            chain={thirdwebChain}
+            chain={thirdwebChain ?? undefined}
             client={thirdwebClient}
             connectButton={{ label: "Connect wallet" }}
             theme="light"
@@ -215,6 +216,8 @@ function ThirdwebWalletCard() {
 }
 
 function ThirdwebUnavailableCard() {
+  const isMissingClientId = !isThirdwebConfigured;
+
   return (
     <AppCard style={styles.walletCard}>
       <View style={styles.walletCopy}>
@@ -227,14 +230,16 @@ function ThirdwebUnavailableCard() {
         </AppText>
         <AppText variant="h3">Connect your wallet</AppText>
         <AppText variant="bodySmall" color={theme.colors.muted}>
-          Set {thirdwebClientIdEnvVar} to enable the Thirdweb wallet flow.
+          {isMissingClientId
+            ? `Set ${thirdwebClientIdEnvVar} to enable the Thirdweb wallet flow.`
+            : "Thirdweb requires a development build. Expo Go cannot load its native crypto runtime."}
         </AppText>
         <AppText variant="bodySmall" color={theme.colors.muted}>
           Google auth needs {privyAppIdEnvVar} and {privyClientIdEnvVar}.
         </AppText>
       </View>
       <AppButton
-        title="Client ID required"
+        title={isMissingClientId ? "Client ID required" : "Use development build"}
         variant="ghost"
         disabled
         style={styles.walletButtonDisabled}

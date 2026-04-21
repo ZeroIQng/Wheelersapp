@@ -10,7 +10,7 @@ import { useEffect } from "react";
 import { useColorScheme } from "react-native";
 
 import { isPrivyConfigured, privyAppId, privyClientId } from "@/lib/privy";
-import { ThirdwebProvider } from "thirdweb/react";
+import { ThirdwebProvider } from "@/lib/thirdweb-runtime";
 import { theme } from "@/theme";
 
 SplashScreen.preventAutoHideAsync();

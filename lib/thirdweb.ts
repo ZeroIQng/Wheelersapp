@@ -1,11 +1,15 @@
-import { createThirdwebClient, type ThirdwebClient } from "thirdweb";
-import { ethereum } from "thirdweb/chains";
-import { createWallet } from "thirdweb/wallets";
+import Constants from "expo-constants";
+import type { ThirdwebClient } from "thirdweb";
+
+const isExpoGo =
+  Constants.appOwnership === "expo" ||
+  Constants.executionEnvironment === "storeClient";
 
 const thirdwebClientId = process.env.EXPO_PUBLIC_THIRDWEB_CLIENT_ID;
 
 export const thirdwebClientIdEnvVar = "EXPO_PUBLIC_THIRDWEB_CLIENT_ID";
 export const isThirdwebConfigured = Boolean(thirdwebClientId);
+export const isThirdwebSdkAvailable = !isExpoGo;
 
 export const thirdwebAppMetadata = {
   name: "Wheleers",
@@ -14,22 +18,41 @@ export const thirdwebAppMetadata = {
   logoUrl: "https://wheleers.app/icon.png",
 };
 
-export const thirdwebChain = ethereum;
+type ThirdwebChainsModule = typeof import("thirdweb/chains");
+type ThirdwebWalletsModule = typeof import("thirdweb/wallets");
+type ThirdwebModule = typeof import("thirdweb");
 
-export const thirdwebClient: ThirdwebClient | null = thirdwebClientId
-  ? createThirdwebClient({
-      clientId: thirdwebClientId,
-    })
+const thirdwebModule: ThirdwebModule | null =
+  isThirdwebSdkAvailable && thirdwebClientId
+    ? (require("thirdweb") as ThirdwebModule)
+    : null;
+const thirdwebChainsModule: ThirdwebChainsModule | null = isThirdwebSdkAvailable
+  ? (require("thirdweb/chains") as ThirdwebChainsModule)
+  : null;
+const thirdwebWalletsModule: ThirdwebWalletsModule | null = isThirdwebSdkAvailable
+  ? (require("thirdweb/wallets") as ThirdwebWalletsModule)
   : null;
 
-export const thirdwebWallets = [
-  createWallet("io.metamask"),
-  createWallet("com.coinbase.wallet", {
-    appMetadata: thirdwebAppMetadata,
-    chains: [thirdwebChain],
-    mobileConfig: {
-      callbackURL: "wheelersapp://",
-    },
-  }),
-  createWallet("me.rainbow"),
-];
+export const thirdwebChain = thirdwebChainsModule?.ethereum ?? null;
+
+export const thirdwebClient: ThirdwebClient | null =
+  thirdwebModule && thirdwebClientId
+    ? thirdwebModule.createThirdwebClient({
+        clientId: thirdwebClientId,
+      })
+    : null;
+
+export const thirdwebWallets =
+  thirdwebWalletsModule && thirdwebChain
+    ? [
+        thirdwebWalletsModule.createWallet("io.metamask"),
+        thirdwebWalletsModule.createWallet("com.coinbase.wallet", {
+          appMetadata: thirdwebAppMetadata,
+          chains: [thirdwebChain],
+          mobileConfig: {
+            callbackURL: "wheelersapp://",
+          },
+        }),
+        thirdwebWalletsModule.createWallet("me.rainbow"),
+      ]
+    : [];
