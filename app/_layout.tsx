@@ -1,6 +1,4 @@
-import "@ethersproject/shims";
 import "fast-text-encoding";
-import "react-native-get-random-values";
 import "react-native-reanimated";
 
 import { PrivyProvider } from "@privy-io/expo";
@@ -12,10 +10,8 @@ import { useEffect } from "react";
 import { useColorScheme } from "react-native";
 
 import { isPrivyConfigured, privyAppId, privyClientId } from "@/lib/privy";
-import { appKit } from "@/lib/reown";
+import { ThirdwebProvider } from "thirdweb/react";
 import { theme } from "@/theme";
-
-import { AppKit, AppKitProvider } from "@reown/appkit-react-native";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -61,14 +57,7 @@ export default function RootLayout() {
     </>
   );
 
-  const withWalletKit = appKit ? (
-    <AppKitProvider instance={appKit}>
-      {layout}
-      <AppKit />
-    </AppKitProvider>
-  ) : (
-    layout
-  );
+  const withWalletKit = <ThirdwebProvider>{layout}</ThirdwebProvider>;
 
   if (!isPrivyConfigured || !privyAppId || !privyClientId) {
     return withWalletKit;

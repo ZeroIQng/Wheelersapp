@@ -18,12 +18,19 @@ import {
   privyOAuthRedirectPath,
 } from "@/lib/privy";
 import {
-  isWalletConnectConfigured,
-  walletConnectProjectIdEnvVar,
-} from "@/lib/reown";
+  isThirdwebConfigured,
+  thirdwebAppMetadata,
+  thirdwebChain,
+  thirdwebClient,
+  thirdwebClientIdEnvVar,
+  thirdwebWallets,
+} from "@/lib/thirdweb";
 import { theme } from "@/theme";
-
-import { AppKitButton, useAccount } from "@reown/appkit-react-native";
+import {
+  ConnectButton,
+  useActiveAccount,
+  useActiveWalletChain,
+} from "thirdweb/react";
 
 type Role = "ride" | "drive";
 
@@ -94,10 +101,10 @@ export default function RoleSelectionScreen() {
           />
         )}
         {selectedRole === "ride" ? (
-          isWalletConnectConfigured ? (
-            <WalletConnectCard />
+          isThirdwebConfigured ? (
+            <ThirdwebWalletCard />
           ) : (
-            <WalletConnectUnavailableCard />
+            <ThirdwebUnavailableCard />
           )
         ) : null}
       </RevealView>
@@ -154,9 +161,11 @@ function GoogleContinueButton({ nextRoute }: { nextRoute: Href }) {
   );
 }
 
-function WalletConnectCard() {
+function ThirdwebWalletCard() {
   const router = useRouter();
-  const { address, chain, isConnected } = useAccount();
+  const account = useActiveAccount();
+  const chain = useActiveWalletChain();
+  const isConnected = Boolean(account);
 
   return (
     <AppCard
@@ -172,21 +181,27 @@ function WalletConnectCard() {
           color={theme.colors.muted}
           style={styles.walletEyebrow}
         >
-          OFFICIAL REOWN APPKIT
+          OFFICIAL THIRDWEB CONNECT
         </AppText>
         <AppText variant="h3">Connect your wallet</AppText>
         <AppText variant="bodySmall" color={theme.colors.muted}>
           {isConnected
-            ? `Connected on ${chain?.name ?? "Ethereum"} as ${truncateAddress(address)}.`
-            : "Open the official wallet flow, then continue to phone verification when you are ready."}
+            ? `Connected on ${chain?.name ?? "Ethereum"} as ${truncateAddress(account?.address)}.`
+            : "Open the Thirdweb wallet flow, then continue to phone verification when you are ready."}
         </AppText>
       </View>
-      <AppKitButton
-        label="Connect wallet"
-        loadingLabel="Opening wallet"
-        connectStyle={styles.walletConnectButton}
-        accountStyle={styles.walletConnectButton}
-      />
+      {thirdwebClient ? (
+        <View style={styles.walletConnectButtonWrap}>
+          <ConnectButton
+            appMetadata={thirdwebAppMetadata}
+            chain={thirdwebChain}
+            client={thirdwebClient}
+            connectButton={{ label: "Connect wallet" }}
+            theme="light"
+            wallets={thirdwebWallets}
+          />
+        </View>
+      ) : null}
       {isConnected ? (
         <AppButton
           title="Continue to verify your phone number ↗"
@@ -199,7 +214,7 @@ function WalletConnectCard() {
   );
 }
 
-function WalletConnectUnavailableCard() {
+function ThirdwebUnavailableCard() {
   return (
     <AppCard style={styles.walletCard}>
       <View style={styles.walletCopy}>
@@ -208,19 +223,18 @@ function WalletConnectUnavailableCard() {
           color={theme.colors.muted}
           style={styles.walletEyebrow}
         >
-          OFFICIAL REOWN APPKIT
+          OFFICIAL THIRDWEB CONNECT
         </AppText>
         <AppText variant="h3">Connect your wallet</AppText>
         <AppText variant="bodySmall" color={theme.colors.muted}>
-          Set {walletConnectProjectIdEnvVar} to enable the official
-          WalletConnect flow.
+          Set {thirdwebClientIdEnvVar} to enable the Thirdweb wallet flow.
         </AppText>
         <AppText variant="bodySmall" color={theme.colors.muted}>
           Google auth needs {privyAppIdEnvVar} and {privyClientIdEnvVar}.
         </AppText>
       </View>
       <AppButton
-        title="Project ID required"
+        title="Client ID required"
         variant="ghost"
         disabled
         style={styles.walletButtonDisabled}
@@ -307,7 +321,7 @@ const styles = StyleSheet.create({
   walletCard: { gap: theme.spacing.md, paddingVertical: theme.spacing.lg },
   walletCopy: { gap: theme.spacing.xs },
   walletEyebrow: { letterSpacing: 0.8 },
-  walletConnectButton: { minHeight: 52 },
+  walletConnectButtonWrap: { alignSelf: "flex-start" },
   walletContinueButton: { backgroundColor: theme.colors.white },
   walletButtonDisabled: {
     backgroundColor: theme.colors.white,
