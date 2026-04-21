@@ -1,13 +1,19 @@
-type ReownRuntime = Pick<
-  typeof import('@reown/appkit-react-native'),
-  'AppKit' | 'AppKitButton' | 'AppKitProvider' | 'createAppKit' | 'useAccount'
->;
-type ReownEthersRuntime = Pick<typeof import('@reown/appkit-ethers-react-native'), 'EthersAdapter'>;
+import { EthersAdapter } from "@reown/appkit-ethers-react-native";
+import type { AppKitNetwork, Storage } from "@reown/appkit-react-native";
+import {
+  AppKit,
+  AppKitButton,
+  AppKitProvider,
+  createAppKit,
+  useAccount,
+} from "@reown/appkit-react-native";
 
-const reownRuntime = require('@reown/appkit-react-native/lib/commonjs/index.js') as ReownRuntime;
-const reownEthersRuntime = require('@reown/appkit-ethers-react-native/lib/commonjs/index.js') as ReownEthersRuntime;
+export {
+  AppKit,
+  AppKitButton,
+  AppKitProvider,
+  createAppKit, EthersAdapter, useAccount
+};
 
-export const { AppKit, AppKitButton, AppKitProvider, createAppKit, useAccount } = reownRuntime;
-export const { EthersAdapter } = reownEthersRuntime;
+  export type { AppKitNetwork, Storage };
 
-export type { AppKitNetwork, Storage } from '@reown/appkit-react-native';
