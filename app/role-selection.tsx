@@ -71,9 +71,7 @@ export default function RoleSelectionScreen() {
   const [selectedRole, setSelectedRole] = useState<Role>("ride");
   const [rideMotionKey, setRideMotionKey] = useState(0);
   const [driveMotionKey, setDriveMotionKey] = useState(1);
-  const nextRoute = (
-    selectedRole === "ride" ? "/phone-auth" : "/driver/dashboard"
-  ) as Href;
+  const authNextRoute = "/phone-auth" as Href;
 
   function handleRolePress(role: Role) {
     setSelectedRole(role);
@@ -125,11 +123,11 @@ export default function RoleSelectionScreen() {
 
       <RevealView delay={220} style={styles.actions}>
         {isPrivyConfigured ? (
-          <GoogleContinueButton nextRoute={nextRoute} />
+          <GoogleContinueButton nextRoute={authNextRoute} />
         ) : (
           <AppButton
             title="Connect with Google ↗"
-            onPress={() => router.push(nextRoute)}
+            onPress={() => router.push(authNextRoute)}
           />
         )}
         {selectedRole === "ride" ? (
