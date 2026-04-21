@@ -11,6 +11,7 @@ type FlowHeaderProps = {
   subtitle?: string;
   showBack?: boolean;
   backHref?: '/role-selection' | '/phone-auth';
+  align?: 'left' | 'center';
   progress?: {
     count: number;
     active: number;
@@ -25,16 +26,18 @@ export function FlowHeader({
   subtitle,
   showBack,
   backHref,
+  align = 'left',
   progress,
   light,
 }: FlowHeaderProps) {
   const router = useRouter();
   const accent = light ? theme.colors.offWhite : theme.colors.black;
   const muted = light ? '#8F8A86' : theme.colors.muted;
+  const isCentered = align === 'center';
 
   return (
-    <View style={styles.wrapper}>
-      <View style={styles.topRow}>
+    <View style={[styles.wrapper, isCentered ? styles.wrapperCentered : null]}>
+      <View style={[styles.topRow, isCentered ? styles.topRowCentered : null]}>
         <View style={styles.backSlot}>
           {showBack ? (
             <Pressable
@@ -65,15 +68,21 @@ export function FlowHeader({
         ) : null}
       </View>
       {overline ? (
-        <AppText variant="monoSmall" color={muted} style={styles.overline}>
+        <AppText
+          variant="monoSmall"
+          color={muted}
+          style={[styles.overline, isCentered ? styles.textCentered : null]}>
           {overline}
         </AppText>
       ) : null}
-      <AppText variant="h1" color={accent}>
+      <AppText variant="h1" color={accent} style={isCentered ? styles.textCentered : null}>
         {title}
       </AppText>
       {subtitle ? (
-        <AppText variant="bodySmall" color={muted} style={styles.subtitle}>
+        <AppText
+          variant="bodySmall"
+          color={muted}
+          style={[styles.subtitle, isCentered ? styles.subtitleCentered : null]}>
           {subtitle}
         </AppText>
       ) : null}
@@ -85,11 +94,17 @@ const styles = StyleSheet.create({
   wrapper: {
     gap: theme.spacing.sm,
   },
+  wrapperCentered: {
+    alignItems: 'center',
+  },
   topRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     minHeight: 32,
+  },
+  topRowCentered: {
+    width: '100%',
   },
   backSlot: {
     minWidth: 32,
@@ -103,7 +118,13 @@ const styles = StyleSheet.create({
   overline: {
     letterSpacing: 1,
   },
+  textCentered: {
+    textAlign: 'center',
+  },
   subtitle: {
     maxWidth: 300,
+  },
+  subtitleCentered: {
+    textAlign: 'center',
   },
 });

@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 
@@ -14,17 +14,35 @@ import { theme } from '@/theme';
 export default function OtpVerifyScreen() {
   const router = useRouter();
   const [digits, setDigits] = useState(['3', '7', '2', '']);
+  const inputRefs = useRef<Array<TextInput | null>>([]);
   const backgroundColor = theme.colors.offWhite;
   const textColor = theme.colors.black;
   const mutedColor = theme.colors.muted;
   const inactiveBorder = '#DCCFC3';
-  const inputBackground = theme.colors.white;
+  const filledBackground = theme.colors.orange;
+  const filledText = theme.colors.white;
   const placeholderColor = '#C2B6AB';
 
   const updateDigit = (value: string, index: number) => {
     const next = [...digits];
     next[index] = value.slice(-1);
     setDigits(next);
+    if (value && index < digits.length - 1) {
+      inputRefs.current[index + 1]?.focus();
+    }
+  };
+
+  const handleKeyPress = (key: string, index: number) => {
+    if (key !== 'Backspace') return;
+    if (digits[index]) {
+      const next = [...digits];
+      next[index] = '';
+      setDigits(next);
+      return;
+    }
+    if (index > 0) {
+      inputRefs.current[index - 1]?.focus();
+    }
   };
 
   return (
@@ -41,6 +59,7 @@ export default function OtpVerifyScreen() {
         <FlowHeader
           showBack
           backHref="/phone-auth"
+          align="center"
           overline="VERIFICATION"
           title={'Enter the\n4-digit code'}
           subtitle="Sent to +234 801 234 5678"
@@ -55,22 +74,26 @@ export default function OtpVerifyScreen() {
 
         <View style={styles.digitsRow}>
           {digits.map((digit, index) => (
-            <PulseView key={index} delay={index * 120} scaleTo={index === 2 ? 1.05 : 1.015}>
+            <PulseView key={index} delay={index * 120} scaleTo={digit ? 1.04 : 1.015}>
               <TextInput
+                ref={(ref) => {
+                  inputRefs.current[index] = ref;
+                }}
                 keyboardType="number-pad"
                 maxLength={1}
+                onKeyPress={({ nativeEvent }) => handleKeyPress(nativeEvent.key, index)}
                 onChangeText={(value) => updateDigit(value, index)}
-                placeholder="—"
+                placeholder=""
                 placeholderTextColor={placeholderColor}
                 selectionColor={theme.colors.orange}
                 style={[
                   styles.digitInput,
                   {
-                    backgroundColor: inputBackground,
-                    borderColor: inactiveBorder,
-                    color: textColor,
+                    backgroundColor: digit ? filledBackground : theme.colors.white,
+                    borderColor: digit ? theme.colors.orange : inactiveBorder,
+                    color: digit ? filledText : textColor,
                   },
-                  index === 2 ? styles.digitInputActive : null,
+                  !digit && index === digits.findIndex((item) => item === '') ? styles.digitInputActive : null,
                 ]}
                 value={digit}
               />
@@ -113,22 +136,24 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    gap: theme.spacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: theme.spacing.lg,
   },
   changeNumberButton: {
-    alignSelf: 'flex-start',
+    alignSelf: 'center',
   },
   digitsRow: {
     flexDirection: 'row',
-    gap: theme.spacing.sm,
-    marginTop: theme.spacing.sm,
-    marginBottom: theme.spacing.md,
+    justifyContent: 'center',
+    gap: theme.spacing.md,
+    marginVertical: theme.spacing.sm,
   },
   digitInput: {
-    flex: 1,
-    height: 58,
+    width: 64,
+    height: 64,
     borderWidth: theme.borders.thick,
-    borderRadius: theme.radius.sm,
+    borderRadius: theme.radius.pill,
     textAlign: 'center',
     ...theme.typography.monoLarge,
   },
@@ -144,7 +169,7 @@ const styles = StyleSheet.create({
   },
   timer: {
     textAlign: 'center',
-    marginVertical: theme.spacing.md,
+    marginVertical: theme.spacing.sm,
   },
   resend: {
     textAlign: 'center',
