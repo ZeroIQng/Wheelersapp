@@ -13,8 +13,6 @@ import { FloatingView, PulseView, RevealView } from "@/components/motion";
 import { RoleMotionBadge } from "@/components/role-motion-badge";
 import {
   isPrivyConfigured,
-  privyAppIdEnvVar,
-  privyClientIdEnvVar,
   privyOAuthRedirectPath,
 } from "@/lib/privy";
 import {
@@ -22,18 +20,51 @@ import {
   thirdwebAppMetadata,
   thirdwebChain,
   thirdwebClient,
-  thirdwebClientIdEnvVar,
   thirdwebWallets,
 } from "@/lib/thirdweb";
 import {
   ConnectButton,
   isThirdwebRuntimeAvailable,
-  useActiveAccount,
-  useActiveWalletChain,
 } from "@/lib/thirdweb-runtime";
 import { theme } from "@/theme";
 
 type Role = "ride" | "drive";
+
+const walletConnectTheme = {
+  type: "light" as const,
+  fontFamily: theme.fonts.headingAlt,
+  colors: {
+    accentButtonBg: theme.colors.orange,
+    accentButtonText: theme.colors.white,
+    accentText: theme.colors.orange,
+    borderColor: theme.colors.black,
+    connectedButtonBg: theme.colors.white,
+    connectedButtonBgHover: theme.colors.orangeLight,
+    danger: theme.colors.danger,
+    inputAutofillBg: theme.colors.offWhite,
+    modalBg: theme.colors.white,
+    modalOverlayBg: "rgba(13,13,13,0.78)",
+    primaryButtonBg: theme.colors.white,
+    primaryButtonText: theme.colors.black,
+    primaryText: theme.colors.black,
+    scrollbarBg: theme.colors.orangeLight,
+    secondaryButtonBg: theme.colors.offWhite,
+    secondaryButtonHoverBg: theme.colors.orangeLight,
+    secondaryButtonText: theme.colors.black,
+    secondaryIconColor: theme.colors.muted,
+    secondaryIconHoverBg: theme.colors.orangeLight,
+    secondaryIconHoverColor: theme.colors.black,
+    secondaryText: theme.colors.muted,
+    selectedTextBg: theme.colors.black,
+    selectedTextColor: theme.colors.white,
+    separatorLine: theme.colors.borderLight,
+    skeletonBg: theme.colors.borderLight,
+    success: theme.colors.green,
+    tertiaryBg: theme.colors.orangeLight,
+    tooltipBg: theme.colors.black,
+    tooltipText: theme.colors.white,
+  },
+};
 
 export default function RoleSelectionScreen() {
   const router = useRouter();
@@ -97,16 +128,12 @@ export default function RoleSelectionScreen() {
           <GoogleContinueButton nextRoute={nextRoute} />
         ) : (
           <AppButton
-            title="Continue with Google ↗"
+            title="Connect with Google ↗"
             onPress={() => router.push(nextRoute)}
           />
         )}
         {selectedRole === "ride" ? (
-          isThirdwebConfigured && isThirdwebRuntimeAvailable ? (
-            <ThirdwebWalletCard />
-          ) : (
-            <ThirdwebUnavailableCard />
-          )
+          <WalletConnectAction />
         ) : null}
       </RevealView>
     </AppScreen>
@@ -124,8 +151,12 @@ function GoogleContinueButton({ nextRoute }: { nextRoute: Href }) {
       : null;
 
   async function handlePress() {
-    if (!isReady || isLoading) return;
+    if (isLoading) return;
     if (user) {
+      router.push(nextRoute);
+      return;
+    }
+    if (!isReady) {
       router.push(nextRoute);
       return;
     }
@@ -146,12 +177,11 @@ function GoogleContinueButton({ nextRoute }: { nextRoute: Href }) {
             ? "Continue ↗"
             : isLoading
               ? "Opening Google…"
-              : "Continue with Google ↗"
+              : "Connect with Google ↗"
         }
         onPress={() => {
           void handlePress();
         }}
-        disabled={!isReady || isLoading}
       />
       {errorMessage ? (
         <AppText variant="bodySmall" color={theme.colors.danger}>
@@ -162,95 +192,48 @@ function GoogleContinueButton({ nextRoute }: { nextRoute: Href }) {
   );
 }
 
-function ThirdwebWalletCard() {
+function WalletConnectAction() {
   const router = useRouter();
-  const account = useActiveAccount();
-  const chain = useActiveWalletChain();
-  const isConnected = Boolean(account);
 
-  return (
-    <AppCard
-      backgroundColor={
-        isConnected ? theme.colors.orangeLight : theme.colors.white
-      }
-      borderColor={isConnected ? theme.colors.orange : theme.colors.black}
-      style={styles.walletCard}
-    >
-      <View style={styles.walletCopy}>
-        <AppText
-          variant="monoSmall"
-          color={theme.colors.muted}
-          style={styles.walletEyebrow}
-        >
-          OFFICIAL THIRDWEB CONNECT
-        </AppText>
-        <AppText variant="h3">Connect your wallet</AppText>
-        <AppText variant="bodySmall" color={theme.colors.muted}>
-          {isConnected
-            ? `Connected on ${chain?.name ?? "Ethereum"} as ${truncateAddress(account?.address)}.`
-            : "Open the Thirdweb wallet flow, then continue to phone verification when you are ready."}
-        </AppText>
-      </View>
-      {thirdwebClient ? (
-        <View style={styles.walletConnectButtonWrap}>
-          <ConnectButton
-            appMetadata={thirdwebAppMetadata}
-            chain={thirdwebChain ?? undefined}
-            client={thirdwebClient}
-            connectButton={{ label: "Connect wallet" }}
-            theme="light"
-            wallets={thirdwebWallets}
-          />
-        </View>
-      ) : null}
-      {isConnected ? (
-        <AppButton
-          title="Continue to verify your phone number ↗"
-          variant="ghost"
-          onPress={() => router.push("/phone-auth")}
-          style={styles.walletContinueButton}
-        />
-      ) : null}
-    </AppCard>
-  );
-}
-
-function ThirdwebUnavailableCard() {
-  const isMissingClientId = !isThirdwebConfigured;
-
-  return (
-    <AppCard style={styles.walletCard}>
-      <View style={styles.walletCopy}>
-        <AppText
-          variant="monoSmall"
-          color={theme.colors.muted}
-          style={styles.walletEyebrow}
-        >
-          OFFICIAL THIRDWEB CONNECT
-        </AppText>
-        <AppText variant="h3">Connect your wallet</AppText>
-        <AppText variant="bodySmall" color={theme.colors.muted}>
-          {isMissingClientId
-            ? `Set ${thirdwebClientIdEnvVar} to enable the Thirdweb wallet flow.`
-            : "Thirdweb requires a development build. Expo Go cannot load its native crypto runtime."}
-        </AppText>
-        <AppText variant="bodySmall" color={theme.colors.muted}>
-          Google auth needs {privyAppIdEnvVar} and {privyClientIdEnvVar}.
-        </AppText>
-      </View>
+  if (!isThirdwebConfigured || !isThirdwebRuntimeAvailable || !thirdwebClient) {
+    return (
       <AppButton
-        title={isMissingClientId ? "Client ID required" : "Use development build"}
-        variant="ghost"
+        title="Connect your wallet"
+        variant="inverse"
         disabled
-        style={styles.walletButtonDisabled}
+        style={styles.walletFallbackButton}
       />
-    </AppCard>
-  );
-}
+    );
+  }
 
-function truncateAddress(address?: string) {
-  if (!address) return "your wallet";
-  return `${address.slice(0, 6)}...${address.slice(-4)}`;
+  return (
+    <View style={styles.walletConnectButtonWrap}>
+      <View style={styles.walletConnectFrame}>
+        <ConnectButton
+          appMetadata={thirdwebAppMetadata}
+          chain={thirdwebChain ?? undefined}
+          client={thirdwebClient}
+          connectButton={{ label: "Connect your wallet" }}
+          connectModal={{
+            size: "compact",
+            showThirdwebBranding: false,
+            title: "Connect your wallet",
+            titleIcon: "",
+          }}
+          detailsModal={{
+            assetTabs: [],
+            hideBuyFunds: true,
+            hideReceiveFunds: true,
+            hideSendFunds: true,
+            hideSwitchWallet: true,
+          }}
+          onConnect={() => router.push("/phone-auth")}
+          theme={walletConnectTheme}
+          wallets={thirdwebWallets}
+        />
+      </View>
+    </View>
+  );
 }
 
 type RoleCardProps = {
@@ -323,16 +306,15 @@ const styles = StyleSheet.create({
   roleAccent: { textAlign: "center", lineHeight: 22, letterSpacing: -0.2 },
   actions: { gap: theme.spacing.md, marginTop: theme.spacing.sm },
   googleActionBlock: { gap: theme.spacing.xs },
-  walletCard: { gap: theme.spacing.md, paddingVertical: theme.spacing.lg },
-  walletCopy: { gap: theme.spacing.xs },
-  walletEyebrow: { letterSpacing: 0.8 },
-  walletConnectButtonWrap: { alignSelf: "flex-start" },
-  walletContinueButton: { backgroundColor: theme.colors.white },
-  walletButtonDisabled: {
+  walletConnectButtonWrap: { width: "100%" },
+  walletConnectFrame: {
+    width: "100%",
+    overflow: "hidden",
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    borderRadius: theme.radius.sm,
     backgroundColor: theme.colors.white,
-    shadowOpacity: 0,
-    shadowRadius: 0,
-    shadowOffset: { width: 0, height: 0 },
-    elevation: 0,
+    ...theme.shadows.card,
   },
+  walletFallbackButton: { backgroundColor: theme.colors.white },
 });
