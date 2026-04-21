@@ -2,10 +2,9 @@ import "@walletconnect/react-native-compat";
 import "react-native-get-random-values";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { EthersAdapter } from "@reown/appkit-ethers-react-native";
+import { createAppKit } from "@reown/appkit-react-native";
 import { mainnet } from "viem/chains";
-
-import { EthersAdapter, createAppKit } from "@/lib/reown-runtime";
-import type { AppKitNetwork, Storage } from "@reown/appkit-react-native";
 
 const projectId = process.env.EXPO_PUBLIC_REOWN_PROJECT_ID;
 export const walletConnectProjectIdEnvVar = "EXPO_PUBLIC_REOWN_PROJECT_ID";
@@ -26,13 +25,13 @@ const metadata = {
   },
 };
 
-const ethereumNetwork: AppKitNetwork = {
+const ethereumNetwork = {
   ...mainnet,
-  chainNamespace: "eip155",
-  caipNetworkId: "eip155:1",
+  chainNamespace: "eip155" as const,
+  caipNetworkId: "eip155:1" as const,
 };
 
-const storage: Storage = {
+const storage = {
   async getKeys() {
     const keys = await AsyncStorage.getAllKeys();
     return keys
@@ -44,14 +43,12 @@ const storage: Storage = {
     const keys = await storage.getKeys();
     const entries = await AsyncStorage.multiGet(keys.map(createStorageKey));
     return entries.map(
-      ([key, value]) =>
+      ([key, value]: [string, string | null]) =>
         [stripStoragePrefix(key), parseStoredValue<T>(value)] as [string, T],
     );
   },
   async getItem<T = unknown>(key: string) {
-    if (shouldSkipRestore(key)) {
-      return undefined;
-    }
+    if (shouldSkipRestore(key)) return undefined;
     const value = await AsyncStorage.getItem(createStorageKey(key));
     return parseStoredValue<T>(value);
   },
