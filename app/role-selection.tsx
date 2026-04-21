@@ -1,5 +1,4 @@
 import { useLoginWithOAuth, usePrivy } from '@privy-io/expo';
-import { AppKitButton, useAccount } from '@reown/appkit-react-native';
 import { Href, useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
@@ -22,6 +21,7 @@ import {
   isWalletConnectConfigured,
   walletConnectProjectIdEnvVar,
 } from '@/lib/reown';
+import { AppKitButton, useAccount } from '@/lib/reown-runtime';
 import { theme } from '@/theme';
 
 type Role = 'ride' | 'drive';

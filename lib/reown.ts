@@ -2,9 +2,9 @@ import '@walletconnect/react-native-compat';
 import 'react-native-get-random-values';
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { EthersAdapter } from '@reown/appkit-ethers-react-native';
-import { AppKitNetwork, Storage, createAppKit } from '@reown/appkit-react-native';
 import { mainnet } from 'viem/chains';
+
+import { EthersAdapter, type AppKitNetwork, createAppKit, type Storage } from '@/lib/reown-runtime';
 
 const projectId = process.env.EXPO_PUBLIC_REOWN_PROJECT_ID;
 export const walletConnectProjectIdEnvVar = 'EXPO_PUBLIC_REOWN_PROJECT_ID';

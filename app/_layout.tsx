@@ -4,7 +4,6 @@ import 'react-native-get-random-values';
 import 'react-native-reanimated';
 
 import { PrivyProvider } from '@privy-io/expo';
-import { AppKit, AppKitProvider } from '@reown/appkit-react-native';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
@@ -13,6 +12,7 @@ import { useEffect } from 'react';
 import { useColorScheme } from 'react-native';
 
 import { isPrivyConfigured, privyAppId, privyClientId } from '@/lib/privy';
+import { AppKit, AppKitProvider } from '@/lib/reown-runtime';
 import { appKit } from '@/lib/reown';
 import { theme } from '@/theme';
 
