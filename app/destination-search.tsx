@@ -25,7 +25,7 @@ export default function DestinationSearchScreen() {
         <WaveLine color="rgba(255,92,0,0.12)" />
       </FloatingView>
       <RevealView delay={40} from="down" style={styles.content}>
-        <FlowHeader showBack title="Where to?" />
+        <FlowHeader showBack title="Wheel to?" />
 
         <Field label="From" iconColor={theme.colors.green} value="123 Lekki Phase 1..." />
         <Field label="To" iconColor={theme.colors.black} value="Search destination..." active />
