@@ -98,7 +98,7 @@ export default function RiderHomeScreen() {
         </RevealView>
 
         <RevealView delay={180}>
-          <AppCard style={styles.historyPanel}>
+          <View style={styles.historyPanel}>
             <View style={styles.historyHeader}>
               <AppText variant="bodySmall" color={theme.colors.muted}>
                 Ride history
@@ -137,7 +137,7 @@ export default function RiderHomeScreen() {
                 </RevealView>
               ))}
             </View>
-          </AppCard>
+          </View>
         </RevealView>
       </View>
     </AppScreen>
@@ -231,6 +231,7 @@ const styles = StyleSheet.create({
   },
   historyPanel: {
     gap: theme.spacing.sm,
+    paddingBottom: theme.spacing.xs,
   },
   searchBox: {
     borderWidth: theme.borders.thick,
