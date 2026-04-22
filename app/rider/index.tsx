@@ -7,10 +7,31 @@ import { AppCard } from "@/components/app-card";
 import { AppScreen } from "@/components/app-screen";
 import { AppText } from "@/components/app-text";
 import { StarBurst, TriangleShape } from "@/components/decorative-shapes";
-import { FloatingView, PulseView, RevealView } from "@/components/motion";
+import { FloatingView, RevealView } from "@/components/motion";
 import { StaticMap } from "@/components/static-map";
 import { riderHomeHistory, walletBalance } from "@/data/mock";
 import { theme } from "@/theme";
+
+const riderServices = [
+  {
+    id: "book-ride",
+    label: "Book ride",
+    icon: "local-taxi",
+    route: "/destination-search" as Href,
+  },
+  {
+    id: "schedule-ride",
+    label: "Schedule a ride",
+    icon: "schedule",
+    route: "/destination-search" as Href,
+  },
+  {
+    id: "group-ride",
+    label: "Group Ride",
+    icon: "people-alt",
+    route: "/destination-search" as Href,
+  },
+] as const;
 
 export default function RiderHomeScreen() {
   const router = useRouter();
@@ -69,33 +90,55 @@ export default function RiderHomeScreen() {
       </RevealView>
 
       <View style={styles.panelStack}>
-        <RevealView delay={120}>
-          <AppCard style={styles.searchPanel}>
-            <AppText variant="bodySmall" color={theme.colors.muted}>
-              Search destination
-            </AppText>
-            <PulseView>
-              <Pressable
-                onPress={() => router.push("/destination-search")}
-                style={styles.searchBox}
+        <RevealView delay={80} style={styles.sectionIntro}>
+          <AppText variant="h3" color={theme.colors.orange}>
+            How do you want to Wheel?
+          </AppText>
+          <View style={styles.serviceRow}>
+            {riderServices.map((service, index) => (
+              <RevealView
+                key={service.id}
+                delay={110 + index * 60}
+                style={styles.serviceSlot}
               >
-                <View style={styles.searchCopy}>
-                  <AppText variant="bodyMedium">Where to?</AppText>
-                  <AppText variant="bodySmall" color={theme.colors.muted}>
-                    Search destination...
-                  </AppText>
-                </View>
-                <View style={styles.searchAction}>
-                  <MaterialIcons
-                    name="north-east"
-                    size={18}
-                    color={theme.colors.black}
-                  />
-                </View>
-              </Pressable>
-            </PulseView>
-          </AppCard>
+                <Pressable
+                  onPress={() => router.push(service.route)}
+                  style={styles.serviceCard}
+                >
+                  <View style={styles.serviceIcon}>
+                    <MaterialIcons
+                      name={service.icon as any}
+                      size={18}
+                      color={theme.colors.black}
+                    />
+                  </View>
+                  <AppText variant="bodySmall">{service.label}</AppText>
+                </Pressable>
+              </RevealView>
+            ))}
+          </View>
         </RevealView>
+
+        <View style={styles.searchPanel}>
+          <Pressable
+            onPress={() => router.push("/destination-search")}
+            style={styles.searchBox}
+          >
+            <View style={styles.searchCopy}>
+              <AppText variant="bodyMedium">Where to?</AppText>
+              <AppText variant="bodySmall" color={theme.colors.muted}>
+                Search destination...
+              </AppText>
+            </View>
+            <View style={styles.searchAction}>
+              <MaterialIcons
+                name="north-east"
+                size={18}
+                color={theme.colors.black}
+              />
+            </View>
+          </Pressable>
+        </View>
 
         <RevealView delay={180}>
           <View style={styles.historyPanel}>
@@ -226,6 +269,38 @@ const styles = StyleSheet.create({
     paddingBottom: 0,
     gap: theme.spacing.sm,
   },
+  sectionIntro: {
+    gap: theme.spacing.sm,
+  },
+  serviceRow: {
+    flexDirection: "row",
+    gap: theme.spacing.sm,
+  },
+  serviceSlot: {
+    flex: 1,
+  },
+  serviceCard: {
+    minHeight: 88,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    borderRadius: theme.radius.md,
+    backgroundColor: theme.colors.white,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.sm,
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    ...theme.shadows.card,
+  },
+  serviceIcon: {
+    width: 34,
+    height: 34,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    borderRadius: theme.radius.sm,
+    backgroundColor: theme.colors.orangeLight,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   searchPanel: {
     gap: theme.spacing.sm,
   },
@@ -238,18 +313,18 @@ const styles = StyleSheet.create({
     borderColor: theme.colors.black,
     borderRadius: theme.radius.sm,
     backgroundColor: theme.colors.offWhite,
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: theme.spacing.md,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.xs,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
   searchCopy: {
-    gap: 2,
+    gap: 0,
   },
   searchAction: {
-    width: 34,
-    height: 34,
+    width: 28,
+    height: 28,
     borderWidth: theme.borders.thick,
     borderColor: theme.colors.black,
     borderRadius: theme.radius.pill,
