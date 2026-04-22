@@ -54,7 +54,7 @@ export default function RiderHomeScreen() {
     >
       <StatusBar style="dark" backgroundColor="#D4E6D4" />
       <RevealView style={styles.mapWrap}>
-        <StaticMap height={300} scene="riderHome">
+        <StaticMap height={345} scene="riderHome">
           <FloatingView style={styles.triangle} distance={12} rotate={8}>
             <TriangleShape color="rgba(255,92,0,0.15)" />
           </FloatingView>
