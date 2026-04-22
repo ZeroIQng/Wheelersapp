@@ -8,7 +8,7 @@ import {
   View,
   ViewStyle,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Edge, SafeAreaView } from 'react-native-safe-area-context';
 
 import { theme } from '@/theme';
 
@@ -16,6 +16,7 @@ type AppScreenProps = PropsWithChildren<{
   backgroundColor?: string;
   scroll?: boolean;
   contentStyle?: StyleProp<ViewStyle>;
+  safeAreaEdges?: Edge[];
 }>;
 
 export function AppScreen({
@@ -23,11 +24,14 @@ export function AppScreen({
   backgroundColor = theme.colors.offWhite,
   scroll,
   contentStyle,
+  safeAreaEdges,
 }: AppScreenProps) {
   const containerStyle = [styles.content, contentStyle];
 
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor }]}>
+    <SafeAreaView
+      edges={safeAreaEdges}
+      style={[styles.safeArea, { backgroundColor }]}>
       <KeyboardAvoidingView
         behavior={Platform.select({ ios: 'padding', default: undefined })}
         style={styles.flex}>

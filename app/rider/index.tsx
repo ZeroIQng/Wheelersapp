@@ -1,27 +1,39 @@
-import { Href, useRouter } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
-import { Pressable, StyleSheet, View } from 'react-native';
+import MaterialIcons from "@expo/vector-icons/MaterialIcons";
+import { Href, useRouter } from "expo-router";
+import { StatusBar } from "expo-status-bar";
+import { Pressable, StyleSheet, View } from "react-native";
 
-import { AppScreen } from '@/components/app-screen';
-import { AppText } from '@/components/app-text';
-import { TriangleShape, StarBurst } from '@/components/decorative-shapes';
-import { FloatingView, PulseView, RevealView } from '@/components/motion';
-import { StaticMap } from '@/components/static-map';
-import { quickPlaces, walletBalance } from '@/data/mock';
-import { theme } from '@/theme';
+import { AppCard } from "@/components/app-card";
+import { AppScreen } from "@/components/app-screen";
+import { AppText } from "@/components/app-text";
+import { StarBurst, TriangleShape } from "@/components/decorative-shapes";
+import { FloatingView, PulseView, RevealView } from "@/components/motion";
+import { StaticMap } from "@/components/static-map";
+import { riderHomeHistory, walletBalance } from "@/data/mock";
+import { theme } from "@/theme";
 
 export default function RiderHomeScreen() {
   const router = useRouter();
+  const historyPreview = riderHomeHistory.slice(0, 2);
 
   return (
-    <AppScreen backgroundColor={theme.colors.offWhite} contentStyle={styles.container}>
+    <AppScreen
+      backgroundColor={theme.colors.offWhite}
+      contentStyle={styles.container}
+      safeAreaEdges={["top", "left", "right"]}
+    >
       <StatusBar style="dark" backgroundColor="#D4E6D4" />
       <RevealView style={styles.mapWrap}>
-        <StaticMap height={380} scene="riderHome">
+        <StaticMap height={286} scene="riderHome">
           <FloatingView style={styles.triangle} distance={12} rotate={8}>
             <TriangleShape color="rgba(255,92,0,0.15)" />
           </FloatingView>
-          <FloatingView style={styles.star} delay={180} distance={10} rotate={-10}>
+          <FloatingView
+            style={styles.star}
+            delay={180}
+            distance={10}
+            rotate={-10}
+          >
             <StarBurst color="rgba(13,13,13,0.12)" width={38} height={38} />
           </FloatingView>
           <View style={styles.mapTopRow}>
@@ -30,7 +42,7 @@ export default function RiderHomeScreen() {
             </View>
             <View style={styles.topActions}>
               <FloatingView style={styles.balance} distance={6}>
-                <Pressable onPress={() => router.push('/rider/wallet' as Href)}>
+                <Pressable onPress={() => router.push("/rider/wallet" as Href)}>
                   <AppText variant="monoSmall">{walletBalance}</AppText>
                   <AppText variant="bodySmall" color={theme.colors.muted}>
                     USDT
@@ -39,13 +51,15 @@ export default function RiderHomeScreen() {
               </FloatingView>
               <View style={styles.accountRow}>
                 <Pressable
-                  onPress={() => router.push('/rider/notifications' as Href)}
-                  style={styles.iconButton}>
+                  onPress={() => router.push("/rider/notifications" as Href)}
+                  style={styles.iconButton}
+                >
                   <AppText variant="bodySmall">🔔</AppText>
                 </Pressable>
                 <Pressable
-                  onPress={() => router.push('/rider/profile' as Href)}
-                  style={styles.profileButton}>
+                  onPress={() => router.push("/rider/profile" as Href)}
+                  style={styles.profileButton}
+                >
                   <AppText variant="monoSmall">CA</AppText>
                 </Pressable>
               </View>
@@ -54,31 +68,78 @@ export default function RiderHomeScreen() {
         </StaticMap>
       </RevealView>
 
-      <RevealView delay={120} style={styles.sheet}>
-        <AppText variant="bodySmall" color={theme.colors.muted}>
-          Where to?
-        </AppText>
-        <PulseView>
-          <Pressable onPress={() => router.push('/destination-search')} style={styles.searchBox}>
-            <AppText variant="body" color="#B0A79F">
-              Search destination...
+      <View style={styles.panelStack}>
+        <RevealView delay={120}>
+          <AppCard style={styles.searchPanel}>
+            <AppText variant="bodySmall" color={theme.colors.muted}>
+              Search destination
             </AppText>
-          </Pressable>
-        </PulseView>
-        <View style={styles.quickRow}>
-          {quickPlaces.map((place, index) => (
-            <RevealView key={place.id} delay={180 + index * 70} style={styles.quickSlot}>
+            <PulseView>
               <Pressable
-                onPress={() => router.push('/destination-search')}
-                style={styles.quickChip}>
-                <AppText variant="bodySmall" color={theme.colors.muted}>
-                  {place.emoji} {place.label}
+                onPress={() => router.push("/destination-search")}
+                style={styles.searchBox}
+              >
+                <View style={styles.searchCopy}>
+                  <AppText variant="bodyMedium">Where to?</AppText>
+                  <AppText variant="bodySmall" color={theme.colors.muted}>
+                    Search destination...
+                  </AppText>
+                </View>
+                <View style={styles.searchAction}>
+                  <MaterialIcons
+                    name="north-east"
+                    size={18}
+                    color={theme.colors.black}
+                  />
+                </View>
+              </Pressable>
+            </PulseView>
+          </AppCard>
+        </RevealView>
+
+        <RevealView delay={180}>
+          <AppCard style={styles.historyPanel}>
+            <View style={styles.historyHeader}>
+              <AppText variant="bodySmall" color={theme.colors.muted}>
+                Ride history
+              </AppText>
+              <Pressable onPress={() => router.push("/rider/history" as Href)}>
+                <AppText variant="monoSmall" color={theme.colors.orange}>
+                  See all
                 </AppText>
               </Pressable>
-            </RevealView>
-          ))}
-        </View>
-      </RevealView>
+            </View>
+            <View style={styles.historySection}>
+              {historyPreview.map((ride, index) => (
+                <RevealView key={ride.id} delay={220 + index * 70}>
+                  <Pressable
+                    onPress={() => router.push("/rider/history" as Href)}
+                  >
+                    <AppCard style={styles.historyCard}>
+                      <View style={styles.historyIcon}>
+                        <MaterialIcons
+                          name={ride.icon as any}
+                          size={16}
+                          color={theme.colors.black}
+                        />
+                      </View>
+                      <View style={styles.historyCopy}>
+                        <AppText variant="bodyMedium">{ride.title}</AppText>
+                        <AppText variant="bodySmall" color={theme.colors.muted}>
+                          {ride.meta}
+                        </AppText>
+                      </View>
+                      <AppText variant="monoSmall" color={theme.colors.orange}>
+                        {ride.fare}
+                      </AppText>
+                    </AppCard>
+                  </Pressable>
+                </RevealView>
+              ))}
+            </View>
+          </AppCard>
+        </RevealView>
+      </View>
     </AppScreen>
   );
 }
@@ -90,24 +151,24 @@ const styles = StyleSheet.create({
     paddingBottom: 0,
   },
   mapWrap: {
-    flex: 1,
+    flexShrink: 0,
   },
   mapTopRow: {
-    position: 'absolute',
+    position: "absolute",
     top: 14,
     left: theme.spacing.gutter,
     right: theme.spacing.gutter,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
   },
   titleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: theme.spacing.sm,
   },
   topActions: {
-    alignItems: 'flex-end',
+    alignItems: "flex-end",
     gap: theme.spacing.sm,
   },
   balance: {
@@ -120,7 +181,7 @@ const styles = StyleSheet.create({
     ...theme.shadows.card,
   },
   accountRow: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: theme.spacing.sm,
   },
   iconButton: {
@@ -130,8 +191,8 @@ const styles = StyleSheet.create({
     borderWidth: theme.borders.thick,
     borderColor: theme.colors.black,
     backgroundColor: theme.colors.white,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     ...theme.shadows.card,
   },
   profileButton: {
@@ -141,55 +202,87 @@ const styles = StyleSheet.create({
     borderWidth: theme.borders.thick,
     borderColor: theme.colors.black,
     backgroundColor: theme.colors.orangeLight,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     paddingHorizontal: theme.spacing.sm,
     ...theme.shadows.card,
   },
   triangle: {
-    position: 'absolute',
-    top: '22%',
-    left: '18%',
+    position: "absolute",
+    top: "22%",
+    left: "18%",
   },
   star: {
-    position: 'absolute',
-    right: '6%',
-    bottom: '10%',
+    position: "absolute",
+    right: "6%",
+    bottom: "10%",
   },
-  sheet: {
-    borderTopWidth: theme.borders.thick,
-    borderTopColor: theme.colors.black,
-    borderTopLeftRadius: theme.radius.lg,
-    borderTopRightRadius: theme.radius.lg,
-    backgroundColor: theme.colors.offWhite,
+  panelStack: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: -2,
     paddingHorizontal: theme.spacing.gutter,
-    paddingTop: theme.spacing.lg,
-    paddingBottom: theme.spacing.xxl,
+    paddingBottom: 0,
+    gap: theme.spacing.sm,
+  },
+  searchPanel: {
+    gap: theme.spacing.sm,
+  },
+  historyPanel: {
     gap: theme.spacing.sm,
   },
   searchBox: {
     borderWidth: theme.borders.thick,
     borderColor: theme.colors.black,
     borderRadius: theme.radius.sm,
-    backgroundColor: theme.colors.white,
+    backgroundColor: theme.colors.offWhite,
     paddingHorizontal: theme.spacing.md,
     paddingVertical: theme.spacing.md,
-    ...theme.shadows.card,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
-  quickRow: {
-    flexDirection: 'row',
+  searchCopy: {
+    gap: 2,
+  },
+  searchAction: {
+    width: 34,
+    height: 34,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    borderRadius: theme.radius.pill,
+    backgroundColor: theme.colors.orangeLight,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  historySection: {
     gap: theme.spacing.sm,
   },
-  quickSlot: {
-    flex: 1,
+  historyHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
-  quickChip: {
-    flex: 1,
-    borderWidth: theme.borders.regular,
-    borderColor: '#DDD1C7',
-    borderRadius: theme.radius.sm,
-    backgroundColor: theme.colors.white,
+  historyCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing.sm,
     paddingVertical: theme.spacing.sm,
-    paddingHorizontal: theme.spacing.sm,
+    backgroundColor: theme.colors.offWhite,
+  },
+  historyIcon: {
+    width: 34,
+    height: 34,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    borderRadius: theme.radius.sm,
+    backgroundColor: theme.colors.orangeLight,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  historyCopy: {
+    flex: 1,
+    gap: 2,
   },
 });

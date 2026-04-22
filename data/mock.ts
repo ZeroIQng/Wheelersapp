@@ -136,6 +136,14 @@ export type DriverWalletEntry = {
   direction: 'credit' | 'debit';
 };
 
+export type RideHistoryEntry = {
+  id: string;
+  title: string;
+  meta: string;
+  fare: string;
+  icon: string;
+};
+
 export const riderTripDetails = {
   status: 'TRIP IN PROGRESS',
   substatus: 'On route',
@@ -318,10 +326,28 @@ export const recentPlaces = [
   },
 ];
 
-export const quickPlaces = [
-  { id: 'home', emoji: '🏠', label: 'Home' },
-  { id: 'work', emoji: '💼', label: 'Work' },
-  { id: 'school', emoji: '🎓', label: 'School' },
+export const riderHomeHistory: RideHistoryEntry[] = [
+  {
+    id: 'marina-lekki',
+    title: 'Marina to Lekki Phase 1',
+    meta: 'Today, 2:14 PM',
+    fare: '$1.85',
+    icon: 'history',
+  },
+  {
+    id: 'airport-pickup',
+    title: 'Airport pickup',
+    meta: 'Yesterday, 8:05 PM',
+    fare: '$3.40',
+    icon: 'schedule',
+  },
+  {
+    id: 'vi-dropoff',
+    title: 'Victoria Island dropoff',
+    meta: 'Yesterday, 1:23 PM',
+    fare: '$2.25',
+    icon: 'directions-car',
+  },
 ];
 
 export const rideOptions = [
