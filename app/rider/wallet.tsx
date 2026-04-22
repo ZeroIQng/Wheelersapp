@@ -19,7 +19,7 @@ export default function WalletScreen() {
       <StatusBar style="dark" backgroundColor={theme.colors.offWhite} />
       <SectionHeader
         actionLabel="Rider home"
-        onActionPress={() => router.replace('/rider-home')}
+        onActionPress={() => router.replace('/rider')}
         title="Wallet"
         titleVariant="h1"
       />

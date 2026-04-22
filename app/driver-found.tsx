@@ -84,7 +84,7 @@ export default function DriverFoundScreen() {
             <AppButton
               title="Cancel"
               variant="danger"
-              onPress={() => router.replace('/rider-home')}
+              onPress={() => router.replace('/rider')}
               style={styles.secondaryButton}
             />
           </View>

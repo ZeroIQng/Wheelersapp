@@ -108,7 +108,7 @@ export default function OtpVerifyScreen() {
         </PulseView>
 
         <RevealView delay={180} style={styles.verifyButtonWrap}>
-          <AppButton title="Verify" onPress={() => router.push('/rider-home')} />
+          <AppButton title="Verify" onPress={() => router.push('/rider')} />
         </RevealView>
 
         <AppText variant="bodySmall" color={mutedColor} style={styles.resend}>
