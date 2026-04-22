@@ -88,6 +88,6 @@ theme.ts
 - `data/mock.ts` now drives Batch 1 and Batch 2 rider and driver flows, including wallet, payout, request, and earnings states.
 - `constants/theme.ts` is the centralized design token source. `theme.ts` re-exports it for the existing `@/theme` imports.
 - Rider and driver Batch 2 screens live under `app/rider` and `app/driver` and are connected from the existing flow:
-  - Rider: `splash -> role-selection -> phone-auth -> otp-verify -> kyc -> rider-home -> destination-search -> ride-selection -> matching -> driver-found -> rider/active-trip -> rider/trip-rating -> rider/wallet`
+  - Rider: `splash -> role-selection -> phone-auth -> otp-verify -> rider-home -> destination-search -> ride-selection -> matching -> driver-found -> rider/active-trip -> rider/trip-rating -> rider/wallet`
   - Driver: `role-selection (drive) -> driver/dashboard -> driver/incoming-request -> driver/navigation -> driver/arrived -> driver/active-trip -> driver/payout -> driver/earnings`
 - Fonts load before the router mounts, so headings and labels render with the intended brand typography from first paint.

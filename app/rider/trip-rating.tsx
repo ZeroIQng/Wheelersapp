@@ -1,26 +1,29 @@
-import { Href, useRouter } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
-import { useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Href, useRouter } from "expo-router";
+import { StatusBar } from "expo-status-bar";
+import { useState } from "react";
+import { Pressable, StyleSheet, View } from "react-native";
 
-import { AppButton } from '@/components/app-button';
-import { AppScreen } from '@/components/app-screen';
-import { AppText } from '@/components/app-text';
-import { FloatingView, PulseView } from '@/components/motion';
-import { StatusPill } from '@/components/StatusPill';
-import { driverDetails } from '@/data/mock';
-import { theme } from '@/theme';
+import { AppButton } from "@/components/app-button";
+import { AppScreen } from "@/components/app-screen";
+import { AppText } from "@/components/app-text";
+import { FloatingView, PulseView } from "@/components/motion";
+import { StatusPill } from "@/components/StatusPill";
+import { driverDetails } from "@/data/mock";
+import { theme } from "@/theme";
 
-const tips = ['$0.50', '$1.00', '$2.00', 'Skip'];
+const tips = ["$0.50", "$1.00", "$2.00", "Skip"];
 
 export default function TripRatingScreen() {
   const router = useRouter();
-  const walletRoute = '/rider/wallet' as Href;
+  const walletRoute = "/rider/wallet" as Href;
   const [rating, setRating] = useState(4);
-  const [tip, setTip] = useState('$1.00');
+  const [tip, setTip] = useState("$1.00");
 
   return (
-    <AppScreen backgroundColor={theme.colors.offWhite} contentStyle={styles.container}>
+    <AppScreen
+      backgroundColor={theme.colors.offWhite}
+      contentStyle={styles.container}
+    >
       <StatusBar style="dark" backgroundColor={theme.colors.offWhite} />
       <ConfettiPiece color={theme.colors.orange} style={styles.confettiOne} />
       <ConfettiPiece color={theme.colors.black} style={styles.confettiTwo} />
@@ -31,9 +34,13 @@ export default function TripRatingScreen() {
 
       <View style={styles.header}>
         <AppText variant="h1" style={styles.center}>
-          How was{'\n'}your ride?
+          How was{"\n"}your ride?
         </AppText>
-        <AppText variant="bodySmall" color={theme.colors.muted} style={styles.center}>
+        <AppText
+          variant="bodySmall"
+          color={theme.colors.muted}
+          style={styles.center}
+        >
           Rate your driver
         </AppText>
       </View>
@@ -58,14 +65,22 @@ export default function TripRatingScreen() {
           const active = index < rating;
           return (
             <Pressable key={index} onPress={() => setRating(index + 1)}>
-              <AppText style={[styles.star, !active ? styles.starInactive : null]}>⭐</AppText>
+              <AppText
+                style={[styles.star, !active ? styles.starInactive : null]}
+              >
+                ⭐
+              </AppText>
             </Pressable>
           );
         })}
       </View>
 
       <View style={styles.tipBlock}>
-        <AppText variant="bodySmall" color={theme.colors.muted} style={styles.center}>
+        <AppText
+          variant="bodySmall"
+          color={theme.colors.muted}
+          style={styles.center}
+        >
           Add a tip?
         </AppText>
         <View style={styles.tipRow}>
@@ -76,10 +91,12 @@ export default function TripRatingScreen() {
               <Pressable
                 key={entry}
                 onPress={() => setTip(entry)}
-                style={[styles.tipChip, active ? styles.tipChipActive : null]}>
+                style={[styles.tipChip, active ? styles.tipChipActive : null]}
+              >
                 <AppText
-                  variant={entry === 'Skip' ? 'bodySmall' : 'mono'}
-                  color={active ? theme.colors.offWhite : theme.colors.black}>
+                  variant={entry === "Skip" ? "bodySmall" : "mono"}
+                  color={active ? theme.colors.offWhite : theme.colors.black}
+                >
                   {entry}
                 </AppText>
               </Pressable>
@@ -88,18 +105,15 @@ export default function TripRatingScreen() {
         </View>
       </View>
 
-      <AppButton title="Submit rating ↗" onPress={() => router.push(walletRoute)} />
+      <AppButton
+        title="Submit rating ↗"
+        onPress={() => router.push(walletRoute)}
+      />
     </AppScreen>
   );
 }
 
-function ConfettiPiece({
-  color,
-  style,
-}: {
-  color: string;
-  style: object;
-}) {
+function ConfettiPiece({ color, style }: { color: string; style: object }) {
   return (
     <FloatingView distance={12} style={style}>
       <View style={[styles.confetti, { backgroundColor: color }]} />
@@ -110,8 +124,8 @@ function ConfettiPiece({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     gap: theme.spacing.md,
     paddingHorizontal: theme.spacing.gutter,
   },
@@ -122,7 +136,7 @@ const styles = StyleSheet.create({
     gap: theme.spacing.xs,
   },
   center: {
-    textAlign: 'center',
+    textAlign: "center",
   },
   avatar: {
     width: 68,
@@ -131,16 +145,16 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.orange,
     borderWidth: theme.borders.thick,
     borderColor: theme.colors.black,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     ...theme.shadows.card,
   },
   driverMeta: {
-    alignItems: 'center',
+    alignItems: "center",
     gap: theme.spacing.xxs,
   },
   stars: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: theme.spacing.sm,
   },
   star: {
@@ -150,13 +164,13 @@ const styles = StyleSheet.create({
     opacity: 0.28,
   },
   tipBlock: {
-    width: '100%',
+    width: "100%",
     gap: theme.spacing.sm,
   },
   tipRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
     gap: theme.spacing.sm,
   },
   tipChip: {
@@ -166,8 +180,8 @@ const styles = StyleSheet.create({
     borderWidth: theme.borders.thick,
     borderColor: theme.colors.black,
     backgroundColor: theme.colors.white,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   tipChipActive: {
     backgroundColor: theme.colors.orange,
@@ -179,23 +193,23 @@ const styles = StyleSheet.create({
     borderRadius: 3,
   },
   confettiOne: {
-    position: 'absolute',
+    position: "absolute",
     top: 78,
-    left: '22%',
+    left: "22%",
   },
   confettiTwo: {
-    position: 'absolute',
+    position: "absolute",
     top: 96,
-    right: '24%',
+    right: "24%",
   },
   confettiThree: {
-    position: 'absolute',
+    position: "absolute",
     top: 134,
-    left: '70%',
+    left: "70%",
   },
   confettiFour: {
-    position: 'absolute',
+    position: "absolute",
     top: 150,
-    left: '34%',
+    left: "34%",
   },
 });
