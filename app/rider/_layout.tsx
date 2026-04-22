@@ -1,8 +1,8 @@
-import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import { Tabs } from 'expo-router';
+import MaterialIcons from "@expo/vector-icons/MaterialIcons";
+import { Tabs } from "expo-router";
 
-import { HapticTab } from '@/components/haptic-tab';
-import { theme } from '@/theme';
+import { HapticTab } from "@/components/haptic-tab";
+import { theme } from "@/theme";
 
 export default function RiderLayout() {
   return (
@@ -28,20 +28,25 @@ export default function RiderLayout() {
           borderTopWidth: theme.borders.thick,
           borderTopColor: theme.colors.black,
         },
-      }}>
+      }}
+    >
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Home',
+          title: "Home",
           tabBarIcon: ({ color, size, focused }) => (
-            <MaterialIcons name={focused ? 'home-filled' : 'home'} color={color} size={size} />
+            <MaterialIcons
+              name={focused ? "home-filled" : "home"}
+              color={color}
+              size={size}
+            />
           ),
         }}
       />
       <Tabs.Screen
-        name="history"
+        name="Rides"
         options={{
-          title: 'History',
+          title: "Rides",
           tabBarIcon: ({ color, size }) => (
             <MaterialIcons name="history" color={color} size={size} />
           ),
@@ -50,16 +55,20 @@ export default function RiderLayout() {
       <Tabs.Screen
         name="wallet"
         options={{
-          title: 'Wallet',
+          title: "Wallet",
           tabBarIcon: ({ color, size }) => (
-            <MaterialIcons name="account-balance-wallet" color={color} size={size} />
+            <MaterialIcons
+              name="account-balance-wallet"
+              color={color}
+              size={size}
+            />
           ),
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
-          title: 'Profile',
+          title: "Profile",
           tabBarIcon: ({ color, size }) => (
             <MaterialIcons name="person-outline" color={color} size={size} />
           ),
@@ -69,21 +78,21 @@ export default function RiderLayout() {
         name="active-trip"
         options={{
           href: null,
-          tabBarStyle: { display: 'none' },
+          tabBarStyle: { display: "none" },
         }}
       />
       <Tabs.Screen
         name="notifications"
         options={{
           href: null,
-          tabBarStyle: { display: 'none' },
+          tabBarStyle: { display: "none" },
         }}
       />
       <Tabs.Screen
         name="trip-rating"
         options={{
           href: null,
-          tabBarStyle: { display: 'none' },
+          tabBarStyle: { display: "none" },
         }}
       />
     </Tabs>

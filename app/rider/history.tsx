@@ -36,12 +36,12 @@ const rides = [
 ] as const;
 
 export default function RiderHistoryScreen() {
-  return (
+  return ( 
     <AppScreen backgroundColor={theme.colors.offWhite} scroll contentStyle={styles.container}>
       <StatusBar style="dark" backgroundColor={theme.colors.offWhite} />
       <SectionHeader
         eyebrow="RIDER ACTIVITY"
-        title="History"
+        title="Rides"
         subtitle="Your latest rides and completed trips."
         titleVariant="h1"
       />
