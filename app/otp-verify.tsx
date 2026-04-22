@@ -107,8 +107,8 @@ export default function OtpVerifyScreen() {
           </AppText>
         </PulseView>
 
-        <RevealView delay={180}>
-          <AppButton title="Verify ↗" onPress={() => router.push('/kyc')} />
+        <RevealView delay={180} style={styles.verifyButtonWrap}>
+          <AppButton title="Verify" onPress={() => router.push('/kyc')} />
         </RevealView>
 
         <AppText variant="bodySmall" color={mutedColor} style={styles.resend}>
@@ -170,6 +170,9 @@ const styles = StyleSheet.create({
   timer: {
     textAlign: 'center',
     marginVertical: theme.spacing.sm,
+  },
+  verifyButtonWrap: {
+    width: '100%',
   },
   resend: {
     textAlign: 'center',
