@@ -1,7 +1,13 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { Href, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { Pressable, StyleSheet, View } from "react-native";
+import { useRef, useState } from "react";
+import { PanResponder, Pressable, StyleSheet, View } from "react-native";
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
 
 import { AppCard } from "@/components/app-card";
 import { AppScreen } from "@/components/app-screen";
@@ -45,6 +51,69 @@ const riderServices = [
 export default function RiderHomeScreen() {
   const router = useRouter();
   const historyPreview = riderHomeHistory.slice(0, 2);
+  const expandedMapHeight = 345;
+  const collapsedMapHeight = 480;
+  const collapsedServiceShift = 104;
+  const [historyMeasuredHeight, setHistoryMeasuredHeight] = useState<
+    number | null
+  >(null);
+  const historyVisibility = useSharedValue(1);
+
+  const hideHistory = () => {
+    historyVisibility.value = withTiming(0, { duration: 220 });
+  };
+
+  const showHistory = () => {
+    historyVisibility.value = withTiming(1, { duration: 220 });
+  };
+
+  const serviceSwipeResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gestureState) =>
+        Math.abs(gestureState.dy) > 12 &&
+        Math.abs(gestureState.dy) > Math.abs(gestureState.dx),
+      onPanResponderRelease: (_, gestureState) => {
+        if (gestureState.dy > 35) {
+          hideHistory();
+          return;
+        }
+
+        if (gestureState.dy < -35) {
+          showHistory();
+        }
+      },
+      onPanResponderTerminate: (_, gestureState) => {
+        if (gestureState.dy > 35) {
+          hideHistory();
+          return;
+        }
+
+        if (gestureState.dy < -35) {
+          showHistory();
+        }
+      },
+    })
+  ).current;
+
+  const historyAnimatedStyle = useAnimatedStyle(() => ({
+    height:
+      historyMeasuredHeight == null
+        ? undefined
+        : historyMeasuredHeight * historyVisibility.value,
+    opacity: historyVisibility.value,
+    transform: [{ translateY: (1 - historyVisibility.value) * 18 }],
+    overflow: "hidden",
+  }));
+
+  const mapAnimatedStyle = useAnimatedStyle(() => ({
+    height:
+      expandedMapHeight +
+      (1 - historyVisibility.value) * (collapsedMapHeight - expandedMapHeight),
+  }));
+
+  const serviceAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: (1 - historyVisibility.value) * collapsedServiceShift }],
+  }));
 
   return (
     <AppScreen
@@ -53,8 +122,8 @@ export default function RiderHomeScreen() {
       safeAreaEdges={["top", "left", "right"]}
     >
       <StatusBar style="dark" backgroundColor="#D4E6D4" />
-      <RevealView style={styles.mapWrap}>
-        <StaticMap height={345} scene="riderHome">
+      <Animated.View style={[styles.mapWrap, mapAnimatedStyle]}>
+        <StaticMap height={collapsedMapHeight} scene="riderHome">
           <FloatingView style={styles.triangle} distance={12} rotate={8}>
             <TriangleShape color="rgba(255,92,0,0.15)" />
           </FloatingView>
@@ -96,16 +165,24 @@ export default function RiderHomeScreen() {
             </View>
           </View>
         </StaticMap>
-      </RevealView>
+      </Animated.View>
 
-      <RevealView delay={80} style={styles.serviceSection}>
-        <AppText
-          variant="h3"
-          color={theme.colors.orange}
-          style={styles.serviceHeading}
-        >
-          Let's Wheel
-        </AppText>
+      <Animated.View
+        style={[styles.serviceSection, serviceAnimatedStyle]}
+        {...serviceSwipeResponder.panHandlers}
+      >
+        <View style={styles.swipeHandleWrap}>
+          <View style={styles.swipeHandle} />
+        </View>
+        <RevealView delay={80}>
+          <AppText
+            variant="h3"
+            color={theme.colors.orange}
+            style={styles.serviceHeading}
+          >
+            Let's Wheel
+          </AppText>
+        </RevealView>
         <View style={styles.serviceRow}>
           {riderServices.map((service, index) => (
             <RevealView
@@ -151,7 +228,7 @@ export default function RiderHomeScreen() {
             </RevealView>
           ))}
         </View>
-      </RevealView>
+      </Animated.View>
 
       <View style={styles.panelStack}>
         <View style={styles.searchPanel}>
@@ -175,48 +252,60 @@ export default function RiderHomeScreen() {
           </Pressable>
         </View>
 
-        <RevealView delay={180}>
-          <View style={styles.historyPanel}>
-            <View style={styles.historyHeader}>
-              <AppText variant="bodySmall" color={theme.colors.muted}>
-                Ride history
-              </AppText>
-              <Pressable onPress={() => router.push("/rider/history" as Href)}>
-                <AppText variant="monoSmall" color={theme.colors.orange}>
-                  See all
+        <Animated.View style={historyAnimatedStyle}>
+          <RevealView delay={180}>
+            <View
+              style={styles.historyPanel}
+              onLayout={({ nativeEvent }) => {
+                if (historyMeasuredHeight == null) {
+                  setHistoryMeasuredHeight(nativeEvent.layout.height);
+                }
+              }}
+            >
+              <View style={styles.historyHeader}>
+                <AppText variant="bodySmall" color={theme.colors.muted}>
+                  Ride history
                 </AppText>
-              </Pressable>
-            </View>
-            <View style={styles.historySection}>
-              {historyPreview.map((ride, index) => (
-                <RevealView key={ride.id} delay={220 + index * 70}>
-                  <Pressable
-                    onPress={() => router.push("/rider/history" as Href)}
-                  >
-                    <AppCard style={styles.historyCard}>
-                      <View style={styles.historyIcon}>
-                        <MaterialIcons
-                          name={ride.icon as any}
-                          size={16}
-                          color={theme.colors.black}
-                        />
-                      </View>
-                      <View style={styles.historyCopy}>
-                        <AppText variant="bodyMedium">{ride.title}</AppText>
-                        <AppText variant="bodySmall" color={theme.colors.muted}>
-                          {ride.meta}
+                <Pressable onPress={() => router.push("/rider/history" as Href)}>
+                  <AppText variant="monoSmall" color={theme.colors.orange}>
+                    See all
+                  </AppText>
+                </Pressable>
+              </View>
+              <View style={styles.historySection}>
+                {historyPreview.map((ride, index) => (
+                  <RevealView key={ride.id} delay={220 + index * 70}>
+                    <Pressable
+                      onPress={() => router.push("/rider/history" as Href)}
+                    >
+                      <AppCard style={styles.historyCard}>
+                        <View style={styles.historyIcon}>
+                          <MaterialIcons
+                            name={ride.icon as any}
+                            size={16}
+                            color={theme.colors.black}
+                          />
+                        </View>
+                        <View style={styles.historyCopy}>
+                          <AppText variant="bodyMedium">{ride.title}</AppText>
+                          <AppText
+                            variant="bodySmall"
+                            color={theme.colors.muted}
+                          >
+                            {ride.meta}
+                          </AppText>
+                        </View>
+                        <AppText variant="monoSmall" color={theme.colors.orange}>
+                          {ride.fare}
                         </AppText>
-                      </View>
-                      <AppText variant="monoSmall" color={theme.colors.orange}>
-                        {ride.fare}
-                      </AppText>
-                    </AppCard>
-                  </Pressable>
-                </RevealView>
-              ))}
+                      </AppCard>
+                    </Pressable>
+                  </RevealView>
+                ))}
+              </View>
             </View>
-          </View>
-        </RevealView>
+          </RevealView>
+        </Animated.View>
       </View>
     </AppScreen>
   );
@@ -230,6 +319,7 @@ const styles = StyleSheet.create({
   },
   mapWrap: {
     flexShrink: 0,
+    overflow: "hidden",
   },
   mapTopRow: {
     position: "absolute",
@@ -308,10 +398,23 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: 0,
     right: 0,
-    bottom: 232,
+    bottom: 212,
     paddingHorizontal: theme.spacing.gutter,
+    paddingTop: theme.spacing.sm,
+    backgroundColor: theme.colors.offWhite,
     gap: theme.spacing.sm,
     zIndex: 1,
+  },
+  swipeHandleWrap: {
+    alignItems: "center",
+    marginBottom: theme.spacing.xs,
+  },
+  swipeHandle: {
+    width: 52,
+    height: 6,
+    borderRadius: theme.radius.pill,
+    backgroundColor: theme.colors.black,
+    opacity: 0.18,
   },
   serviceHeading: {
     fontFamily: "Shrikhand_400Regular",
