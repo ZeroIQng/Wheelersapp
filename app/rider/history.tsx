@@ -1,43 +1,47 @@
-import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, View } from 'react-native';
+import MaterialIcons from "@expo/vector-icons/MaterialIcons";
+import { StatusBar } from "expo-status-bar";
+import { StyleSheet, View } from "react-native";
 
-import { AppCard } from '@/components/app-card';
-import { AppScreen } from '@/components/app-screen';
-import { AppText } from '@/components/app-text';
-import { SectionHeader } from '@/components/SectionHeader';
-import { theme } from '@/theme';
+import { AppCard } from "@/components/app-card";
+import { AppScreen } from "@/components/app-screen";
+import { AppText } from "@/components/app-text";
+import { SectionHeader } from "@/components/SectionHeader";
+import { theme } from "@/theme";
 
 const rides = [
   {
-    id: 'marina',
-    title: 'Marina to Lekki Phase 1',
-    fare: '$1.85',
-    time: 'Today, 2:14 PM',
-    status: 'Completed',
-    icon: 'directions-car',
+    id: "marina",
+    title: "Marina to Lekki Phase 1",
+    fare: "$1.85",
+    time: "Today, 2:14 PM",
+    status: "Completed",
+    icon: "directions-car",
   },
   {
-    id: 'airport',
-    title: 'Airport pickup',
-    fare: '$3.40',
-    time: 'Yesterday, 8:05 PM',
-    status: 'Completed',
-    icon: 'flight-land',
+    id: "airport",
+    title: "Airport pickup",
+    fare: "$3.40",
+    time: "Yesterday, 8:05 PM",
+    status: "Completed",
+    icon: "flight-land",
   },
   {
-    id: 'vi',
-    title: 'Victoria Island dropoff',
-    fare: '$2.25',
-    time: 'Yesterday, 1:23 PM',
-    status: 'Completed',
-    icon: 'location-on',
+    id: "vi",
+    title: "Victoria Island dropoff",
+    fare: "$2.25",
+    time: "Yesterday, 1:23 PM",
+    status: "Completed",
+    icon: "location-on",
   },
 ] as const;
 
 export default function RiderHistoryScreen() {
-  return ( 
-    <AppScreen backgroundColor={theme.colors.offWhite} scroll contentStyle={styles.container}>
+  return (
+    <AppScreen
+      backgroundColor={theme.colors.offWhite}
+      scroll
+      contentStyle={styles.container}
+    >
       <StatusBar style="dark" backgroundColor={theme.colors.offWhite} />
       <SectionHeader
         eyebrow="RIDER ACTIVITY"
@@ -50,7 +54,11 @@ export default function RiderHistoryScreen() {
         {rides.map((ride) => (
           <AppCard key={ride.id} style={styles.card}>
             <View style={styles.iconWrap}>
-              <MaterialIcons name={ride.icon} size={20} color={theme.colors.black} />
+              <MaterialIcons
+                name={ride.icon}
+                size={20}
+                color={theme.colors.black}
+              />
             </View>
             <View style={styles.copy}>
               <AppText variant="bodyMedium">{ride.title}</AppText>
@@ -82,8 +90,8 @@ const styles = StyleSheet.create({
     gap: theme.spacing.sm,
   },
   card: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: theme.spacing.sm,
   },
   iconWrap: {
@@ -93,15 +101,15 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.orangeLight,
     borderWidth: theme.borders.thick,
     borderColor: theme.colors.black,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   copy: {
     flex: 1,
     gap: 2,
   },
   meta: {
-    alignItems: 'flex-end',
+    alignItems: "flex-end",
     gap: 2,
   },
 });

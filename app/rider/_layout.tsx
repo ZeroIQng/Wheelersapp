@@ -1,8 +1,26 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { Tabs } from "expo-router";
+import { StyleSheet, View } from "react-native";
 
 import { HapticTab } from "@/components/haptic-tab";
 import { theme } from "@/theme";
+
+function RidesTabIcon({
+  color,
+  size,
+}: {
+  color: string;
+  size: number;
+}) {
+  return (
+    <View style={[styles.ridesIcon, { width: size + 8, height: size + 6 }]}>
+      <MaterialIcons name="calendar-today" color={color} size={size} />
+      <View style={[styles.historyBadge, { borderColor: theme.colors.white }]}>
+        <MaterialIcons name="history" color={color} size={size * 0.55} />
+      </View>
+    </View>
+  );
+}
 
 export default function RiderLayout() {
   return (
@@ -44,11 +62,11 @@ export default function RiderLayout() {
         }}
       />
       <Tabs.Screen
-        name="Rides"
+        name="history"
         options={{
           title: "Rides",
           tabBarIcon: ({ color, size }) => (
-            <MaterialIcons name="history" color={color} size={size} />
+            <RidesTabIcon color={color} size={size} />
           ),
         }}
       />
@@ -98,3 +116,22 @@ export default function RiderLayout() {
     </Tabs>
   );
 }
+
+const styles = StyleSheet.create({
+  ridesIcon: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  historyBadge: {
+    position: "absolute",
+    right: -1,
+    bottom: -1,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: theme.colors.white,
+    borderWidth: 1.5,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+});
