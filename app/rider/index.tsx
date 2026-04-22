@@ -17,18 +17,27 @@ const riderServices = [
     id: "book-ride",
     label: "Book ride",
     icon: "local-taxi",
+    tag: "Now",
+    cardColor: theme.colors.orangeLight,
+    badgeColor: theme.colors.orange,
     route: "/destination-search" as Href,
   },
   {
     id: "schedule-ride",
-    label: "Schedule a ride",
-    icon: "schedule",
+    label: "Schedule",
+    icon: "event-available",
+    tag: "Later",
+    cardColor: "#FFF4CC",
+    badgeColor: "#F59E0B",
     route: "/destination-search" as Href,
   },
   {
     id: "group-ride",
     label: "Group Ride",
-    icon: "people-alt",
+    icon: "groups",
+    tag: "Split",
+    cardColor: "#E8FFF7",
+    badgeColor: theme.colors.green,
     route: "/destination-search" as Href,
   },
 ] as const;
@@ -45,7 +54,7 @@ export default function RiderHomeScreen() {
     >
       <StatusBar style="dark" backgroundColor="#D4E6D4" />
       <RevealView style={styles.mapWrap}>
-        <StaticMap height={286} scene="riderHome">
+        <StaticMap height={300} scene="riderHome">
           <FloatingView style={styles.triangle} distance={12} rotate={8}>
             <TriangleShape color="rgba(255,92,0,0.15)" />
           </FloatingView>
@@ -89,43 +98,69 @@ export default function RiderHomeScreen() {
         </StaticMap>
       </RevealView>
 
-      <View style={styles.panelStack}>
-        <RevealView delay={80} style={styles.sectionIntro}>
-          <AppText variant="h3" color={theme.colors.orange}>
-            How do you want to Wheel?
-          </AppText>
-          <View style={styles.serviceRow}>
-            {riderServices.map((service, index) => (
-              <RevealView
-                key={service.id}
-                delay={110 + index * 60}
-                style={styles.serviceSlot}
+      <RevealView delay={80} style={styles.serviceSection}>
+        <AppText
+          variant="h3"
+          color={theme.colors.orange}
+          style={styles.serviceHeading}
+        >
+          Let's Wheel
+        </AppText>
+        <View style={styles.serviceRow}>
+          {riderServices.map((service, index) => (
+            <RevealView
+              key={service.id}
+              delay={110 + index * 60}
+              style={styles.serviceSlot}
+            >
+              <Pressable
+                onPress={() => router.push(service.route)}
+                style={[
+                  styles.serviceCard,
+                  { backgroundColor: service.cardColor },
+                  index === 1 ? styles.serviceCardRaised : null,
+                ]}
               >
-                <Pressable
-                  onPress={() => router.push(service.route)}
-                  style={styles.serviceCard}
-                >
-                  <View style={styles.serviceIcon}>
+                <View style={styles.serviceTop}>
+                  <View
+                    style={[
+                      styles.serviceIcon,
+                      { backgroundColor: service.badgeColor },
+                    ]}
+                  >
                     <MaterialIcons
                       name={service.icon as any}
-                      size={18}
+                      size={20}
                       color={theme.colors.black}
                     />
                   </View>
-                  <AppText variant="bodySmall">{service.label}</AppText>
-                </Pressable>
-              </RevealView>
-            ))}
-          </View>
-        </RevealView>
+                  <View style={styles.serviceTag}>
+                    <AppText variant="monoSmall" style={styles.serviceTagText}>
+                      {service.tag}
+                    </AppText>
+                  </View>
+                </View>
+                <AppText
+                  variant="bodyMedium"
+                  color={theme.colors.black}
+                  style={styles.serviceLabel}
+                >
+                  {service.label}
+                </AppText>
+              </Pressable>
+            </RevealView>
+          ))}
+        </View>
+      </RevealView>
 
+      <View style={styles.panelStack}>
         <View style={styles.searchPanel}>
           <Pressable
             onPress={() => router.push("/destination-search")}
             style={styles.searchBox}
           >
             <View style={styles.searchCopy}>
-              <AppText variant="bodyMedium">Where to?</AppText>
+              <AppText variant="bodyMedium">Wheel to?</AppText>
               <AppText variant="bodySmall" color={theme.colors.muted}>
                 Search destination...
               </AppText>
@@ -269,35 +304,71 @@ const styles = StyleSheet.create({
     paddingBottom: 0,
     gap: theme.spacing.sm,
   },
-  sectionIntro: {
+  serviceSection: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 232,
+    paddingHorizontal: theme.spacing.gutter,
     gap: theme.spacing.sm,
+    zIndex: 1,
+  },
+  serviceHeading: {
+    fontFamily: "Shrikhand_400Regular",
+    fontSize: 28,
+    lineHeight: 32,
+    letterSpacing: 0.1,
+  },
+  serviceTop: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+  },
+  serviceTag: {
+    borderWidth: theme.borders.regular,
+    borderColor: theme.colors.black,
+    borderRadius: theme.radius.pill,
+    backgroundColor: theme.colors.white,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  serviceTagText: {
+    fontSize: 11,
+    lineHeight: 12,
+    letterSpacing: 0.3,
+  },
+  serviceCardRaised: {
+    transform: [{ translateY: -6 }],
   },
   serviceRow: {
     flexDirection: "row",
+    marginTop: theme.spacing.xs,
     gap: theme.spacing.sm,
   },
   serviceSlot: {
     flex: 1,
   },
   serviceCard: {
-    minHeight: 88,
+    minHeight: 84,
     borderWidth: theme.borders.thick,
     borderColor: theme.colors.black,
     borderRadius: theme.radius.md,
-    backgroundColor: theme.colors.white,
     paddingHorizontal: theme.spacing.sm,
     paddingVertical: theme.spacing.sm,
     alignItems: "flex-start",
     justifyContent: "space-between",
     ...theme.shadows.card,
   },
+  serviceLabel: {
+    fontSize: 13,
+    lineHeight: 16,
+  },
   serviceIcon: {
-    width: 34,
-    height: 34,
+    width: 38,
+    height: 38,
     borderWidth: theme.borders.thick,
     borderColor: theme.colors.black,
-    borderRadius: theme.radius.sm,
-    backgroundColor: theme.colors.orangeLight,
+    borderRadius: theme.radius.pill,
     alignItems: "center",
     justifyContent: "center",
   },

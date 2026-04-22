@@ -22,6 +22,7 @@ export default function RootLayout() {
     ClashDisplay_500Medium: require("../assets/fonts/ClashDisplay-Medium.ttf"),
     ClashDisplay_600Semibold: require("../assets/fonts/ClashDisplay-Semibold.ttf"),
     ClashDisplay_700Bold: require("../assets/fonts/ClashDisplay-Bold.ttf"),
+    Shrikhand_400Regular: require("../assets/fonts/Shrikhand-Regular.ttf"),
   });
 
   useEffect(() => {
