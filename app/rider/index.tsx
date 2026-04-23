@@ -27,6 +27,7 @@ const riderServices = [
     id: "book-ride",
     label: "Book ride",
     tag: "Now",
+    description: "Solo pickup in minutes",
     cardColor: theme.colors.orangeLight,
     route: "/destination-search" as Href,
   },
@@ -34,6 +35,7 @@ const riderServices = [
     id: "schedule-ride",
     label: "Schedule",
     tag: "Later",
+    description: "Book ahead for later",
     cardColor: "#FFF4CC",
     route: "/destination-search" as Href,
   },
@@ -41,9 +43,17 @@ const riderServices = [
     id: "group-ride",
     label: "Group Ride",
     tag: "Split",
+    description: "Split fare with your crew",
+    riders: ["Ada", "Tobi", "Maya"],
     cardColor: "#E8FFF7",
     route: "/destination-search" as Href,
   },
+] as const;
+
+const groupRosterAvatarOffsets = [
+  {},
+  { marginLeft: -5, backgroundColor: "#FFD9BA" },
+  { marginLeft: -5, backgroundColor: "#D7F4FF" },
 ] as const;
 
 function ClockBadge() {
@@ -210,6 +220,7 @@ function SvgPersonThree() {
 
 function GroupRideArtwork() {
   const leftFloat = useSharedValue(0);
+  const centerFloat = useSharedValue(0);
   const rightFloat = useSharedValue(0);
 
   useEffect(() => {
@@ -217,6 +228,14 @@ function GroupRideArtwork() {
       withSequence(
         withTiming(-3, { duration: 1100, easing: Easing.inOut(Easing.ease) }),
         withTiming(0, { duration: 1100, easing: Easing.inOut(Easing.ease) })
+      ),
+      -1,
+      false
+    );
+    centerFloat.value = withRepeat(
+      withSequence(
+        withTiming(-4, { duration: 1050, easing: Easing.inOut(Easing.ease) }),
+        withTiming(0, { duration: 1050, easing: Easing.inOut(Easing.ease) })
       ),
       -1,
       false
@@ -229,10 +248,13 @@ function GroupRideArtwork() {
       -1,
       false
     );
-  }, [leftFloat, rightFloat]);
+  }, [centerFloat, leftFloat, rightFloat]);
 
   const leftStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: leftFloat.value }],
+  }));
+  const centerStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: centerFloat.value }],
   }));
   const rightStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: rightFloat.value }],
@@ -245,6 +267,11 @@ function GroupRideArtwork() {
           <SvgPersonOne />
         </View>
       </Animated.View>
+      <Animated.View style={[styles.groupPersonCenter, centerStyle]}>
+        <View style={styles.groupPersonScale}>
+          <SvgPersonThree />
+        </View>
+      </Animated.View>
       <Animated.View style={[styles.groupPersonRight, rightStyle]}>
         <View style={styles.groupPersonScale}>
           <SvgPersonTwo />
@@ -252,6 +279,81 @@ function GroupRideArtwork() {
       </Animated.View>
       <View style={styles.groupRideVehicle}>
         <ElectricVehicle accentColor={theme.colors.green} />
+      </View>
+    </View>
+  );
+}
+
+function GroupRideRoster({
+  riders,
+}: {
+  riders: readonly string[];
+}) {
+  const bobOne = useSharedValue(0);
+  const bobTwo = useSharedValue(0);
+  const bobThree = useSharedValue(0);
+
+  useEffect(() => {
+    bobOne.value = withRepeat(
+      withSequence(
+        withTiming(-2, { duration: 850, easing: Easing.inOut(Easing.ease) }),
+        withTiming(0, { duration: 850, easing: Easing.inOut(Easing.ease) })
+      ),
+      -1,
+      false
+    );
+    bobTwo.value = withRepeat(
+      withSequence(
+        withTiming(-3, { duration: 900, easing: Easing.inOut(Easing.ease) }),
+        withTiming(0, { duration: 900, easing: Easing.inOut(Easing.ease) })
+      ),
+      -1,
+      false
+    );
+    bobThree.value = withRepeat(
+      withSequence(
+        withTiming(-2, { duration: 950, easing: Easing.inOut(Easing.ease) }),
+        withTiming(0, { duration: 950, easing: Easing.inOut(Easing.ease) })
+      ),
+      -1,
+      false
+    );
+  }, [bobOne, bobThree, bobTwo]);
+
+  const bobStyles = [
+    useAnimatedStyle(() => ({
+      transform: [{ translateY: bobOne.value }],
+    })),
+    useAnimatedStyle(() => ({
+      transform: [{ translateY: bobTwo.value }],
+    })),
+    useAnimatedStyle(() => ({
+      transform: [{ translateY: bobThree.value }],
+    })),
+  ];
+
+  return (
+    <View style={styles.groupRoster}>
+      <View style={styles.groupRosterAvatars}>
+        {riders.slice(0, 3).map((rider, index) => (
+          <Animated.View
+            key={rider}
+            style={[
+              styles.groupRosterAvatar,
+              groupRosterAvatarOffsets[index],
+              bobStyles[index],
+            ]}
+          >
+            <AppText variant="monoSmall" style={styles.groupRosterInitials}>
+              {rider.slice(0, 1)}
+            </AppText>
+          </Animated.View>
+        ))}
+      </View>
+      <View style={styles.groupRosterCopy}>
+        <AppText variant="bodySmall" style={styles.groupRosterTitle}>
+          {riders.join(" • ")}
+        </AppText>
       </View>
     </View>
   );
@@ -455,7 +557,6 @@ export default function RiderHomeScreen() {
                 style={[
                   styles.serviceCard,
                   { backgroundColor: service.cardColor },
-                  index === 1 ? styles.serviceCardRaised : null,
                 ]}
               >
                 <View style={styles.serviceTop}>
@@ -466,13 +567,27 @@ export default function RiderHomeScreen() {
                     </AppText>
                   </View>
                 </View>
-                <AppText
-                  variant="bodyMedium"
-                  color={theme.colors.black}
-                  style={styles.serviceLabel}
-                >
-                  {service.label}
-                </AppText>
+                <View style={styles.serviceContent}>
+                  <View style={styles.serviceCopy}>
+                    <AppText
+                      variant="bodyMedium"
+                      color={theme.colors.black}
+                      style={styles.serviceLabel}
+                    >
+                      {service.label}
+                    </AppText>
+                    <AppText
+                      variant="bodySmall"
+                      color={theme.colors.muted}
+                      style={styles.serviceDescription}
+                    >
+                      {service.description}
+                    </AppText>
+                  </View>
+                  {service.id === "group-ride" ? (
+                    <GroupRideRoster riders={service.riders} />
+                  ) : null}
+                </View>
               </Pressable>
             </RevealView>
           ))}
@@ -692,19 +807,17 @@ const styles = StyleSheet.create({
     lineHeight: 11,
     letterSpacing: 0.2,
   },
-  serviceCardRaised: {
-    transform: [{ translateY: -6 }],
-  },
   serviceRow: {
     flexDirection: "row",
     marginTop: theme.spacing.xs,
     gap: theme.spacing.sm,
+    alignItems: "stretch",
   },
   serviceSlot: {
     flex: 1,
   },
   serviceCard: {
-    minHeight: 92,
+    height: 132,
     borderWidth: theme.borders.thick,
     borderColor: theme.colors.black,
     borderRadius: theme.radius.md,
@@ -718,6 +831,17 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 16,
   },
+  serviceContent: {
+    width: "100%",
+    gap: 6,
+  },
+  serviceCopy: {
+    gap: 2,
+  },
+  serviceDescription: {
+    fontSize: 11,
+    lineHeight: 14,
+  },
   vehicleArtwork: {
     position: "relative",
     width: 58,
@@ -725,34 +849,74 @@ const styles = StyleSheet.create({
   },
   groupRideArtwork: {
     position: "relative",
-    width: 58,
-    height: 42,
+    width: 62,
+    height: 46,
     overflow: "visible",
   },
   groupPersonLeft: {
     position: "absolute",
-    left: -4,
+    left: -2,
+    top: 5,
+    zIndex: 2,
+  },
+  groupPersonCenter: {
+    position: "absolute",
+    left: 15,
     top: -2,
-    zIndex: 3,
+    zIndex: 4,
   },
   groupPersonRight: {
     position: "absolute",
-    right: -4,
-    top: -2,
+    right: -1,
+    top: 5,
     zIndex: 3,
   },
   groupPersonScale: {
-    transform: [{ scale: 0.24 }],
-    width: 10,
-    height: 22,
+    transform: [{ scale: 0.22 }],
+    width: 14,
+    height: 24,
     overflow: "hidden",
   },
   groupRideVehicle: {
     position: "absolute",
-    left: 2,
-    bottom: -1,
+    left: 4,
+    bottom: -2,
     zIndex: 1,
-    transform: [{ scale: 0.82 }],
+    transform: [{ scale: 0.76 }],
+  },
+  groupRoster: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 2,
+  },
+  groupRosterAvatars: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingRight: 6,
+  },
+  groupRosterAvatar: {
+    width: 20,
+    height: 20,
+    borderRadius: theme.radius.pill,
+    borderWidth: 1.5,
+    borderColor: theme.colors.black,
+    backgroundColor: theme.colors.white,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  groupRosterInitials: {
+    fontSize: 9,
+    lineHeight: 10,
+    color: theme.colors.black,
+  },
+  groupRosterCopy: {
+    flex: 1,
+  },
+  groupRosterTitle: {
+    fontSize: 10,
+    lineHeight: 12,
+    color: theme.colors.black,
   },
   evWrap: {
     position: "relative",
