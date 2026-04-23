@@ -1,6 +1,7 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { StatusBar } from "expo-status-bar";
-import { StyleSheet, View } from "react-native";
+import { useState } from "react";
+import { Pressable, StyleSheet, View } from "react-native";
 
 import { AppCard } from "@/components/app-card";
 import { AppScreen } from "@/components/app-screen";
@@ -35,7 +36,36 @@ const rides = [
   },
 ] as const;
 
+const scheduledRides = [
+  {
+    id: "ikeja-meeting",
+    title: "Ikeja meeting pickup",
+    fare: "$2.90",
+    time: "Tomorrow, 8:30 AM",
+    status: "Scheduled",
+    icon: "event",
+  },
+  {
+    id: "vi-dinner",
+    title: "Dinner at Victoria Island",
+    fare: "$3.15",
+    time: "Friday, 7:00 PM",
+    status: "Scheduled",
+    icon: "schedule",
+  },
+] as const;
+
+const rideTabs = [
+  { id: "history", label: "History" },
+  { id: "scheduled", label: "Scheduled Rides" },
+] as const;
+
 export default function RiderHistoryScreen() {
+  const [activeTab, setActiveTab] = useState<(typeof rideTabs)[number]["id"]>(
+    "history"
+  );
+  const visibleRides = activeTab === "history" ? rides : scheduledRides;
+
   return (
     <AppScreen
       backgroundColor={theme.colors.offWhite}
@@ -50,8 +80,30 @@ export default function RiderHistoryScreen() {
         titleVariant="h1"
       />
 
+      <View style={styles.tabRow}>
+        {rideTabs.map((tab) => {
+          const active = tab.id === activeTab;
+
+          return (
+            <Pressable
+              key={tab.id}
+              onPress={() => setActiveTab(tab.id)}
+              style={[styles.tabButton, active ? styles.tabButtonActive : null]}
+            >
+              <AppText
+                variant="bodyMedium"
+                color={active ? theme.colors.white : theme.colors.black}
+                style={styles.tabText}
+              >
+                {tab.label}
+              </AppText>
+            </Pressable>
+          );
+        })}
+      </View>
+
       <View style={styles.list}>
-        {rides.map((ride) => (
+        {visibleRides.map((ride) => (
           <AppCard key={ride.id} style={styles.card}>
             <View style={styles.iconWrap}>
               <MaterialIcons
@@ -85,6 +137,28 @@ const styles = StyleSheet.create({
   container: {
     gap: theme.spacing.lg,
     paddingTop: theme.spacing.lg,
+  },
+  tabRow: {
+    flexDirection: "row",
+    gap: theme.spacing.sm,
+  },
+  tabButton: {
+    flex: 1,
+    minHeight: 52,
+    borderRadius: theme.radius.md,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    backgroundColor: theme.colors.white,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: theme.spacing.sm,
+    ...theme.shadows.card,
+  },
+  tabButtonActive: {
+    backgroundColor: theme.colors.orange,
+  },
+  tabText: {
+    textAlign: "center",
   },
   list: {
     gap: theme.spacing.sm,
