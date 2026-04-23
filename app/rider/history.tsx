@@ -88,15 +88,23 @@ export default function RiderHistoryScreen() {
             <Pressable
               key={tab.id}
               onPress={() => setActiveTab(tab.id)}
-              style={[styles.tabButton, active ? styles.tabButtonActive : null]}
+              style={styles.tabButton}
             >
-              <AppText
-                variant="bodyMedium"
-                color={active ? theme.colors.white : theme.colors.black}
-                style={styles.tabText}
-              >
-                {tab.label}
-              </AppText>
+              <View style={styles.tabInner}>
+                <AppText
+                  variant="bodyMedium"
+                  color={active ? theme.colors.black : theme.colors.muted}
+                  style={[styles.tabText, active ? styles.tabTextActive : null]}
+                >
+                  {tab.label}
+                </AppText>
+                <View
+                  style={[
+                    styles.tabIndicator,
+                    active ? styles.tabIndicatorActive : null,
+                  ]}
+                />
+              </View>
             </Pressable>
           );
         })}
@@ -140,25 +148,33 @@ const styles = StyleSheet.create({
   },
   tabRow: {
     flexDirection: "row",
-    gap: theme.spacing.sm,
+    gap: theme.spacing.lg,
+    alignItems: "flex-start",
+    borderBottomWidth: 1.5,
+    borderBottomColor: theme.colors.borderLight,
+    paddingBottom: theme.spacing.xs,
   },
   tabButton: {
-    flex: 1,
-    minHeight: 52,
-    borderRadius: theme.radius.md,
-    borderWidth: theme.borders.thick,
-    borderColor: theme.colors.black,
-    backgroundColor: theme.colors.white,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: theme.spacing.sm,
-    ...theme.shadows.card,
+    paddingVertical: theme.spacing.xs,
   },
-  tabButtonActive: {
-    backgroundColor: theme.colors.orange,
+  tabInner: {
+    alignItems: "flex-start",
+    gap: 6,
   },
   tabText: {
-    textAlign: "center",
+    textAlign: "left",
+  },
+  tabTextActive: {
+    fontFamily: "ClashDisplay_600Semibold",
+  },
+  tabIndicator: {
+    width: "100%",
+    height: 4,
+    borderRadius: theme.radius.pill,
+    backgroundColor: "transparent",
+  },
+  tabIndicatorActive: {
+    backgroundColor: theme.colors.orange,
   },
   list: {
     gap: theme.spacing.sm,
