@@ -15,7 +15,8 @@ import { BackArrow } from "@/components/back-arrow";
 import { FloatingView } from "@/components/motion";
 import { StaticMap } from "@/components/static-map";
 import { theme } from "@/theme";
-
+import { Dimensions } from "react-native";
+const { height } = Dimensions.get("window");
 const wheelerRide = {
   name: "Wheeler",
   price: "₦3,800",
@@ -29,7 +30,7 @@ const wheelerRide = {
 export default function RideSelectionScreen() {
   const router = useRouter();
   const collapsedSheetOffset = 196;
-  const sheetOffset = useSharedValue(collapsedSheetOffset);
+  const sheetOffset = useSharedValue(0);
 
   const expandSheet = () => {
     sheetOffset.value = withTiming(0, { duration: 220 });
@@ -80,7 +81,7 @@ export default function RideSelectionScreen() {
       <StatusBar style="dark" backgroundColor={theme.colors.mapBase} />
 
       <View style={styles.mapWrap}>
-        <StaticMap height={760} scene="rideSelection">
+        <StaticMap height={height} scene="rideSelection">
           <View style={styles.topBar}>
             <BackArrow onPress={() => router.back()} />
             <FloatingView distance={5}>

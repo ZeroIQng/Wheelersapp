@@ -1,19 +1,19 @@
-import { useRouter } from 'expo-router';
-import { useState } from 'react';
-import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, TextInput, View } from 'react-native';
+import { useRouter } from "expo-router";
+import { StatusBar } from "expo-status-bar";
+import { useState } from "react";
+import { StyleSheet, TextInput, View } from "react-native";
 
-import { AppButton } from '@/components/app-button';
-import { AppScreen } from '@/components/app-screen';
-import { AppText } from '@/components/app-text';
-import { CrossShape, RingStack } from '@/components/decorative-shapes';
-import { FlowHeader } from '@/components/flow-header';
-import { FloatingView, RevealView } from '@/components/motion';
-import { theme } from '@/theme';
+import { AppButton } from "@/components/app-button";
+import { AppScreen } from "@/components/app-screen";
+import { AppText } from "@/components/app-text";
+import { CrossShape, RingStack } from "@/components/decorative-shapes";
+import { FlowHeader } from "@/components/flow-header";
+import { FloatingView, RevealView } from "@/components/motion";
+import { theme } from "@/theme";
 
 export default function PhoneAuthScreen() {
   const router = useRouter();
-  const [phone, setPhone] = useState('');
+  const [phone, setPhone] = useState("");
   const backgroundColor = theme.colors.offWhite;
   const textColor = theme.colors.black;
   const mutedColor = theme.colors.mutedLight;
@@ -22,7 +22,11 @@ export default function PhoneAuthScreen() {
   const prefixBackground = theme.colors.orangeLight;
 
   return (
-    <AppScreen backgroundColor={backgroundColor} scroll contentStyle={styles.container}>
+    <AppScreen
+      backgroundColor={backgroundColor}
+      scroll
+      contentStyle={styles.container}
+    >
       <StatusBar style="dark" backgroundColor={backgroundColor} />
       <FloatingView style={styles.rings} distance={10} rotate={10}>
         <RingStack color="rgba(255,92,0,0.08)" width={88} height={88} />
@@ -41,8 +45,21 @@ export default function PhoneAuthScreen() {
         />
 
         <RevealView delay={120}>
-          <View style={[styles.phoneField, { borderColor, backgroundColor: fieldBackground }]}>
-            <View style={[styles.prefix, { backgroundColor: prefixBackground, borderRightColor: borderColor }]}>
+          <View
+            style={[
+              styles.phoneField,
+              { borderColor, backgroundColor: fieldBackground },
+            ]}
+          >
+            <View
+              style={[
+                styles.prefix,
+                {
+                  backgroundColor: prefixBackground,
+                  borderRightColor: borderColor,
+                },
+              ]}
+            >
               <AppText style={styles.flag}>🇳🇬</AppText>
               <AppText variant="mono" color={textColor}>
                 +234
@@ -65,7 +82,10 @@ export default function PhoneAuthScreen() {
         </AppText>
 
         <RevealView delay={220}>
-          <AppButton title="Send code ↗" onPress={() => router.push('/otp-verify')} />
+          <AppButton
+            title="Send code"
+            onPress={() => router.push("/otp-verify")}
+          />
         </RevealView>
 
         <AppText variant="bodySmall" color={mutedColor} style={styles.terms}>
@@ -84,26 +104,26 @@ const styles = StyleSheet.create({
     gap: theme.spacing.xl,
   },
   rings: {
-    position: 'absolute',
+    position: "absolute",
     top: 20,
     right: 8,
   },
   cross: {
-    position: 'absolute',
+    position: "absolute",
     bottom: 58,
     right: 22,
   },
   phoneField: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     borderWidth: theme.borders.thick,
     borderRadius: theme.radius.sm,
-    overflow: 'hidden',
+    overflow: "hidden",
     ...theme.shadows.card,
   },
   prefix: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: theme.spacing.sm,
     paddingHorizontal: theme.spacing.md,
     paddingVertical: theme.spacing.md,
@@ -120,6 +140,6 @@ const styles = StyleSheet.create({
     letterSpacing: 1.8,
   },
   terms: {
-    textAlign: 'center',
+    textAlign: "center",
   },
 });
