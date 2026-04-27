@@ -1,7 +1,7 @@
-import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import { useState } from 'react';
-import { useRouter } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
+import MaterialIcons from "@expo/vector-icons/MaterialIcons";
+import { useRouter } from "expo-router";
+import { StatusBar } from "expo-status-bar";
+import { useState } from "react";
 import {
   Alert,
   Modal,
@@ -10,59 +10,53 @@ import {
   StyleSheet,
   TextInput,
   View,
-} from 'react-native';
+} from "react-native";
 
-import { AppButton } from '@/components/app-button';
-import { AppCard } from '@/components/app-card';
-import { AppScreen } from '@/components/app-screen';
-import { AppText } from '@/components/app-text';
-import { MetricCard } from '@/components/MetricCard';
-import { SectionHeader } from '@/components/SectionHeader';
-import { WalletBalanceCard } from '@/components/WalletBalanceCard';
-import { walletOverview } from '@/data/mock';
-import { theme } from '@/theme';
+import { AppButton } from "@/components/app-button";
+import { AppCard } from "@/components/app-card";
+import { AppScreen } from "@/components/app-screen";
+import { AppText } from "@/components/app-text";
+import { MetricCard } from "@/components/MetricCard";
+import { SectionHeader } from "@/components/SectionHeader";
+import { WalletBalanceCard } from "@/components/WalletBalanceCard";
+import { walletOverview } from "@/data/mock";
+import { theme } from "@/theme";
 
-type PaymentMethod = 'card' | 'bank-transfer' | null;
+type PaymentMethod = "card" | "bank-transfer" | null;
 
 const paymentMethods = [
   {
-    id: 'card' as const,
-    icon: 'credit-card',
-    title: 'Card',
-    subtitle: 'Pay instantly with your debit or credit card.',
+    id: "card" as const,
+    icon: "credit-card",
+    title: "Card",
+    subtitle: "Pay instantly with your debit or credit card.",
   },
   {
-    id: 'bank-transfer' as const,
-    icon: 'account-balance',
-    title: 'Bank transfer',
-    subtitle: 'Transfer from your bank app and confirm in checkout.',
+    id: "bank-transfer" as const,
+    icon: "account-balance",
+    title: "Bank transfer",
+    subtitle: "Transfer from your bank app and confirm in checkout.",
   },
 ] as const;
 
 const walletPages = [
   {
-    id: 'transactions',
-    icon: 'receipt-long',
-    title: 'View transactions',
-    subtitle: 'See wallet inflow and ride charges.',
+    id: "transactions",
+    icon: "receipt-long",
+    title: "View transactions",
+    subtitle: "See wallet inflow and ride charges.",
   },
   {
-    id: 'pay-online',
-    icon: 'language',
-    title: 'Pay online',
-    subtitle: 'Choose card or bank transfer checkout.',
-  },
-  {
-    id: 'withdrawals',
-    icon: 'hourglass-empty',
-    title: 'Withdrawals',
-    subtitle: 'Pending for now while deposit goes live.',
+    id: "pay-online",
+    icon: "language",
+    title: "Pay online",
+    subtitle: "Choose card or bank transfer checkout.",
   },
 ] as const;
 
 export default function WalletScreen() {
   const router = useRouter();
-  const [depositAmount, setDepositAmount] = useState('');
+  const [depositAmount, setDepositAmount] = useState("");
   const [isDepositModalVisible, setDepositModalVisible] = useState(false);
   const [isPayOnlineModalVisible, setPayOnlineModalVisible] = useState(false);
   const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>(null);
@@ -80,12 +74,18 @@ export default function WalletScreen() {
   };
 
   const handleWithdrawPress = () => {
-    Alert.alert('Withdrawals pending', 'Withdraw will stay pending for now. Deposit flow comes first.');
+    Alert.alert(
+      "Withdrawals pending",
+      "Withdraw will stay pending for now. Deposit flow comes first.",
+    );
   };
 
   const handleDepositContinue = () => {
     if (!depositAmount.trim()) {
-      Alert.alert('Amount required', 'Enter the amount you want to deposit in Naira.');
+      Alert.alert(
+        "Amount required",
+        "Enter the amount you want to deposit in Naira.",
+      );
       return;
     }
 
@@ -95,23 +95,29 @@ export default function WalletScreen() {
 
   const handleProceedPayment = () => {
     if (!selectedMethod) {
-      Alert.alert('Select a payment method', 'Choose card or bank transfer before continuing.');
+      Alert.alert(
+        "Select a payment method",
+        "Choose card or bank transfer before continuing.",
+      );
       return;
     }
 
     Alert.alert(
-      'Checkout ready',
-      `${selectedMethod === 'card' ? 'Card' : 'Bank transfer'} selected for NGN ${depositAmount}.`
+      "Checkout ready",
+      `${selectedMethod === "card" ? "Card" : "Bank transfer"} selected for NGN ${depositAmount}.`,
     );
   };
 
   const handleWalletPagePress = (pageId: string) => {
-    if (pageId === 'transactions') {
-      Alert.alert('Transactions', 'Your recent wallet transactions are listed below on this page.');
+    if (pageId === "transactions") {
+      Alert.alert(
+        "Transactions",
+        "Transaction history will open from this shortcut soon.",
+      );
       return;
     }
 
-    if (pageId === 'pay-online') {
+    if (pageId === "pay-online") {
       if (!depositAmount.trim()) {
         setDepositModalVisible(true);
         return;
@@ -121,16 +127,20 @@ export default function WalletScreen() {
       return;
     }
 
-    Alert.alert('Withdrawals pending', 'Withdraw pages are not active yet.');
+    Alert.alert("Withdrawals pending", "Withdraw pages are not active yet.");
   };
 
   return (
     <>
-      <AppScreen backgroundColor={theme.colors.offWhite} scroll contentStyle={styles.container}>
+      <AppScreen
+        backgroundColor={theme.colors.offWhite}
+        scroll
+        contentStyle={styles.container}
+      >
         <StatusBar style="dark" backgroundColor={theme.colors.offWhite} />
         <SectionHeader
           actionLabel="Rider home"
-          onActionPress={() => router.replace('/rider')}
+          onActionPress={() => router.replace("/rider")}
           subtitle="Fund your wallet in Naira, then choose how you want to pay online."
           title="Wallet"
           titleVariant="h1"
@@ -139,6 +149,9 @@ export default function WalletScreen() {
         <WalletBalanceCard
           balance={walletOverview.balance}
           fiatApprox={walletOverview.fiatApprox}
+          accountName={walletOverview.accountDetails.accountName}
+          accountNumber={walletOverview.accountDetails.accountNumber}
+          bankName={walletOverview.accountDetails.bankName}
           onDeposit={openDepositModal}
           onWithdraw={handleWithdrawPress}
         />
@@ -167,9 +180,14 @@ export default function WalletScreen() {
             <Pressable
               key={page.id}
               onPress={() => handleWalletPagePress(page.id)}
-              style={styles.pageCard}>
+              style={styles.pageCard}
+            >
               <View style={styles.pageIconWrap}>
-                <MaterialIcons color={theme.colors.black} name={page.icon} size={18} />
+                <MaterialIcons
+                  color={theme.colors.black}
+                  name={page.icon}
+                  size={18}
+                />
               </View>
               <View style={styles.pageCopy}>
                 <AppText variant="label">{page.title}</AppText>
@@ -177,53 +195,22 @@ export default function WalletScreen() {
                   {page.subtitle}
                 </AppText>
               </View>
-              <MaterialIcons color={theme.colors.orange} name="arrow-forward" size={18} />
+              <MaterialIcons
+                color={theme.colors.orange}
+                name="arrow-forward"
+                size={18}
+              />
             </Pressable>
           ))}
         </View>
-
-        <AppCard backgroundColor="#FFF7F0" borderColor="#F0B48D" style={styles.depositPromptCard}>
-          <View style={styles.depositPromptCopy}>
-            <AppText variant="h3">Deposit in Naira</AppText>
-            <AppText variant="bodySmall" color={theme.colors.muted}>
-              Tap deposit, enter your amount, then move into Pay Online checkout.
-            </AppText>
-          </View>
-          <AppButton onPress={openDepositModal} title="Start NGN deposit" />
-        </AppCard>
-
-        <SectionHeader subtitle="Your latest wallet activity" title="Recent transactions" titleVariant="h3" />
-        <AppCard style={styles.transactions}>
-          {walletOverview.recentTransactions.map((transaction, index) => (
-            <View
-              key={transaction.id}
-              style={[
-                styles.transactionRow,
-                index < walletOverview.recentTransactions.length - 1 ? styles.divider : null,
-              ]}>
-              <View style={styles.transactionCopy}>
-                <AppText variant="bodyMedium">{transaction.title}</AppText>
-                <AppText variant="bodySmall" color={theme.colors.muted}>
-                  {transaction.timestamp}
-                </AppText>
-              </View>
-              <AppText
-                variant="mono"
-                color={
-                  transaction.direction === 'credit' ? theme.colors.green : theme.colors.danger
-                }>
-                {transaction.amount}
-              </AppText>
-            </View>
-          ))}
-        </AppCard>
       </AppScreen>
 
       <Modal
         animationType="fade"
         onRequestClose={closeDepositModal}
         transparent
-        visible={isDepositModalVisible}>
+        visible={isDepositModalVisible}
+      >
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
@@ -234,7 +221,11 @@ export default function WalletScreen() {
                 </AppText>
               </View>
               <Pressable onPress={closeDepositModal} style={styles.closeButton}>
-                <MaterialIcons color={theme.colors.black} name="close" size={18} />
+                <MaterialIcons
+                  color={theme.colors.black}
+                  name="close"
+                  size={18}
+                />
               </Pressable>
             </View>
 
@@ -253,8 +244,12 @@ export default function WalletScreen() {
             </View>
 
             <View style={styles.modalButtonRow}>
-              <AppButton onPress={closeDepositModal} style={styles.secondaryButton} title="Cancel" variant="ghost" />
-              <AppButton onPress={handleDepositContinue} style={styles.secondaryButton} title="Continue" />
+              <View style={styles.modalButtonSlot}>
+                <AppButton onPress={closeDepositModal} title="Cancel" />
+              </View>
+              <View style={styles.modalButtonSlot}>
+                <AppButton onPress={handleDepositContinue} title="Continue" />
+              </View>
             </View>
           </View>
         </View>
@@ -263,7 +258,8 @@ export default function WalletScreen() {
       <Modal
         animationType="slide"
         onRequestClose={closePayOnlineModal}
-        visible={isPayOnlineModalVisible}>
+        visible={isPayOnlineModalVisible}
+      >
         <View style={styles.checkoutScreen}>
           <StatusBar style="dark" backgroundColor={theme.colors.offWhite} />
           <View style={styles.checkoutHeader}>
@@ -272,8 +268,13 @@ export default function WalletScreen() {
                 setPayOnlineModalVisible(false);
                 setDepositModalVisible(true);
               }}
-              style={styles.backButton}>
-              <MaterialIcons color={theme.colors.black} name="arrow-back" size={18} />
+              style={styles.backButton}
+            >
+              <MaterialIcons
+                color={theme.colors.black}
+                name="arrow-back"
+                size={18}
+              />
             </Pressable>
             <View style={styles.checkoutHeaderCopy}>
               <AppText variant="h2">Pay Online</AppText>
@@ -286,8 +287,13 @@ export default function WalletScreen() {
           <ScrollView
             bounces={false}
             contentContainerStyle={styles.checkoutContent}
-            showsVerticalScrollIndicator={false}>
-            <AppCard backgroundColor="#FFF7F0" borderColor="#F0B48D" style={styles.amountSummaryCard}>
+            showsVerticalScrollIndicator={false}
+          >
+            <AppCard
+              backgroundColor="#FFF7F0"
+              borderColor="#F0B48D"
+              style={styles.amountSummaryCard}
+            >
               <AppText variant="bodySmall" color={theme.colors.muted}>
                 DEPOSIT AMOUNT
               </AppText>
@@ -308,9 +314,17 @@ export default function WalletScreen() {
                   <Pressable
                     key={method.id}
                     onPress={() => setSelectedMethod(method.id)}
-                    style={[styles.methodCard, isSelected ? styles.methodCardSelected : null]}>
+                    style={[
+                      styles.methodCard,
+                      isSelected ? styles.methodCardSelected : null,
+                    ]}
+                  >
                     <View style={styles.methodIconWrap}>
-                      <MaterialIcons color={theme.colors.orange} name={method.icon} size={20} />
+                      <MaterialIcons
+                        color={theme.colors.orange}
+                        name={method.icon}
+                        size={20}
+                      />
                     </View>
                     <View style={styles.methodCopy}>
                       <AppText variant="label">{method.title}</AppText>
@@ -318,9 +332,18 @@ export default function WalletScreen() {
                         {method.subtitle}
                       </AppText>
                     </View>
-                    <View style={[styles.checkbox, isSelected ? styles.checkboxSelected : null]}>
+                    <View
+                      style={[
+                        styles.checkbox,
+                        isSelected ? styles.checkboxSelected : null,
+                      ]}
+                    >
                       {isSelected ? (
-                        <MaterialIcons color={theme.colors.offWhite} name="check" size={14} />
+                        <MaterialIcons
+                          color={theme.colors.offWhite}
+                          name="check"
+                          size={14}
+                        />
                       ) : null}
                     </View>
                   </Pressable>
@@ -330,7 +353,10 @@ export default function WalletScreen() {
           </ScrollView>
 
           <View style={styles.checkoutFooter}>
-            <AppButton onPress={handleProceedPayment} title="Continue to checkout" />
+            <AppButton
+              onPress={handleProceedPayment}
+              title="Continue to checkout"
+            />
           </View>
         </View>
       </Modal>
@@ -344,15 +370,15 @@ const styles = StyleSheet.create({
     paddingTop: theme.spacing.lg,
   },
   metricsRow: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: theme.spacing.sm,
   },
   walletPagesList: {
     gap: theme.spacing.sm,
   },
   pageCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: theme.spacing.md,
     borderWidth: theme.borders.thick,
     borderColor: theme.colors.black,
@@ -365,50 +391,25 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: theme.radii.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     backgroundColor: theme.colors.orangeLight,
     borderWidth: theme.borders.regular,
-    borderColor: '#F0B48D',
+    borderColor: "#F0B48D",
   },
   pageCopy: {
     flex: 1,
     gap: 2,
   },
-  depositPromptCard: {
-    gap: theme.spacing.md,
-  },
-  depositPromptCopy: {
-    gap: 4,
-  },
-  transactions: {
-    gap: theme.spacing.sm,
-  },
-  transactionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: theme.spacing.md,
-    paddingVertical: theme.spacing.xs,
-  },
-  transactionCopy: {
-    flex: 1,
-    gap: 2,
-  },
-  divider: {
-    borderBottomWidth: 1,
-    borderBottomColor: '#EEE0D4',
-    paddingBottom: theme.spacing.md,
-  },
   modalBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(13,13,13,0.44)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: "rgba(13,13,13,0.44)",
+    alignItems: "center",
+    justifyContent: "center",
     paddingHorizontal: theme.layout.screenPadding,
   },
   modalCard: {
-    width: '100%',
+    width: "100%",
     borderWidth: theme.borders.thick,
     borderColor: theme.colors.black,
     borderRadius: theme.radii.lg,
@@ -418,17 +419,17 @@ const styles = StyleSheet.create({
     ...theme.shadows.card,
   },
   modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
     gap: theme.spacing.md,
   },
   closeButton: {
     width: 34,
     height: 34,
     borderRadius: theme.radii.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     borderWidth: theme.borders.regular,
     borderColor: theme.colors.black,
     backgroundColor: theme.colors.white,
@@ -448,10 +449,10 @@ const styles = StyleSheet.create({
     color: theme.colors.black,
   },
   modalButtonRow: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: theme.spacing.sm,
   },
-  secondaryButton: {
+  modalButtonSlot: {
     flex: 1,
   },
   checkoutScreen: {
@@ -459,8 +460,8 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.offWhite,
   },
   checkoutHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
+    flexDirection: "row",
+    alignItems: "flex-start",
     gap: theme.spacing.md,
     paddingTop: theme.spacing.xl,
     paddingHorizontal: theme.layout.screenPadding,
@@ -472,8 +473,8 @@ const styles = StyleSheet.create({
     borderWidth: theme.borders.regular,
     borderColor: theme.colors.black,
     backgroundColor: theme.colors.white,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     ...theme.shadows.subtle,
   },
   checkoutHeaderCopy: {
@@ -493,8 +494,8 @@ const styles = StyleSheet.create({
     gap: theme.spacing.sm,
   },
   methodCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: theme.spacing.md,
     borderWidth: theme.borders.thick,
     borderColor: theme.colors.black,
@@ -504,18 +505,18 @@ const styles = StyleSheet.create({
     ...theme.shadows.card,
   },
   methodCardSelected: {
-    backgroundColor: '#FFF0E1',
+    backgroundColor: "#FFF0E1",
     borderColor: theme.colors.orange,
   },
   methodIconWrap: {
     width: 42,
     height: 42,
     borderRadius: theme.radii.pill,
-    backgroundColor: '#FFF7F0',
+    backgroundColor: "#FFF7F0",
     borderWidth: theme.borders.regular,
-    borderColor: '#F0B48D',
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderColor: "#F0B48D",
+    alignItems: "center",
+    justifyContent: "center",
   },
   methodCopy: {
     flex: 1,
@@ -528,23 +529,23 @@ const styles = StyleSheet.create({
     borderWidth: theme.borders.regular,
     borderColor: theme.colors.black,
     backgroundColor: theme.colors.white,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   checkboxSelected: {
     backgroundColor: theme.colors.orange,
     borderColor: theme.colors.orange,
   },
   checkoutFooter: {
-    position: 'absolute',
+    position: "absolute",
     left: 0,
     right: 0,
     bottom: 0,
     paddingHorizontal: theme.layout.screenPadding,
     paddingTop: theme.spacing.md,
     paddingBottom: theme.spacing.xl,
-    backgroundColor: 'rgba(255,250,245,0.96)',
+    backgroundColor: "rgba(255,250,245,0.96)",
     borderTopWidth: 1,
-    borderTopColor: '#E8DDD3',
+    borderTopColor: "#E8DDD3",
   },
 });
