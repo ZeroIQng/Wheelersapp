@@ -60,6 +60,18 @@ export default function WalletScreen() {
   const [isDepositModalVisible, setDepositModalVisible] = useState(false);
   const [isPayOnlineModalVisible, setPayOnlineModalVisible] = useState(false);
   const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>(null);
+  const formattedDepositAmount = depositAmount ? `NGN ${depositAmount}` : "NGN 0";
+
+  const handleDepositAmountChange = (value: string) => {
+    const digitsOnly = value.replace(/\D/g, "");
+
+    if (!digitsOnly) {
+      setDepositAmount("");
+      return;
+    }
+
+    setDepositAmount(Number(digitsOnly).toLocaleString("en-NG"));
+  };
 
   const openDepositModal = () => {
     setDepositModalVisible(true);
@@ -71,6 +83,11 @@ export default function WalletScreen() {
 
   const closePayOnlineModal = () => {
     setPayOnlineModalVisible(false);
+  };
+
+  const reopenDepositModal = () => {
+    setPayOnlineModalVisible(false);
+    setDepositModalVisible(true);
   };
 
   const handleWithdrawPress = () => {
@@ -104,7 +121,7 @@ export default function WalletScreen() {
 
     Alert.alert(
       "Checkout ready",
-      `${selectedMethod === "card" ? "Card" : "Bank transfer"} selected for NGN ${depositAmount}.`,
+      `${selectedMethod === "card" ? "Card" : "Bank transfer"} selected for ${formattedDepositAmount}.`,
     );
   };
 
@@ -235,7 +252,7 @@ export default function WalletScreen() {
               </AppText>
               <TextInput
                 keyboardType="number-pad"
-                onChangeText={setDepositAmount}
+                onChangeText={handleDepositAmountChange}
                 placeholder="20,000"
                 placeholderTextColor="#B5ACA4"
                 style={styles.input}
@@ -245,7 +262,12 @@ export default function WalletScreen() {
 
             <View style={styles.modalButtonRow}>
               <View style={styles.modalButtonSlot}>
-                <AppButton onPress={closeDepositModal} title="Cancel" />
+                <AppButton
+                  onPress={closeDepositModal}
+                  style={styles.cancelButton}
+                  title="Cancel"
+                  variant="ghost"
+                />
               </View>
               <View style={styles.modalButtonSlot}>
                 <AppButton onPress={handleDepositContinue} title="Continue" />
@@ -258,105 +280,116 @@ export default function WalletScreen() {
       <Modal
         animationType="slide"
         onRequestClose={closePayOnlineModal}
+        transparent
         visible={isPayOnlineModalVisible}
       >
-        <View style={styles.checkoutScreen}>
-          <StatusBar style="dark" backgroundColor={theme.colors.offWhite} />
-          <View style={styles.checkoutHeader}>
-            <Pressable
-              onPress={() => {
-                setPayOnlineModalVisible(false);
-                setDepositModalVisible(true);
-              }}
-              style={styles.backButton}
-            >
-              <MaterialIcons
-                color={theme.colors.black}
-                name="arrow-back"
-                size={18}
-              />
-            </Pressable>
-            <View style={styles.checkoutHeaderCopy}>
-              <AppText variant="h2">Pay Online</AppText>
-              <AppText variant="bodySmall" color={theme.colors.muted}>
-                Choose how you want to complete this deposit.
-              </AppText>
+        <View style={styles.checkoutBackdrop}>
+          <StatusBar style="dark" backgroundColor="rgba(13,13,13,0.44)" />
+          <Pressable onPress={closePayOnlineModal} style={styles.checkoutOverlay} />
+          <View style={styles.checkoutSheet}>
+            <View style={styles.checkoutHandle} />
+
+            <View style={styles.checkoutHeader}>
+              <View style={styles.checkoutHeaderCopy}>
+                <AppText variant="h2">Pay Online</AppText>
+                <AppText variant="bodySmall" color={theme.colors.muted}>
+                  Choose how you want to complete this deposit.
+                </AppText>
+              </View>
+              <Pressable onPress={closePayOnlineModal} style={styles.backButton}>
+                <MaterialIcons
+                  color={theme.colors.black}
+                  name="close"
+                  size={18}
+                />
+              </Pressable>
             </View>
-          </View>
 
-          <ScrollView
-            bounces={false}
-            contentContainerStyle={styles.checkoutContent}
-            showsVerticalScrollIndicator={false}
-          >
-            <AppCard
-              backgroundColor="#FFF7F0"
-              borderColor="#F0B48D"
-              style={styles.amountSummaryCard}
+            <ScrollView
+              bounces={false}
+              contentContainerStyle={styles.checkoutContent}
+              showsVerticalScrollIndicator={false}
             >
-              <AppText variant="bodySmall" color={theme.colors.muted}>
-                DEPOSIT AMOUNT
-              </AppText>
-              <AppText variant="display">NGN {depositAmount}</AppText>
-            </AppCard>
-
-            <SectionHeader
-              subtitle="Everything below is clickable. Pick one method to continue."
-              title="Payment options"
-              titleVariant="h3"
-            />
-
-            <View style={styles.paymentMethodsList}>
-              {paymentMethods.map((method) => {
-                const isSelected = selectedMethod === method.id;
-
-                return (
+              <AppCard
+                backgroundColor="#FFF7F0"
+                borderColor="#F0B48D"
+                style={styles.amountSummaryCard}
+              >
+                <View style={styles.amountSummaryHeader}>
+                  <View style={styles.amountSummaryCopy}>
+                    <AppText variant="bodySmall" color={theme.colors.muted}>
+                      DEPOSIT AMOUNT
+                    </AppText>
+                    <AppText variant="h1">{formattedDepositAmount}</AppText>
+                  </View>
                   <Pressable
-                    key={method.id}
-                    onPress={() => setSelectedMethod(method.id)}
-                    style={[
-                      styles.methodCard,
-                      isSelected ? styles.methodCardSelected : null,
-                    ]}
+                    onPress={reopenDepositModal}
+                    style={styles.amountEditButton}
                   >
-                    <View style={styles.methodIconWrap}>
-                      <MaterialIcons
-                        color={theme.colors.orange}
-                        name={method.icon}
-                        size={20}
-                      />
-                    </View>
-                    <View style={styles.methodCopy}>
-                      <AppText variant="label">{method.title}</AppText>
-                      <AppText variant="bodySmall" color={theme.colors.muted}>
-                        {method.subtitle}
-                      </AppText>
-                    </View>
-                    <View
+                    <AppText variant="caption">Edit amount</AppText>
+                  </Pressable>
+                </View>
+              </AppCard>
+
+              <View style={styles.paymentHeader}>
+                <AppText variant="h3">Payment options</AppText>
+                <AppText variant="bodySmall" color={theme.colors.muted}>
+                  Pick one method to finish this deposit.
+                </AppText>
+              </View>
+
+              <View style={styles.paymentMethodsList}>
+                {paymentMethods.map((method) => {
+                  const isSelected = selectedMethod === method.id;
+
+                  return (
+                    <Pressable
+                      key={method.id}
+                      onPress={() => setSelectedMethod(method.id)}
                       style={[
-                        styles.checkbox,
-                        isSelected ? styles.checkboxSelected : null,
+                        styles.methodCard,
+                        isSelected ? styles.methodCardSelected : null,
                       ]}
                     >
-                      {isSelected ? (
+                      <View style={styles.methodIconWrap}>
                         <MaterialIcons
-                          color={theme.colors.offWhite}
-                          name="check"
-                          size={14}
+                          color={theme.colors.orange}
+                          name={method.icon}
+                          size={18}
                         />
-                      ) : null}
-                    </View>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </ScrollView>
+                      </View>
+                      <View style={styles.methodCopy}>
+                        <AppText variant="label">{method.title}</AppText>
+                        <AppText variant="bodySmall" color={theme.colors.muted}>
+                          {method.subtitle}
+                        </AppText>
+                      </View>
+                      <View
+                        style={[
+                          styles.checkbox,
+                          isSelected ? styles.checkboxSelected : null,
+                        ]}
+                      >
+                        {isSelected ? (
+                          <MaterialIcons
+                            color={theme.colors.offWhite}
+                            name="check"
+                            size={14}
+                          />
+                        ) : null}
+                      </View>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </ScrollView>
 
-          <View style={styles.checkoutFooter}>
-            <AppButton
-              onPress={handleProceedPayment}
-              title="Continue to checkout"
-            />
+            <View style={styles.checkoutFooter}>
+              <AppButton
+                onPress={handleProceedPayment}
+                title={`Continue with ${formattedDepositAmount}`}
+              />
+            </View>
           </View>
         </View>
       </Modal>
@@ -455,20 +488,49 @@ const styles = StyleSheet.create({
   modalButtonSlot: {
     flex: 1,
   },
-  checkoutScreen: {
+  cancelButton: {
+    backgroundColor: theme.colors.white,
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  checkoutBackdrop: {
     flex: 1,
+    backgroundColor: "rgba(13,13,13,0.44)",
+    justifyContent: "flex-end",
+  },
+  checkoutOverlay: {
+    flex: 1,
+  },
+  checkoutSheet: {
+    maxHeight: "82%",
+    borderTopLeftRadius: theme.radii.lg,
+    borderTopRightRadius: theme.radii.lg,
+    borderWidth: theme.borders.thick,
+    borderBottomWidth: 0,
+    borderColor: theme.colors.black,
     backgroundColor: theme.colors.offWhite,
+    overflow: "hidden",
+  },
+  checkoutHandle: {
+    alignSelf: "center",
+    width: 56,
+    height: 6,
+    borderRadius: theme.radii.pill,
+    backgroundColor: "#E0D4C7",
+    marginTop: theme.spacing.sm,
   },
   checkoutHeader: {
     flexDirection: "row",
-    alignItems: "flex-start",
+    alignItems: "center",
+    justifyContent: "space-between",
     gap: theme.spacing.md,
-    paddingTop: theme.spacing.xl,
-    paddingHorizontal: theme.layout.screenPadding,
+    paddingTop: theme.spacing.md,
+    paddingHorizontal: theme.spacing.lg,
+    paddingBottom: theme.spacing.sm,
   },
   backButton: {
-    width: 40,
-    height: 40,
+    width: 36,
+    height: 36,
     borderRadius: theme.radii.pill,
     borderWidth: theme.borders.regular,
     borderColor: theme.colors.black,
@@ -480,15 +542,35 @@ const styles = StyleSheet.create({
   checkoutHeaderCopy: {
     flex: 1,
     gap: 2,
-    paddingTop: 4,
   },
   checkoutContent: {
-    gap: theme.spacing.lg,
-    padding: theme.layout.screenPadding,
-    paddingBottom: 120,
+    gap: theme.spacing.md,
+    paddingHorizontal: theme.spacing.lg,
+    paddingBottom: theme.spacing.lg,
   },
   amountSummaryCard: {
-    gap: theme.spacing.xs,
+    marginTop: theme.spacing.xs,
+  },
+  amountSummaryHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: theme.spacing.md,
+  },
+  amountSummaryCopy: {
+    flex: 1,
+    gap: theme.spacing.xxs,
+  },
+  amountEditButton: {
+    borderWidth: theme.borders.regular,
+    borderColor: "#F0B48D",
+    borderRadius: theme.radii.pill,
+    backgroundColor: theme.colors.white,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.xs,
+  },
+  paymentHeader: {
+    gap: 2,
   },
   paymentMethodsList: {
     gap: theme.spacing.sm,
@@ -501,7 +583,7 @@ const styles = StyleSheet.create({
     borderColor: theme.colors.black,
     borderRadius: theme.radii.md,
     backgroundColor: theme.colors.white,
-    padding: theme.spacing.md,
+    padding: theme.spacing.sm,
     ...theme.shadows.card,
   },
   methodCardSelected: {
@@ -509,8 +591,8 @@ const styles = StyleSheet.create({
     borderColor: theme.colors.orange,
   },
   methodIconWrap: {
-    width: 42,
-    height: 42,
+    width: 38,
+    height: 38,
     borderRadius: theme.radii.pill,
     backgroundColor: "#FFF7F0",
     borderWidth: theme.borders.regular,
@@ -537,11 +619,7 @@ const styles = StyleSheet.create({
     borderColor: theme.colors.orange,
   },
   checkoutFooter: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
-    paddingHorizontal: theme.layout.screenPadding,
+    paddingHorizontal: theme.spacing.lg,
     paddingTop: theme.spacing.md,
     paddingBottom: theme.spacing.xl,
     backgroundColor: "rgba(255,250,245,0.96)",
