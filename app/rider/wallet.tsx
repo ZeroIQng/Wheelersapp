@@ -1,7 +1,18 @@
-import { Href, useRouter } from 'expo-router';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import { useState } from 'react';
+import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { Pressable, StyleSheet, View } from 'react-native';
+import {
+  Alert,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  TextInput,
+  View,
+} from 'react-native';
 
+import { AppButton } from '@/components/app-button';
 import { AppCard } from '@/components/app-card';
 import { AppScreen } from '@/components/app-screen';
 import { AppText } from '@/components/app-text';
@@ -11,85 +22,319 @@ import { WalletBalanceCard } from '@/components/WalletBalanceCard';
 import { walletOverview } from '@/data/mock';
 import { theme } from '@/theme';
 
+type PaymentMethod = 'card' | 'bank-transfer' | null;
+
+const paymentMethods = [
+  {
+    id: 'card' as const,
+    icon: 'credit-card',
+    title: 'Card',
+    subtitle: 'Pay instantly with your debit or credit card.',
+  },
+  {
+    id: 'bank-transfer' as const,
+    icon: 'account-balance',
+    title: 'Bank transfer',
+    subtitle: 'Transfer from your bank app and confirm in checkout.',
+  },
+] as const;
+
+const walletPages = [
+  {
+    id: 'transactions',
+    icon: 'receipt-long',
+    title: 'View transactions',
+    subtitle: 'See wallet inflow and ride charges.',
+  },
+  {
+    id: 'pay-online',
+    icon: 'language',
+    title: 'Pay online',
+    subtitle: 'Choose card or bank transfer checkout.',
+  },
+  {
+    id: 'withdrawals',
+    icon: 'hourglass-empty',
+    title: 'Withdrawals',
+    subtitle: 'Pending for now while deposit goes live.',
+  },
+] as const;
+
 export default function WalletScreen() {
   const router = useRouter();
+  const [depositAmount, setDepositAmount] = useState('');
+  const [isDepositModalVisible, setDepositModalVisible] = useState(false);
+  const [isPayOnlineModalVisible, setPayOnlineModalVisible] = useState(false);
+  const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>(null);
+
+  const openDepositModal = () => {
+    setDepositModalVisible(true);
+  };
+
+  const closeDepositModal = () => {
+    setDepositModalVisible(false);
+  };
+
+  const closePayOnlineModal = () => {
+    setPayOnlineModalVisible(false);
+  };
+
+  const handleWithdrawPress = () => {
+    Alert.alert('Withdrawals pending', 'Withdraw will stay pending for now. Deposit flow comes first.');
+  };
+
+  const handleDepositContinue = () => {
+    if (!depositAmount.trim()) {
+      Alert.alert('Amount required', 'Enter the amount you want to deposit in Naira.');
+      return;
+    }
+
+    setDepositModalVisible(false);
+    setPayOnlineModalVisible(true);
+  };
+
+  const handleProceedPayment = () => {
+    if (!selectedMethod) {
+      Alert.alert('Select a payment method', 'Choose card or bank transfer before continuing.');
+      return;
+    }
+
+    Alert.alert(
+      'Checkout ready',
+      `${selectedMethod === 'card' ? 'Card' : 'Bank transfer'} selected for NGN ${depositAmount}.`
+    );
+  };
+
+  const handleWalletPagePress = (pageId: string) => {
+    if (pageId === 'transactions') {
+      Alert.alert('Transactions', 'Your recent wallet transactions are listed below on this page.');
+      return;
+    }
+
+    if (pageId === 'pay-online') {
+      if (!depositAmount.trim()) {
+        setDepositModalVisible(true);
+        return;
+      }
+
+      setPayOnlineModalVisible(true);
+      return;
+    }
+
+    Alert.alert('Withdrawals pending', 'Withdraw pages are not active yet.');
+  };
 
   return (
-    <AppScreen backgroundColor={theme.colors.offWhite} scroll contentStyle={styles.container}>
-      <StatusBar style="dark" backgroundColor={theme.colors.offWhite} />
-      <SectionHeader
-        actionLabel="Rider home"
-        onActionPress={() => router.replace('/rider')}
-        title="Wallet"
-        titleVariant="h1"
-      />
-
-      <WalletBalanceCard balance={walletOverview.balance} fiatApprox={walletOverview.fiatApprox} />
-
-      <View style={styles.metricsRow}>
-        <MetricCard
-          accent="orange"
-          backgroundColor={theme.colors.white}
-          label="Yield today"
-          value={walletOverview.yieldToday}
+    <>
+      <AppScreen backgroundColor={theme.colors.offWhite} scroll contentStyle={styles.container}>
+        <StatusBar style="dark" backgroundColor={theme.colors.offWhite} />
+        <SectionHeader
+          actionLabel="Rider home"
+          onActionPress={() => router.replace('/rider')}
+          subtitle="Fund your wallet in Naira, then choose how you want to pay online."
+          title="Wallet"
+          titleVariant="h1"
         />
-        <MetricCard
-          backgroundColor={theme.colors.white}
-          label="Current APY"
-          value={walletOverview.apy}
+
+        <WalletBalanceCard
+          balance={walletOverview.balance}
+          fiatApprox={walletOverview.fiatApprox}
+          onDeposit={openDepositModal}
+          onWithdraw={handleWithdrawPress}
         />
-      </View>
 
-      <SectionHeader subtitle="Grow rewards, promos, and token access" title="Explore" titleVariant="h3" />
-      <View style={styles.quickLinks}>
-        <Pressable
-          onPress={() => router.push('/wallet/token' as Href)}
-          style={[styles.linkCard, styles.linkCardAccent]}>
-          <AppText variant="label">Token stake</AppText>
-          <AppText variant="bodySmall" color={theme.colors.muted}>
-            Open DeFi wallet ↗
-          </AppText>
-        </Pressable>
-        <Pressable onPress={() => router.push('/growth/referral' as Href)} style={styles.linkCard}>
-          <AppText variant="label">Referral</AppText>
-          <AppText variant="bodySmall" color={theme.colors.muted}>
-            Share your code ↗
-          </AppText>
-        </Pressable>
-        <Pressable onPress={() => router.push('/growth/promos' as Href)} style={styles.linkCard}>
-          <AppText variant="label">Promos</AppText>
-          <AppText variant="bodySmall" color={theme.colors.muted}>
-            Apply ride deals ↗
-          </AppText>
-        </Pressable>
-      </View>
+        <View style={styles.metricsRow}>
+          <MetricCard
+            accent="orange"
+            backgroundColor={theme.colors.white}
+            label="Yield today"
+            value={walletOverview.yieldToday}
+          />
+          <MetricCard
+            backgroundColor={theme.colors.white}
+            label="Current APY"
+            value={walletOverview.apy}
+          />
+        </View>
 
-      <SectionHeader subtitle="Your latest wallet activity" title="Recent" titleVariant="h3" />
-      <AppCard style={styles.transactions}>
-        {walletOverview.recentTransactions.map((transaction, index) => (
-          <View
-            key={transaction.id}
-            style={[
-              styles.transactionRow,
-              index < walletOverview.recentTransactions.length - 1 ? styles.divider : null,
-            ]}>
-            <View style={styles.transactionCopy}>
-              <AppText variant="bodyMedium">{transaction.title}</AppText>
-              <AppText variant="bodySmall" color={theme.colors.muted}>
-                {transaction.timestamp}
-              </AppText>
-            </View>
-            <AppText
-              variant="mono"
-              color={
-                transaction.direction === 'credit' ? theme.colors.green : theme.colors.danger
-              }>
-              {transaction.amount}
+        <SectionHeader
+          subtitle="Clean wallet pages instead of the old deposit form block."
+          title="Wallet pages"
+          titleVariant="h3"
+        />
+        <View style={styles.walletPagesList}>
+          {walletPages.map((page) => (
+            <Pressable
+              key={page.id}
+              onPress={() => handleWalletPagePress(page.id)}
+              style={styles.pageCard}>
+              <View style={styles.pageIconWrap}>
+                <MaterialIcons color={theme.colors.black} name={page.icon} size={18} />
+              </View>
+              <View style={styles.pageCopy}>
+                <AppText variant="label">{page.title}</AppText>
+                <AppText variant="bodySmall" color={theme.colors.muted}>
+                  {page.subtitle}
+                </AppText>
+              </View>
+              <MaterialIcons color={theme.colors.orange} name="arrow-forward" size={18} />
+            </Pressable>
+          ))}
+        </View>
+
+        <AppCard backgroundColor="#FFF7F0" borderColor="#F0B48D" style={styles.depositPromptCard}>
+          <View style={styles.depositPromptCopy}>
+            <AppText variant="h3">Deposit in Naira</AppText>
+            <AppText variant="bodySmall" color={theme.colors.muted}>
+              Tap deposit, enter your amount, then move into Pay Online checkout.
             </AppText>
           </View>
-        ))}
-      </AppCard>
-    </AppScreen>
+          <AppButton onPress={openDepositModal} title="Start NGN deposit" />
+        </AppCard>
+
+        <SectionHeader subtitle="Your latest wallet activity" title="Recent transactions" titleVariant="h3" />
+        <AppCard style={styles.transactions}>
+          {walletOverview.recentTransactions.map((transaction, index) => (
+            <View
+              key={transaction.id}
+              style={[
+                styles.transactionRow,
+                index < walletOverview.recentTransactions.length - 1 ? styles.divider : null,
+              ]}>
+              <View style={styles.transactionCopy}>
+                <AppText variant="bodyMedium">{transaction.title}</AppText>
+                <AppText variant="bodySmall" color={theme.colors.muted}>
+                  {transaction.timestamp}
+                </AppText>
+              </View>
+              <AppText
+                variant="mono"
+                color={
+                  transaction.direction === 'credit' ? theme.colors.green : theme.colors.danger
+                }>
+                {transaction.amount}
+              </AppText>
+            </View>
+          ))}
+        </AppCard>
+      </AppScreen>
+
+      <Modal
+        animationType="fade"
+        onRequestClose={closeDepositModal}
+        transparent
+        visible={isDepositModalVisible}>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <View>
+                <AppText variant="h3">Deposit in Naira</AppText>
+                <AppText variant="bodySmall" color={theme.colors.muted}>
+                  Enter the amount you want to fund before checkout.
+                </AppText>
+              </View>
+              <Pressable onPress={closeDepositModal} style={styles.closeButton}>
+                <MaterialIcons color={theme.colors.black} name="close" size={18} />
+              </Pressable>
+            </View>
+
+            <View style={styles.fieldGroup}>
+              <AppText variant="bodySmall" color={theme.colors.muted}>
+                Amount in NGN
+              </AppText>
+              <TextInput
+                keyboardType="number-pad"
+                onChangeText={setDepositAmount}
+                placeholder="20,000"
+                placeholderTextColor="#B5ACA4"
+                style={styles.input}
+                value={depositAmount}
+              />
+            </View>
+
+            <View style={styles.modalButtonRow}>
+              <AppButton onPress={closeDepositModal} style={styles.secondaryButton} title="Cancel" variant="ghost" />
+              <AppButton onPress={handleDepositContinue} style={styles.secondaryButton} title="Continue" />
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        animationType="slide"
+        onRequestClose={closePayOnlineModal}
+        visible={isPayOnlineModalVisible}>
+        <View style={styles.checkoutScreen}>
+          <StatusBar style="dark" backgroundColor={theme.colors.offWhite} />
+          <View style={styles.checkoutHeader}>
+            <Pressable
+              onPress={() => {
+                setPayOnlineModalVisible(false);
+                setDepositModalVisible(true);
+              }}
+              style={styles.backButton}>
+              <MaterialIcons color={theme.colors.black} name="arrow-back" size={18} />
+            </Pressable>
+            <View style={styles.checkoutHeaderCopy}>
+              <AppText variant="h2">Pay Online</AppText>
+              <AppText variant="bodySmall" color={theme.colors.muted}>
+                Choose how you want to complete this deposit.
+              </AppText>
+            </View>
+          </View>
+
+          <ScrollView
+            bounces={false}
+            contentContainerStyle={styles.checkoutContent}
+            showsVerticalScrollIndicator={false}>
+            <AppCard backgroundColor="#FFF7F0" borderColor="#F0B48D" style={styles.amountSummaryCard}>
+              <AppText variant="bodySmall" color={theme.colors.muted}>
+                DEPOSIT AMOUNT
+              </AppText>
+              <AppText variant="display">NGN {depositAmount}</AppText>
+            </AppCard>
+
+            <SectionHeader
+              subtitle="Everything below is clickable. Pick one method to continue."
+              title="Payment options"
+              titleVariant="h3"
+            />
+
+            <View style={styles.paymentMethodsList}>
+              {paymentMethods.map((method) => {
+                const isSelected = selectedMethod === method.id;
+
+                return (
+                  <Pressable
+                    key={method.id}
+                    onPress={() => setSelectedMethod(method.id)}
+                    style={[styles.methodCard, isSelected ? styles.methodCardSelected : null]}>
+                    <View style={styles.methodIconWrap}>
+                      <MaterialIcons color={theme.colors.orange} name={method.icon} size={20} />
+                    </View>
+                    <View style={styles.methodCopy}>
+                      <AppText variant="label">{method.title}</AppText>
+                      <AppText variant="bodySmall" color={theme.colors.muted}>
+                        {method.subtitle}
+                      </AppText>
+                    </View>
+                    <View style={[styles.checkbox, isSelected ? styles.checkboxSelected : null]}>
+                      {isSelected ? (
+                        <MaterialIcons color={theme.colors.offWhite} name="check" size={14} />
+                      ) : null}
+                    </View>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </ScrollView>
+
+          <View style={styles.checkoutFooter}>
+            <AppButton onPress={handleProceedPayment} title="Continue to checkout" />
+          </View>
+        </View>
+      </Modal>
+    </>
   );
 }
 
@@ -102,21 +347,39 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: theme.spacing.sm,
   },
-  quickLinks: {
+  walletPagesList: {
     gap: theme.spacing.sm,
   },
-  linkCard: {
+  pageCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.md,
     borderWidth: theme.borders.thick,
     borderColor: theme.colors.black,
     borderRadius: theme.radii.md,
     backgroundColor: theme.colors.white,
     padding: theme.spacing.md,
-    gap: 4,
     ...theme.shadows.card,
   },
-  linkCardAccent: {
+  pageIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: theme.radii.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: theme.colors.orangeLight,
-    borderColor: theme.colors.orange,
+    borderWidth: theme.borders.regular,
+    borderColor: '#F0B48D',
+  },
+  pageCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  depositPromptCard: {
+    gap: theme.spacing.md,
+  },
+  depositPromptCopy: {
+    gap: 4,
   },
   transactions: {
     gap: theme.spacing.sm,
@@ -136,5 +399,152 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#EEE0D4',
     paddingBottom: theme.spacing.md,
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(13,13,13,0.44)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: theme.layout.screenPadding,
+  },
+  modalCard: {
+    width: '100%',
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    borderRadius: theme.radii.lg,
+    backgroundColor: theme.colors.offWhite,
+    padding: theme.spacing.lg,
+    gap: theme.spacing.md,
+    ...theme.shadows.card,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: theme.spacing.md,
+  },
+  closeButton: {
+    width: 34,
+    height: 34,
+    borderRadius: theme.radii.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: theme.borders.regular,
+    borderColor: theme.colors.black,
+    backgroundColor: theme.colors.white,
+  },
+  fieldGroup: {
+    gap: theme.spacing.xs,
+  },
+  input: {
+    minHeight: 50,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    borderRadius: theme.radii.sm,
+    backgroundColor: theme.colors.white,
+    paddingHorizontal: theme.spacing.md,
+    fontFamily: theme.fonts.body,
+    fontSize: 14,
+    color: theme.colors.black,
+  },
+  modalButtonRow: {
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+  },
+  secondaryButton: {
+    flex: 1,
+  },
+  checkoutScreen: {
+    flex: 1,
+    backgroundColor: theme.colors.offWhite,
+  },
+  checkoutHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: theme.spacing.md,
+    paddingTop: theme.spacing.xl,
+    paddingHorizontal: theme.layout.screenPadding,
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: theme.radii.pill,
+    borderWidth: theme.borders.regular,
+    borderColor: theme.colors.black,
+    backgroundColor: theme.colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...theme.shadows.subtle,
+  },
+  checkoutHeaderCopy: {
+    flex: 1,
+    gap: 2,
+    paddingTop: 4,
+  },
+  checkoutContent: {
+    gap: theme.spacing.lg,
+    padding: theme.layout.screenPadding,
+    paddingBottom: 120,
+  },
+  amountSummaryCard: {
+    gap: theme.spacing.xs,
+  },
+  paymentMethodsList: {
+    gap: theme.spacing.sm,
+  },
+  methodCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.md,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    borderRadius: theme.radii.md,
+    backgroundColor: theme.colors.white,
+    padding: theme.spacing.md,
+    ...theme.shadows.card,
+  },
+  methodCardSelected: {
+    backgroundColor: '#FFF0E1',
+    borderColor: theme.colors.orange,
+  },
+  methodIconWrap: {
+    width: 42,
+    height: 42,
+    borderRadius: theme.radii.pill,
+    backgroundColor: '#FFF7F0',
+    borderWidth: theme.borders.regular,
+    borderColor: '#F0B48D',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  methodCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  checkbox: {
+    width: 26,
+    height: 26,
+    borderRadius: theme.radii.pill,
+    borderWidth: theme.borders.regular,
+    borderColor: theme.colors.black,
+    backgroundColor: theme.colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkboxSelected: {
+    backgroundColor: theme.colors.orange,
+    borderColor: theme.colors.orange,
+  },
+  checkoutFooter: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: theme.layout.screenPadding,
+    paddingTop: theme.spacing.md,
+    paddingBottom: theme.spacing.xl,
+    backgroundColor: 'rgba(255,250,245,0.96)',
+    borderTopWidth: 1,
+    borderTopColor: '#E8DDD3',
   },
 });

@@ -9,6 +9,7 @@ type WalletBalanceCardProps = {
   fiatApprox: string;
   onDeposit?: () => void;
   onWithdraw?: () => void;
+  activeAction?: 'deposit' | 'withdraw';
 };
 
 export function WalletBalanceCard({
@@ -16,6 +17,7 @@ export function WalletBalanceCard({
   fiatApprox,
   onDeposit,
   onWithdraw,
+  activeAction = 'deposit',
 }: WalletBalanceCardProps) {
   return (
     <View style={styles.card}>
@@ -28,23 +30,39 @@ export function WalletBalanceCard({
           fill="rgba(255,255,255,0.18)"
         />
       </Svg>
-      <AppText variant="bodySmall" color="#9C948D">
+      <AppText variant="bodySmall" color={theme.colors.muted}>
         Total balance
       </AppText>
-      <AppText variant="display" color={theme.colors.offWhite} style={styles.balance}>
+      <AppText variant="display" color={theme.colors.black} style={styles.balance}>
         {balance}
       </AppText>
-      <AppText variant="bodySmall" color="#9C948D">
-        {fiatApprox}
-      </AppText>
+      <View style={styles.approxChip}>
+        <AppText variant="bodySmall" color={theme.colors.muted}>
+          {fiatApprox}
+        </AppText>
+      </View>
       <View style={styles.actions}>
-        <Pressable onPress={onDeposit} style={[styles.actionButton, styles.deposit]}>
-          <AppText variant="label" color={theme.colors.offWhite}>
+        <Pressable
+          onPress={onDeposit}
+          style={[
+            styles.actionButton,
+            activeAction === 'deposit' ? styles.actionButtonPrimary : styles.actionButtonSecondary,
+          ]}>
+          <AppText
+            variant="label"
+            color={activeAction === 'deposit' ? theme.colors.offWhite : theme.colors.black}>
             + Deposit
           </AppText>
         </Pressable>
-        <Pressable onPress={onWithdraw} style={[styles.actionButton, styles.withdraw]}>
-          <AppText variant="bodyMedium" color={theme.colors.offWhite}>
+        <Pressable
+          onPress={onWithdraw}
+          style={[
+            styles.actionButton,
+            activeAction === 'withdraw' ? styles.actionButtonDark : styles.actionButtonSecondary,
+          ]}>
+          <AppText
+            variant="bodyMedium"
+            color={activeAction === 'withdraw' ? theme.colors.offWhite : theme.colors.black}>
             Withdraw
           </AppText>
         </Pressable>
@@ -56,9 +74,9 @@ export function WalletBalanceCard({
 const styles = StyleSheet.create({
   card: {
     borderWidth: theme.borders.thick,
-    borderColor: theme.colors.black,
+    borderColor: theme.colors.orange,
     borderRadius: theme.radii.md,
-    backgroundColor: theme.colors.black,
+    backgroundColor: theme.colors.orangeLight,
     padding: theme.spacing.lg,
     overflow: 'hidden',
     ...theme.shadows.card,
@@ -75,7 +93,16 @@ const styles = StyleSheet.create({
   },
   balance: {
     marginTop: theme.spacing.xxs,
-    marginBottom: theme.spacing.xxs,
+    marginBottom: theme.spacing.sm,
+  },
+  approxChip: {
+    alignSelf: 'flex-start',
+    borderWidth: theme.borders.regular,
+    borderColor: '#F4B28D',
+    borderRadius: theme.radii.pill,
+    backgroundColor: 'rgba(255,255,255,0.72)',
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.xs,
   },
   actions: {
     flexDirection: 'row',
@@ -90,13 +117,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  deposit: {
+  actionButtonPrimary: {
     backgroundColor: theme.colors.orange,
     borderColor: theme.colors.orange,
     ...theme.shadows.card,
   },
-  withdraw: {
-    borderColor: '#444',
-    backgroundColor: 'transparent',
+  actionButtonDark: {
+    borderColor: theme.colors.black,
+    backgroundColor: theme.colors.black,
+    ...theme.shadows.card,
+  },
+  actionButtonSecondary: {
+    borderColor: theme.colors.black,
+    backgroundColor: theme.colors.white,
   },
 });

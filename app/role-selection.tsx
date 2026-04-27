@@ -11,10 +11,7 @@ import { RingStack, StarBurst } from "@/components/decorative-shapes";
 import { FlowHeader } from "@/components/flow-header";
 import { FloatingView, PulseView, RevealView } from "@/components/motion";
 import { RoleMotionBadge } from "@/components/role-motion-badge";
-import {
-  isPrivyConfigured,
-  privyOAuthRedirectPath,
-} from "@/lib/privy";
+import { isPrivyConfigured, privyOAuthRedirectPath } from "@/lib/privy";
 import {
   isThirdwebConfigured,
   thirdwebAppMetadata,
@@ -130,9 +127,7 @@ export default function RoleSelectionScreen() {
             onPress={() => router.push(authNextRoute)}
           />
         )}
-        {selectedRole === "ride" ? (
-          <WalletConnectAction />
-        ) : null}
+        {selectedRole === "ride" ? <WalletConnectAction /> : null}
       </RevealView>
     </AppScreen>
   );
@@ -172,10 +167,10 @@ function GoogleContinueButton({ nextRoute }: { nextRoute: Href }) {
       <AppButton
         title={
           user
-            ? "Continue ↗"
+            ? "Continue"
             : isLoading
               ? "Opening Google…"
-              : "Connect with Google ↗"
+              : "Connect with Google"
         }
         onPress={() => {
           void handlePress();
