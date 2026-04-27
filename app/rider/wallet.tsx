@@ -1,9 +1,10 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Alert,
+  Animated,
   Modal,
   Pressable,
   ScrollView,
@@ -11,6 +12,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppButton } from "@/components/app-button";
 import { AppCard } from "@/components/app-card";
@@ -56,11 +58,83 @@ const walletPages = [
 
 export default function WalletScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const params = useLocalSearchParams<{
+    depositAmount?: string | string[];
+    redirectReason?: string | string[];
+    rideName?: string | string[];
+  }>();
   const [depositAmount, setDepositAmount] = useState("");
   const [isDepositModalVisible, setDepositModalVisible] = useState(false);
   const [isPayOnlineModalVisible, setPayOnlineModalVisible] = useState(false);
   const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const toastOpacity = useRef(new Animated.Value(0)).current;
+  const handledRedirectRef = useRef<string | null>(null);
   const formattedDepositAmount = depositAmount ? `NGN ${depositAmount}` : "NGN 0";
+
+  useEffect(() => {
+    if (!toastMessage) {
+      return;
+    }
+
+    Animated.timing(toastOpacity, {
+      toValue: 1,
+      duration: 180,
+      useNativeDriver: true,
+    }).start();
+
+    const timeout = setTimeout(() => {
+      Animated.timing(toastOpacity, {
+        toValue: 0,
+        duration: 180,
+        useNativeDriver: true,
+      }).start(({ finished }) => {
+        if (finished) {
+          setToastMessage(null);
+        }
+      });
+    }, 2800);
+
+    return () => clearTimeout(timeout);
+  }, [toastMessage, toastOpacity]);
+
+  useEffect(() => {
+    const redirectReason = Array.isArray(params.redirectReason)
+      ? params.redirectReason[0]
+      : params.redirectReason;
+    const rawDepositAmount = Array.isArray(params.depositAmount)
+      ? params.depositAmount[0]
+      : params.depositAmount;
+    const rideName = Array.isArray(params.rideName)
+      ? params.rideName[0]
+      : params.rideName;
+
+    if (
+      redirectReason !== "insufficient-funds" ||
+      !rawDepositAmount ||
+      handledRedirectRef.current === rawDepositAmount
+    ) {
+      return;
+    }
+
+    const numericAmount = Number(rawDepositAmount.replace(/\D/g, ""));
+
+    if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
+      return;
+    }
+
+    const formattedAmount = numericAmount.toLocaleString("en-NG");
+    handledRedirectRef.current = rawDepositAmount;
+    toastOpacity.setValue(0);
+    setDepositAmount(formattedAmount);
+    setSelectedMethod("card");
+    setDepositModalVisible(false);
+    setPayOnlineModalVisible(true);
+    setToastMessage(
+      `Insufficient funds${rideName ? ` for ${rideName}` : ""}. Add NGN ${formattedAmount} to continue.`,
+    );
+  }, [params.depositAmount, params.redirectReason, params.rideName, toastOpacity]);
 
   const handleDepositAmountChange = (value: string) => {
     const digitsOnly = value.replace(/\D/g, "");
@@ -74,6 +148,7 @@ export default function WalletScreen() {
   };
 
   const openDepositModal = () => {
+    setSelectedMethod(null);
     setDepositModalVisible(true);
   };
 
@@ -107,6 +182,9 @@ export default function WalletScreen() {
     }
 
     setDepositModalVisible(false);
+    if (!selectedMethod) {
+      setSelectedMethod("card");
+    }
     setPayOnlineModalVisible(true);
   };
 
@@ -387,12 +465,46 @@ export default function WalletScreen() {
             <View style={styles.checkoutFooter}>
               <AppButton
                 onPress={handleProceedPayment}
-                title={`Continue with ${formattedDepositAmount}`}
+                title={`Confirm payment of ${formattedDepositAmount}`}
               />
             </View>
           </View>
         </View>
       </Modal>
+
+      {toastMessage ? (
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.toast,
+            {
+              top: insets.top + theme.spacing.sm,
+              opacity: toastOpacity,
+              transform: [
+                {
+                  translateY: toastOpacity.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [-12, 0],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
+          <MaterialIcons
+            color={theme.colors.offWhite}
+            name="info-outline"
+            size={18}
+          />
+          <AppText
+            variant="bodySmall"
+            color={theme.colors.offWhite}
+            style={styles.toastText}
+          >
+            {toastMessage}
+          </AppText>
+        </Animated.View>
+      ) : null}
     </>
   );
 }
@@ -625,5 +737,24 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,250,245,0.96)",
     borderTopWidth: 1,
     borderTopColor: "#E8DDD3",
+  },
+  toast: {
+    position: "absolute",
+    left: theme.layout.screenPadding,
+    right: theme.layout.screenPadding,
+    zIndex: 40,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing.sm,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    borderRadius: theme.radii.md,
+    backgroundColor: theme.colors.black,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.sm,
+    ...theme.shadows.card,
+  },
+  toastText: {
+    flex: 1,
   },
 });

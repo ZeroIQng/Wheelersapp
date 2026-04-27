@@ -1,7 +1,7 @@
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useRef } from "react";
-import { PanResponder, Pressable, StyleSheet, View } from "react-native";
+import { Dimensions, PanResponder, Pressable, StyleSheet, View } from "react-native";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -13,10 +13,11 @@ import { AppScreen } from "@/components/app-screen";
 import { AppText } from "@/components/app-text";
 import { BackArrow } from "@/components/back-arrow";
 import { FloatingView } from "@/components/motion";
+import { walletOverview } from "@/data/mock";
 import { StaticMap } from "@/components/static-map";
 import { theme } from "@/theme";
-import { Dimensions } from "react-native";
-const { height } = Dimensions.get("window");
+const { height, width } = Dimensions.get("window");
+
 const wheelerRide = {
   name: "Wheeler",
   price: "₦3,800",
@@ -27,10 +28,100 @@ const wheelerRide = {
   destination: "Civic Centre, Victoria Island",
 } as const;
 
+// Route coordinates as percentages of the map area
+// Pickup: Lagos Island (top-left-ish), Destination: Victoria Island (bottom-right-ish)
+const PICKUP_PCT = { x: 0.33, y: 0.52 };
+const DEST_PCT = { x: 0.84, y: 0.84 };
+
+function parseAmount(value: string) {
+  const normalized = value.replace(/,/g, "");
+  const match = normalized.match(/\d+(?:\.\d+)?/);
+
+  return match ? Number(match[0]) : 0;
+}
+
+function RouteOverlay({
+  mapWidth,
+  mapHeight,
+}: {
+  mapWidth: number;
+  mapHeight: number;
+}) {
+  const x1 = PICKUP_PCT.x * mapWidth;
+  const y1 = PICKUP_PCT.y * mapHeight;
+  const x2 = DEST_PCT.x * mapWidth;
+  const y2 = DEST_PCT.y * mapHeight;
+
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const lineLength = Math.sqrt(dx * dx + dy * dy);
+  const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+
+  const DOT_SIZE = 14;
+  const BORDER = 2;
+
+  return (
+    <View style={StyleSheet.absoluteFill} pointerEvents="none">
+      {/* Route line */}
+      <View
+        style={{
+          position: "absolute",
+          left: x1,
+          top: y1,
+          width: lineLength,
+          height: 3,
+          backgroundColor: theme.colors.orange,
+          borderRadius: 2,
+          transformOrigin: "0 50%",
+          transform: [{ rotate: `${angle}deg` }],
+          opacity: 0.95,
+        }}
+      />
+
+      {/* Pickup dot — orange */}
+      <View
+        style={{
+          position: "absolute",
+          left: x1 - DOT_SIZE / 2,
+          top: y1 - DOT_SIZE / 2,
+          width: DOT_SIZE,
+          height: DOT_SIZE,
+          borderRadius: DOT_SIZE / 2,
+          backgroundColor: theme.colors.orange,
+          borderWidth: BORDER,
+          borderColor: theme.colors.black,
+        }}
+      />
+
+      {/* Destination dot — green */}
+      <View
+        style={{
+          position: "absolute",
+          left: x2 - DOT_SIZE / 2,
+          top: y2 - DOT_SIZE / 2,
+          width: DOT_SIZE,
+          height: DOT_SIZE,
+          borderRadius: DOT_SIZE / 2,
+          backgroundColor: theme.colors.green,
+          borderWidth: BORDER,
+          borderColor: theme.colors.black,
+        }}
+      />
+    </View>
+  );
+}
+
 export default function RideSelectionScreen() {
   const router = useRouter();
   const collapsedSheetOffset = 196;
   const sheetOffset = useSharedValue(0);
+  const rideFare = parseAmount(wheelerRide.price);
+  const walletBalance = parseAmount(walletOverview.fiatApprox);
+
+  // Map area height = full screen height minus the bottom sheet height
+  const SHEET_MIN_HEIGHT = 438;
+  const mapHeight = height - SHEET_MIN_HEIGHT;
+  const mapWidth = width;
 
   const expandSheet = () => {
     sheetOffset.value = withTiming(0, { duration: 220 });
@@ -50,7 +141,6 @@ export default function RideSelectionScreen() {
           expandSheet();
           return;
         }
-
         if (gestureState.dy > 30) {
           collapseSheet();
         }
@@ -60,7 +150,6 @@ export default function RideSelectionScreen() {
           expandSheet();
           return;
         }
-
         if (gestureState.dy > 30) {
           collapseSheet();
         }
@@ -72,6 +161,22 @@ export default function RideSelectionScreen() {
     transform: [{ translateY: sheetOffset.value }],
   }));
 
+  const handleBookRide = () => {
+    if (walletBalance >= rideFare) {
+      router.push("/matching");
+      return;
+    }
+
+    router.push({
+      pathname: "/rider/wallet",
+      params: {
+        depositAmount: String(rideFare),
+        redirectReason: "insufficient-funds",
+        rideName: wheelerRide.name,
+      },
+    });
+  };
+
   return (
     <AppScreen
       backgroundColor={theme.colors.mapBase}
@@ -82,6 +187,9 @@ export default function RideSelectionScreen() {
 
       <View style={styles.mapWrap}>
         <StaticMap height={height} scene="rideSelection">
+          {/* ── Route overlay ── */}
+          <RouteOverlay mapWidth={mapWidth} mapHeight={mapHeight} />
+
           <View style={styles.topBar}>
             <BackArrow onPress={() => router.back()} />
             <FloatingView distance={5}>
@@ -166,8 +274,7 @@ export default function RideSelectionScreen() {
 
         <AppButton
           title="Book Wheeler"
-          // Confirm overlay removed; booking should go straight to matching.
-          onPress={() => router.push("/matching")}
+          onPress={handleBookRide}
         />
       </Animated.View>
     </AppScreen>

@@ -190,8 +190,8 @@ export const riderProfileSnippets: RiderSnippet[] = [
 ];
 
 export const walletOverview = {
-  balance: '$28.50',
-  fiatApprox: '≈ ₦46,125',
+  balance: '$1.95',
+  fiatApprox: '≈ ₦3,150',
   accountDetails: {
     bankName: 'WheelerPay MFB',
     accountNumber: '1023847561',
