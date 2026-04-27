@@ -72,6 +72,9 @@ export default function WalletScreen() {
   const toastOpacity = useRef(new Animated.Value(0)).current;
   const handledRedirectRef = useRef<string | null>(null);
   const formattedDepositAmount = depositAmount ? `NGN ${depositAmount}` : "NGN 0";
+  const redirectReason = Array.isArray(params.redirectReason)
+    ? params.redirectReason[0]
+    : params.redirectReason;
 
   useEffect(() => {
     if (!toastMessage) {
@@ -100,9 +103,6 @@ export default function WalletScreen() {
   }, [toastMessage, toastOpacity]);
 
   useEffect(() => {
-    const redirectReason = Array.isArray(params.redirectReason)
-      ? params.redirectReason[0]
-      : params.redirectReason;
     const rawDepositAmount = Array.isArray(params.depositAmount)
       ? params.depositAmount[0]
       : params.depositAmount;
@@ -194,6 +194,12 @@ export default function WalletScreen() {
         "Select a payment method",
         "Choose card or bank transfer before continuing.",
       );
+      return;
+    }
+
+    if (redirectReason === "insufficient-funds") {
+      setPayOnlineModalVisible(false);
+      router.replace("/matching");
       return;
     }
 
