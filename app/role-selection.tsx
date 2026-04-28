@@ -11,7 +11,13 @@ import { RingStack, StarBurst } from "@/components/decorative-shapes";
 import { FlowHeader } from "@/components/flow-header";
 import { FloatingView, PulseView, RevealView } from "@/components/motion";
 import { RoleMotionBadge } from "@/components/role-motion-badge";
+import { isBackendConfigured, syncPrivyAuth } from "@/lib/api";
 import { isPrivyConfigured, privyOAuthRedirectPath } from "@/lib/privy";
+import {
+  getPrivyEmail,
+  getPrivyEthereumWalletAddress,
+  getPrivyName,
+} from "@/lib/privy-user";
 import {
   isThirdwebConfigured,
   thirdwebAppMetadata,
@@ -120,7 +126,7 @@ export default function RoleSelectionScreen() {
 
       <RevealView delay={220} style={styles.actions}>
         {isPrivyConfigured ? (
-          <GoogleContinueButton nextRoute={authNextRoute} />
+          <GoogleContinueButton nextRoute={authNextRoute} role={selectedRole} />
         ) : (
           <AppButton
             title="Connect with Google ↗"
@@ -133,32 +139,78 @@ export default function RoleSelectionScreen() {
   );
 }
 
-function GoogleContinueButton({ nextRoute }: { nextRoute: Href }) {
+function GoogleContinueButton({
+  nextRoute,
+  role,
+}: {
+  nextRoute: Href;
+  role: Role;
+}) {
   const router = useRouter();
-  const { user, isReady } = usePrivy();
+  const { user, isReady, getAccessToken } = usePrivy();
   const { login, state } = useLoginWithOAuth();
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
   const isLoading = state.status === "loading";
   const errorMessage =
-    state.status === "error"
+    syncError ??
+    (state.status === "error"
       ? (state.error?.message ?? "Could not continue with Google.")
-      : null;
+      : null);
 
   async function handlePress() {
-    if (isLoading) return;
-    if (user) {
-      router.push(nextRoute);
+    if (isLoading || isSyncing) return;
+
+    setSyncError(null);
+
+    if (!isBackendConfigured()) {
+      setSyncError("Set EXPO_PUBLIC_API_BASE_URL before continuing.");
       return;
     }
+
     if (!isReady) {
-      router.push(nextRoute);
+      setSyncError("Privy is still initializing. Try again in a moment.");
       return;
     }
-    const authenticatedUser = await login({
-      provider: "google",
-      redirectUri: privyOAuthRedirectPath,
-    });
-    if (authenticatedUser) {
+
+    let authenticatedUser = user ?? undefined;
+    if (!authenticatedUser) {
+      authenticatedUser = await login({
+        provider: "google",
+        redirectUri: privyOAuthRedirectPath,
+      });
+    }
+
+    if (!authenticatedUser) {
+      return;
+    }
+
+    const accessToken = await getAccessToken();
+    if (!accessToken) {
+      setSyncError("Could not get a Privy access token.");
+      return;
+    }
+
+    setIsSyncing(true);
+
+    try {
+      await syncPrivyAuth({
+        accessToken,
+        authMethod: "google",
+        role: role === "drive" ? "DRIVER" : "RIDER",
+        email: getPrivyEmail(authenticatedUser),
+        name: getPrivyName(authenticatedUser),
+        walletAddress: getPrivyEthereumWalletAddress(authenticatedUser),
+      });
       router.push(nextRoute);
+    } catch (error) {
+      setSyncError(
+        error instanceof Error
+          ? error.message
+          : "Could not sync your account with Wheelers."
+      );
+    } finally {
+      setIsSyncing(false);
     }
   }
 
@@ -167,10 +219,14 @@ function GoogleContinueButton({ nextRoute }: { nextRoute: Href }) {
       <AppButton
         title={
           user
-            ? "Continue"
+            ? isSyncing
+              ? "Setting up account…"
+              : "Continue"
             : isLoading
               ? "Opening Google…"
-              : "Connect with Google"
+              : isSyncing
+                ? "Setting up account…"
+                : "Connect with Google"
         }
         onPress={() => {
           void handlePress();
