@@ -65,7 +65,17 @@ export default function RootLayout() {
   }
 
   return (
-    <PrivyProvider appId={privyAppId} clientId={privyClientId}>
+    <PrivyProvider
+      appId={privyAppId}
+      clientId={privyClientId}
+      config={{
+        embedded: {
+          ethereum: {
+            createOnLogin: "users-without-wallets",
+          },
+        },
+      }}
+    >
       {withWalletKit}
     </PrivyProvider>
   );
