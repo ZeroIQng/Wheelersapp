@@ -1,7 +1,13 @@
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useRef } from "react";
-import { Dimensions, PanResponder, Pressable, StyleSheet, View } from "react-native";
+import {
+  Dimensions,
+  PanResponder,
+  Pressable,
+  StyleSheet,
+  View,
+} from "react-native";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -13,8 +19,8 @@ import { AppScreen } from "@/components/app-screen";
 import { AppText } from "@/components/app-text";
 import { BackArrow } from "@/components/back-arrow";
 import { FloatingView } from "@/components/motion";
-import { walletOverview } from "@/data/mock";
 import { StaticMap } from "@/components/static-map";
+import { walletOverview } from "@/data/mock";
 import { theme } from "@/theme";
 const { height, width } = Dimensions.get("window");
 
@@ -244,7 +250,7 @@ export default function RideSelectionScreen() {
               </View>
               <AppText variant="h3">Wheeler</AppText>
               <AppText variant="bodySmall" color={theme.colors.muted}>
-                Direct ride with pickup and drop-off shown on map
+                {/* Direct ride with pickup and drop-off shown on map */}
               </AppText>
             </View>
             <View style={styles.priceBlock}>
@@ -272,10 +278,7 @@ export default function RideSelectionScreen() {
           />
         </View>
 
-        <AppButton
-          title="Book Wheeler"
-          onPress={handleBookRide}
-        />
+        <AppButton title="Book Wheeler" onPress={handleBookRide} />
       </Animated.View>
     </AppScreen>
   );

@@ -1,7 +1,7 @@
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from "react-native";
 
-import { AppText } from '@/components/app-text';
-import { theme } from '@/theme';
+import { AppText } from "@/components/app-text";
+import { theme } from "@/theme";
 
 type SettingsRowProps = {
   icon: string;
@@ -10,6 +10,7 @@ type SettingsRowProps = {
   value?: string;
   destructive?: boolean;
   highlight?: boolean;
+  showDivider?: boolean;
   toggleValue?: boolean;
   onPress?: () => void;
   onToggle?: () => void;
@@ -22,19 +23,27 @@ export function SettingsRow({
   value,
   destructive,
   highlight,
+  showDivider = true,
   toggleValue,
   onPress,
   onToggle,
 }: SettingsRowProps) {
   const content = (
-    <View style={styles.row}>
-      <View style={[styles.iconBox, highlight ? styles.highlightIconBox : null, destructive ? styles.destructiveIconBox : null]}>
+    <View style={[styles.row, !showDivider ? styles.rowNoDivider : null]}>
+      <View
+        style={[
+          styles.iconBox,
+          highlight ? styles.highlightIconBox : null,
+          destructive ? styles.destructiveIconBox : null,
+        ]}
+      >
         <AppText variant="h3">{icon}</AppText>
       </View>
       <View style={styles.copy}>
         <AppText
-          variant={highlight ? 'label' : 'bodyMedium'}
-          color={destructive ? theme.colors.danger : theme.colors.black}>
+          variant={highlight ? "label" : "bodyMedium"}
+          color={destructive ? theme.colors.danger : theme.colors.black}
+        >
           {title}
         </AppText>
         {subtitle ? (
@@ -43,16 +52,33 @@ export function SettingsRow({
           </AppText>
         ) : null}
       </View>
-      {typeof toggleValue === 'boolean' ? (
-        <Pressable onPress={onToggle} style={[styles.switchTrack, toggleValue ? styles.switchTrackOn : null]}>
-          <View style={[styles.switchThumb, toggleValue ? styles.switchThumbOn : null]} />
+      {typeof toggleValue === "boolean" ? (
+        <Pressable
+          onPress={onToggle}
+          style={[
+            styles.switchTrack,
+            toggleValue ? styles.switchTrackOn : null,
+          ]}
+        >
+          <View
+            style={[
+              styles.switchThumb,
+              toggleValue ? styles.switchThumbOn : null,
+            ]}
+          />
         </Pressable>
       ) : value ? (
-        <AppText variant="monoSmall" color={highlight ? theme.colors.orange : theme.colors.muted}>
+        <AppText
+          variant="monoSmall"
+          color={highlight ? theme.colors.orange : theme.colors.muted}
+        >
           {value} ›
         </AppText>
       ) : onPress ? (
-        <AppText variant="h3" color={highlight ? theme.colors.orange : theme.colors.mutedLight}>
+        <AppText
+          variant="h3"
+          color={highlight ? theme.colors.orange : theme.colors.mutedLight}
+        >
           ›
         </AppText>
       ) : null}
@@ -60,7 +86,14 @@ export function SettingsRow({
   );
 
   if (onPress) {
-    return <Pressable onPress={onPress}>{content}</Pressable>;
+    return (
+      <Pressable
+        onPress={onPress}
+        style={({ pressed }) => (pressed ? styles.pressed : null)}
+      >
+        {content}
+      </Pressable>
+    );
   }
 
   return content;
@@ -68,12 +101,20 @@ export function SettingsRow({
 
 const styles = StyleSheet.create({
   row: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: theme.spacing.md,
-    paddingVertical: theme.spacing.md,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.sm, // ← was lg, now sm — tighter rows
     borderBottomWidth: 1,
-    borderBottomColor: '#F0EDE8',
+    borderBottomColor: "#F0EDE8",
+  },
+  rowNoDivider: {
+    borderBottomWidth: 0,
+    paddingBottom: theme.spacing.sm,
+  },
+  pressed: {
+    opacity: 0.75,
   },
   iconBox: {
     width: 38,
@@ -82,8 +123,8 @@ const styles = StyleSheet.create({
     borderWidth: theme.borders.thick,
     borderColor: theme.colors.black,
     backgroundColor: theme.colors.white,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     ...theme.shadows.card,
   },
   highlightIconBox: {
@@ -120,6 +161,6 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.white,
   },
   switchThumbOn: {
-    alignSelf: 'flex-end',
+    alignSelf: "flex-end",
   },
 });

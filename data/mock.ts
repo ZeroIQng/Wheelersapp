@@ -490,21 +490,6 @@ export const settingsOptions = [
     type: 'navigation',
   },
   {
-    id: 'language',
-    icon: '🌍',
-    title: 'Language',
-    type: 'value',
-    value: 'English',
-  },
-  {
-    id: 'switch-driver',
-    icon: '🔄',
-    title: 'Switch to Driver',
-    subtitle: 'Activate driver mode',
-    type: 'navigation',
-    route: '/shared/role-switcher',
-  },
-  {
     id: 'logout',
     icon: '🚪',
     title: 'Log out',
