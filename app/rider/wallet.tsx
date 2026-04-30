@@ -134,7 +134,7 @@ export default function WalletScreen() {
     setToastMessage(
       `Insufficient funds${rideName ? ` for ${rideName}` : ""}. Add NGN ${formattedAmount} to continue.`,
     );
-  }, [params.depositAmount, params.redirectReason, params.rideName, toastOpacity]);
+  }, [params.depositAmount, params.redirectReason, params.rideName, redirectReason, toastOpacity]);
 
   const handleDepositAmountChange = (value: string) => {
     const digitsOnly = value.replace(/\D/g, "");

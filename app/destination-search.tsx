@@ -171,9 +171,6 @@ export default function DestinationSearchScreen() {
     setSearchQuery("");
   };
 
-  const otherFieldLabel = activeField === "from" ? "To" : "From";
-  const otherFieldValue = activeField === "from" ? toValue : fromValue;
-
   return (
     <AppScreen
       backgroundColor={theme.colors.offWhite}

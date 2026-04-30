@@ -1,4 +1,7 @@
-const apiBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL?.trim().replace(/\/+$/, "");
+const apiBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL?.trim().replace(
+  /\/+$/,
+  "",
+);
 
 export type BackendRole = "RIDER" | "DRIVER" | "BOTH";
 
@@ -90,19 +93,25 @@ async function postJson<TResponse>(
 
   const payload = (await response.json().catch(() => null)) as unknown;
   if (!response.ok) {
-    throw new Error(getErrorMessage(payload, options?.fallbackError ?? "Request failed."));
+    throw new Error(
+      getErrorMessage(payload, options?.fallbackError ?? "Request failed."),
+    );
   }
 
   return (payload ?? {}) as TResponse;
 }
 
-export async function syncPrivyAuth(input: SyncPrivyAuthInput): Promise<SyncPrivyAuthResponse> {
+export async function syncPrivyAuth(
+  input: SyncPrivyAuthInput,
+): Promise<SyncPrivyAuthResponse> {
   return postJson<SyncPrivyAuthResponse>("/auth/privy", input, {
     fallbackError: "Could not sync your account with Wheelers.",
   });
 }
 
-export async function sendPhoneOtp(input: SendPhoneOtpInput): Promise<SendPhoneOtpResponse> {
+export async function sendPhoneOtp(
+  input: SendPhoneOtpInput,
+): Promise<SendPhoneOtpResponse> {
   return postJson<SendPhoneOtpResponse>(
     "/auth/phone/send-otp",
     { phone: input.phone },
@@ -113,7 +122,9 @@ export async function sendPhoneOtp(input: SendPhoneOtpInput): Promise<SendPhoneO
   );
 }
 
-export async function verifyPhoneOtp(input: VerifyPhoneOtpInput): Promise<VerifyPhoneOtpResponse> {
+export async function verifyPhoneOtp(
+  input: VerifyPhoneOtpInput,
+): Promise<VerifyPhoneOtpResponse> {
   return postJson<VerifyPhoneOtpResponse>(
     "/auth/phone/verify-otp",
     { code: input.code },

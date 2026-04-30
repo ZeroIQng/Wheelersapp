@@ -152,62 +152,6 @@ function SvgPersonTwo() {
   );
 }
 
-function SvgPersonThree() {
-  return (
-    <Svg width={34} height={88} viewBox="0 0 145 360">
-      <Ellipse cx="79" cy="352" rx="36" ry="10" fill="#D9DCE5" />
-      <Rect x="58" y="246" width="14" height="98" rx="7" fill="#3E355D" />
-      <Rect x="88" y="246" width="14" height="98" rx="7" fill="#3E355D" />
-      <Path d="M55 338H75L71 348H51L55 338Z" fill="#242035" />
-      <Path d="M85 338H105L109 348H89L85 338Z" fill="#242035" />
-      <Path
-        d="M38 120C38 108 48 98 60 98H98C110 98 120 108 120 120V246H38V120Z"
-        fill="#6B59C9"
-      />
-      <Path d="M79 116L62 152H96L79 116Z" fill="#EEF1FA" />
-      <Rect x="14" y="128" width="18" height="76" rx="9" fill="#D59A79" />
-      <Rect x="123" y="130" width="18" height="90" rx="9" fill="#D59A79" />
-      <Rect
-        x="10"
-        y="124"
-        width="18"
-        height="60"
-        rx="9"
-        transform="rotate(18 10 124)"
-        fill="#6B59C9"
-      />
-      <Rect
-        x="121"
-        y="124"
-        width="18"
-        height="72"
-        rx="9"
-        transform="rotate(-28 121 124)"
-        fill="#6B59C9"
-      />
-      <Rect x="9" y="165" width="12" height="20" rx="2" fill="#2B314A" />
-      <Path
-        d="M114 205H142C146 205 149 208 149 212V244H107V212C107 208 110 205 114 205Z"
-        fill="#2A2439"
-      />
-      <Path
-        d="M116 205C116 192 122 184 128 184C134 184 140 192 140 205"
-        stroke="#2A2439"
-        strokeWidth="6"
-        strokeLinecap="round"
-      />
-      <Rect x="71" y="80" width="16" height="18" rx="6" fill="#D59A79" />
-      <Circle cx="79" cy="54" r="26" fill="#D59A79" />
-      <Path
-        d="M53 49C53 31 65 20 80 20C95 20 105 32 105 48V67H97C93 57 85 49 73 47C66 46 59 47 53 49Z"
-        fill="#5A3667"
-      />
-      <Circle cx="71" cy="56" r="2.2" fill="#2D1F1F" />
-      <Circle cx="86" cy="56" r="2.2" fill="#2D1F1F" />
-    </Svg>
-  );
-}
-
 function GroupRideArtwork() {
   const leftFloat = useSharedValue(0);
   const rightFloat = useSharedValue(0);
@@ -457,7 +401,7 @@ export default function RiderHomeScreen() {
             color={theme.colors.orange}
             style={styles.serviceHeading}
           >
-            Let's Wheel
+            Let&apos;s Wheel
           </AppText>
         </RevealView>
         <View style={styles.serviceRow}>
