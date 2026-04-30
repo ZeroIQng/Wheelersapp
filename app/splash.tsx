@@ -36,7 +36,7 @@ import { theme } from "@/theme";
 type SplashRoute = "/role-selection" | AuthenticatedRoute;
 type AccessTokenGetter = () => Promise<string | null | undefined>;
 
-const SESSION_RESTORE_GRACE_MS = 1200;
+const SESSION_RESTORE_GRACE_MS = 2500;
 const ACCESS_TOKEN_RETRY_ATTEMPTS = 6;
 const ACCESS_TOKEN_RETRY_DELAY_MS = 250;
 
@@ -65,15 +65,9 @@ async function resolvePrivyDestination({
   user,
   getAccessToken,
 }: {
-  user: User | null;
+  user: User;
   getAccessToken: AccessTokenGetter;
 }): Promise<SplashRoute> {
-  if (!user) {
-    await clearStoredAuthState();
-    await sleep(SESSION_RESTORE_GRACE_MS);
-    return "/role-selection";
-  }
-
   const storedAuthState = await readStoredAuthState();
   if (storedAuthState) {
     return getAuthenticatedRoute(storedAuthState);
@@ -169,6 +163,30 @@ function PrivyAwareSplashScreen() {
 
     let cancelled = false;
 
+    if (!user) {
+      const timer = setTimeout(() => {
+        if (cancelled || hasNavigated.current) {
+          return;
+        }
+
+        void (async () => {
+          await clearStoredAuthState();
+
+          if (cancelled || hasNavigated.current) {
+            return;
+          }
+
+          hasNavigated.current = true;
+          router.replace("/role-selection");
+        })();
+      }, SESSION_RESTORE_GRACE_MS);
+
+      return () => {
+        cancelled = true;
+        clearTimeout(timer);
+      };
+    }
+
     void (async () => {
       const destination = await resolvePrivyDestination({
         user,
@@ -190,6 +208,11 @@ function PrivyAwareSplashScreen() {
 
   function handleContinue() {
     if (!isReady || hasNavigated.current) {
+      return;
+    }
+
+    if (!user) {
+      navigate("/role-selection");
       return;
     }
 
