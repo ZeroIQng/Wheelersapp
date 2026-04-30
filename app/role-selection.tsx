@@ -1,5 +1,5 @@
 import { useLoginWithOAuth, usePrivy, type User } from "@privy-io/expo";
-import { Href, useRouter } from "expo-router";
+import { useRouter } from "expo-router";
 import { useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 
@@ -12,6 +12,7 @@ import { FlowHeader } from "@/components/flow-header";
 import { FloatingView, PulseView, RevealView } from "@/components/motion";
 import { RoleMotionBadge } from "@/components/role-motion-badge";
 import { isBackendConfigured, syncPrivyAuth } from "@/lib/api";
+import { getPostLoginRoute, persistAuthenticatedRole } from "@/lib/auth-state";
 import { isPrivyConfigured, privyOAuthRedirectPath } from "@/lib/privy";
 import {
   getPrivyEmail,
@@ -78,7 +79,6 @@ export default function RoleSelectionScreen() {
   const [selectedRole, setSelectedRole] = useState<Role>("ride");
   const [rideMotionKey, setRideMotionKey] = useState(0);
   const [driveMotionKey, setDriveMotionKey] = useState(1);
-  const authNextRoute = "/phone-auth" as Href;
 
   function handleRolePress(role: Role) {
     setSelectedRole(role);
@@ -130,11 +130,11 @@ export default function RoleSelectionScreen() {
 
       <RevealView delay={220} style={styles.actions}>
         {isPrivyConfigured ? (
-          <GoogleContinueButton nextRoute={authNextRoute} role={selectedRole} />
+          <GoogleContinueButton role={selectedRole} />
         ) : (
           <AppButton
             title="Connect with Google ↗"
-            onPress={() => router.push(authNextRoute)}
+            onPress={() => router.push("/phone-auth")}
           />
         )}
         {selectedRole === "ride" ? <WalletConnectAction /> : null}
@@ -144,10 +144,8 @@ export default function RoleSelectionScreen() {
 }
 
 function GoogleContinueButton({
-  nextRoute,
   role,
 }: {
-  nextRoute: Href;
   role: Role;
 }) {
   const router = useRouter();
@@ -198,16 +196,19 @@ function GoogleContinueButton({
 
     setIsSyncing(true);
 
+    const authRole = role === "drive" ? "DRIVER" : "RIDER";
+
     try {
       await syncPrivyAuth({
         accessToken,
         authMethod: "google",
-        role: role === "drive" ? "DRIVER" : "RIDER",
+        role: authRole,
         email: getPrivyEmail(authenticatedUser),
         name: getPrivyName(authenticatedUser),
         walletAddress: getPrivyEthereumWalletAddress(authenticatedUser),
       });
-      router.push(nextRoute);
+      await persistAuthenticatedRole(authRole);
+      router.replace(getPostLoginRoute(authRole));
     } catch (error) {
       setSyncError(
         error instanceof Error

@@ -8,13 +8,14 @@ import { AppScreen } from '@/components/app-screen';
 import { AppText } from '@/components/app-text';
 import { BlobShape, StarBurst } from '@/components/decorative-shapes';
 import { FlowHeader } from '@/components/flow-header';
+import { markStoredOnboardingComplete } from '@/lib/auth-state';
 import { FloatingView, PulseView, RevealView } from '@/components/motion';
 import { theme } from '@/theme';
 
 export default function OtpVerifyScreen() {
   const router = useRouter();
   const [digits, setDigits] = useState(['3', '7', '2', '']);
-  const inputRefs = useRef<Array<TextInput | null>>([]);
+  const inputRefs = useRef<(TextInput | null)[]>([]);
   const backgroundColor = theme.colors.offWhite;
   const textColor = theme.colors.black;
   const mutedColor = theme.colors.muted;
@@ -44,6 +45,11 @@ export default function OtpVerifyScreen() {
       inputRefs.current[index - 1]?.focus();
     }
   };
+
+  async function handleVerify() {
+    await markStoredOnboardingComplete();
+    router.replace('/rider');
+  }
 
   return (
     <AppScreen backgroundColor={backgroundColor} contentStyle={styles.container}>
@@ -108,7 +114,7 @@ export default function OtpVerifyScreen() {
         </PulseView>
 
         <RevealView delay={180} style={styles.verifyButtonWrap}>
-          <AppButton title="Verify" onPress={() => router.push('/rider')} />
+          <AppButton title="Verify" onPress={() => void handleVerify()} />
         </RevealView>
 
         <AppText variant="bodySmall" color={mutedColor} style={styles.resend}>

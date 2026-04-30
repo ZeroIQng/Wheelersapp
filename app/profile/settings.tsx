@@ -1,3 +1,4 @@
+import { usePrivy } from "@privy-io/expo";
 import { Href, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useState } from "react";
@@ -8,6 +9,8 @@ import { AppScreen } from "@/components/app-screen";
 import { AppText } from "@/components/app-text";
 import { SettingsRow } from "@/components/SettingsRow";
 import { SettingOption, settingsOptions, userProfile } from "@/data/mock";
+import { clearStoredAuthState } from "@/lib/auth-state";
+import { isPrivyConfigured } from "@/lib/privy";
 import { theme } from "@/theme";
 
 const accountSettingIds = new Set([
@@ -37,6 +40,64 @@ const supportOptions = [
 ] satisfies SettingOption[];
 
 export default function SettingsScreen() {
+  if (!isPrivyConfigured) {
+    return <LocalSettingsScreen />;
+  }
+
+  return <PrivySettingsScreen />;
+}
+
+function LocalSettingsScreen() {
+  const router = useRouter();
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  async function handleLogout() {
+    if (isLoggingOut) {
+      return;
+    }
+
+    setIsLoggingOut(true);
+    try {
+      await clearStoredAuthState();
+      router.replace("/role-selection");
+    } finally {
+      setIsLoggingOut(false);
+    }
+  }
+
+  return <SettingsScreenBody isLoggingOut={isLoggingOut} onLogout={handleLogout} />;
+}
+
+function PrivySettingsScreen() {
+  const router = useRouter();
+  const { logout } = usePrivy();
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  async function handleLogout() {
+    if (isLoggingOut) {
+      return;
+    }
+
+    setIsLoggingOut(true);
+    try {
+      await logout();
+      await clearStoredAuthState();
+      router.replace("/role-selection");
+    } finally {
+      setIsLoggingOut(false);
+    }
+  }
+
+  return <SettingsScreenBody isLoggingOut={isLoggingOut} onLogout={handleLogout} />;
+}
+
+function SettingsScreenBody({
+  isLoggingOut,
+  onLogout,
+}: {
+  isLoggingOut: boolean;
+  onLogout: () => Promise<void>;
+}) {
   const router = useRouter();
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const accountSettings = settingsOptions.filter((item) =>
@@ -46,7 +107,7 @@ export default function SettingsScreen() {
     accountActionIds.has(item.id),
   );
 
-  function handleRowPress(id: string, route?: string) {
+  async function handleRowPress(id: string, route?: string) {
     if (route) {
       router.push(route as Href);
       return;
@@ -66,7 +127,18 @@ export default function SettingsScreen() {
       return;
     }
     if (id === "logout") {
-      router.replace("/role-selection");
+      if (isLoggingOut) {
+        return;
+      }
+
+      try {
+        await onLogout();
+      } catch (error) {
+        Alert.alert(
+          "Logout failed",
+          error instanceof Error ? error.message : "Could not log you out.",
+        );
+      }
     }
   }
 
@@ -79,17 +151,17 @@ export default function SettingsScreen() {
         key={item.id}
         onPress={
           item.type === "navigation" || item.type === "danger"
-            ? () => handleRowPress(item.id, item.route)
+            ? () => void handleRowPress(item.id, item.route)
             : undefined
         }
         onToggle={
           item.type === "toggle"
-            ? () => setNotificationsEnabled((c) => !c)
+            ? () => setNotificationsEnabled((current) => !current)
             : undefined
         }
         showDivider={index < items.length - 1}
         subtitle={item.subtitle}
-        title={item.title}
+        title={item.id === "logout" && isLoggingOut ? "Logging out..." : item.title}
         toggleValue={item.type === "toggle" ? notificationsEnabled : undefined}
         value={item.type === "value" ? item.value : undefined}
       />
@@ -113,7 +185,6 @@ export default function SettingsScreen() {
         </View>
 
         <AppCard style={styles.settingsCard}>
-          {/* Profile row */}
           <View style={styles.profileRow}>
             <View style={styles.avatar}>
               <AppText variant="h3" color={theme.colors.white}>
@@ -131,10 +202,8 @@ export default function SettingsScreen() {
             </View>
           </View>
 
-          {/* Full-bleed divider after profile */}
           <View style={styles.fullDivider} />
 
-          {/* Account section */}
           <View style={styles.sectionLabel}>
             <AppText variant="monoSmall" color={theme.colors.muted}>
               ACCOUNT
@@ -142,10 +211,8 @@ export default function SettingsScreen() {
           </View>
           {renderRows(accountSettings)}
 
-          {/* Full-bleed divider between sections */}
           <View style={styles.fullDivider} />
 
-          {/* Support section */}
           <View style={styles.sectionLabel}>
             <AppText variant="monoSmall" color={theme.colors.muted}>
               SUPPORT
@@ -156,10 +223,8 @@ export default function SettingsScreen() {
           </View>
           {renderRows(supportOptions, { support: true })}
 
-          {/* Full-bleed divider before actions */}
           <View style={styles.fullDivider} />
 
-          {/* Account actions section */}
           <View style={styles.sectionLabel}>
             <AppText variant="monoSmall" color={theme.colors.muted}>
               ACCOUNT ACTIONS
@@ -194,7 +259,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: theme.spacing.md,
     paddingHorizontal: theme.spacing.md,
-    paddingTop: theme.spacing.md, // ← was lg
+    paddingTop: theme.spacing.md,
     paddingBottom: theme.spacing.md,
   },
   avatar: {
@@ -212,20 +277,17 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 3,
   },
-
-  // Section label pill — tinted background so it reads as a header, not a row
   sectionLabel: {
     gap: 2,
     paddingHorizontal: theme.spacing.md,
-    paddingTop: theme.spacing.sm, // ← was md
-    paddingBottom: theme.spacing.xxs, // ← was xs, pull label closer to first row
+    paddingTop: theme.spacing.sm,
+    paddingBottom: theme.spacing.xxs,
   },
-  // Thick full-width divider that visually "cuts" between sections
   fullDivider: {
     height: 1,
     backgroundColor: "#E8E4DE",
     marginHorizontal: theme.spacing.md,
-    marginTop: theme.spacing.xxs, // ← tighter top margin
-    marginBottom: 0, // ← no bottom margin, label provides the gap
+    marginTop: theme.spacing.xxs,
+    marginBottom: 0,
   },
 });
