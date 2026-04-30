@@ -12,7 +12,7 @@ import { FlowHeader } from "@/components/flow-header";
 import { FloatingView, PulseView, RevealView } from "@/components/motion";
 import { RoleMotionBadge } from "@/components/role-motion-badge";
 import { isBackendConfigured, syncPrivyAuth } from "@/lib/api";
-import { getPostLoginRoute, persistAuthenticatedRole } from "@/lib/auth-state";
+import { getAuthenticatedRoute, persistAuthenticatedRole } from "@/lib/auth-state";
 // import { clearStoredAuthState } from "@/lib/auth-state";
 import { isPrivyConfigured, privyOAuthRedirectPath } from "@/lib/privy";
 import {
@@ -202,7 +202,7 @@ function GoogleContinueButton({
     const authRole = role === "drive" ? "DRIVER" : "RIDER";
 
     try {
-      await syncPrivyAuth({
+      const response = await syncPrivyAuth({
         accessToken,
         authMethod: "google",
         role: authRole,
@@ -210,8 +210,13 @@ function GoogleContinueButton({
         name: getPrivyName(authenticatedUser),
         walletAddress: getPrivyEthereumWalletAddress(authenticatedUser),
       });
-      await persistAuthenticatedRole(authRole);
-      router.replace(getPostLoginRoute(authRole));
+      const nextState = await persistAuthenticatedRole(authRole, {
+        phoneVerified:
+          authRole === "RIDER" &&
+          typeof response.user?.phone === "string" &&
+          response.user.phone.length > 0,
+      });
+      router.replace(getAuthenticatedRoute(nextState));
     } catch (error) {
       setSyncError(
         error instanceof Error

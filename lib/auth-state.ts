@@ -1,13 +1,15 @@
 import * as SecureStore from "expo-secure-store";
 
 export type AppAuthRole = "RIDER" | "DRIVER";
+export type RiderOnboardingRoute = "/phone-auth" | "/otp-verify" | "/rider";
+export type AuthenticatedRoute = "/driver/dashboard" | RiderOnboardingRoute;
 
 export type StoredAuthState = {
   role: AppAuthRole;
   onboardingComplete: boolean;
+  onboardingRoute: AuthenticatedRoute;
+  pendingPhone: string | null;
 };
-
-export type AuthenticatedRoute = "/driver/dashboard" | "/phone-auth" | "/rider";
 
 const AUTH_STATE_KEY = "wheelers.auth.state";
 
@@ -20,7 +22,15 @@ export function getAuthenticatedRoute(state: StoredAuthState): AuthenticatedRout
     return "/driver/dashboard";
   }
 
-  return state.onboardingComplete ? "/rider" : "/phone-auth";
+  if (state.onboardingComplete) {
+    return "/rider";
+  }
+
+  if (state.onboardingRoute === "/otp-verify" && state.pendingPhone) {
+    return "/otp-verify";
+  }
+
+  return "/phone-auth";
 }
 
 export async function readStoredAuthState(): Promise<StoredAuthState | null> {
@@ -35,9 +45,21 @@ export async function readStoredAuthState(): Promise<StoredAuthState | null> {
       return null;
     }
 
+    const onboardingRoute =
+      parsed.onboardingRoute === "/driver/dashboard" ||
+      parsed.onboardingRoute === "/phone-auth" ||
+      parsed.onboardingRoute === "/otp-verify" ||
+      parsed.onboardingRoute === "/rider"
+        ? parsed.onboardingRoute
+        : parsed.role === "DRIVER"
+          ? "/driver/dashboard"
+          : "/phone-auth";
+
     return {
       role: parsed.role,
       onboardingComplete: Boolean(parsed.onboardingComplete),
+      onboardingRoute,
+      pendingPhone: typeof parsed.pendingPhone === "string" ? parsed.pendingPhone : null,
     };
   } catch {
     return null;
@@ -48,10 +70,55 @@ export async function writeStoredAuthState(state: StoredAuthState): Promise<void
   await SecureStore.setItemAsync(AUTH_STATE_KEY, JSON.stringify(state));
 }
 
-export async function persistAuthenticatedRole(role: AppAuthRole): Promise<StoredAuthState> {
+export async function persistAuthenticatedRole(
+  role: AppAuthRole,
+  options?: { phoneVerified?: boolean },
+): Promise<StoredAuthState> {
+  const phoneVerified = options?.phoneVerified === true;
   const nextState: StoredAuthState = {
     role,
-    onboardingComplete: role === "DRIVER",
+    onboardingComplete: role === "DRIVER" || phoneVerified,
+    onboardingRoute:
+      role === "DRIVER"
+        ? "/driver/dashboard"
+        : phoneVerified
+          ? "/rider"
+          : "/phone-auth",
+    pendingPhone: null,
+  };
+
+  await writeStoredAuthState(nextState);
+  return nextState;
+}
+
+export async function storePendingPhoneVerification(phone: string): Promise<StoredAuthState | null> {
+  const currentState = await readStoredAuthState();
+  if (!currentState || currentState.role !== "RIDER") {
+    return null;
+  }
+
+  const nextState: StoredAuthState = {
+    ...currentState,
+    onboardingComplete: false,
+    onboardingRoute: "/otp-verify",
+    pendingPhone: phone,
+  };
+
+  await writeStoredAuthState(nextState);
+  return nextState;
+}
+
+export async function storePhoneEntryStep(): Promise<StoredAuthState | null> {
+  const currentState = await readStoredAuthState();
+  if (!currentState || currentState.role !== "RIDER") {
+    return null;
+  }
+
+  const nextState: StoredAuthState = {
+    ...currentState,
+    onboardingComplete: false,
+    onboardingRoute: "/phone-auth",
+    pendingPhone: null,
   };
 
   await writeStoredAuthState(nextState);
@@ -64,13 +131,15 @@ export async function markStoredOnboardingComplete(): Promise<StoredAuthState | 
     return null;
   }
 
-  if (currentState.role !== "RIDER" || currentState.onboardingComplete) {
+  if (currentState.role !== "RIDER") {
     return currentState;
   }
 
   const nextState: StoredAuthState = {
     ...currentState,
     onboardingComplete: true,
+    onboardingRoute: "/rider",
+    pendingPhone: null,
   };
 
   await writeStoredAuthState(nextState);
