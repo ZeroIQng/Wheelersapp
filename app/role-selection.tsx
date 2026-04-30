@@ -12,7 +12,8 @@ import { FlowHeader } from "@/components/flow-header";
 import { FloatingView, PulseView, RevealView } from "@/components/motion";
 import { RoleMotionBadge } from "@/components/role-motion-badge";
 import { isBackendConfigured, syncPrivyAuth } from "@/lib/api";
-import { clearStoredAuthState, getPostLoginRoute, persistAuthenticatedRole } from "@/lib/auth-state";
+import { getPostLoginRoute, persistAuthenticatedRole } from "@/lib/auth-state";
+// import { clearStoredAuthState } from "@/lib/auth-state";
 import { isPrivyConfigured, privyOAuthRedirectPath } from "@/lib/privy";
 import {
   getPrivyEmail,
@@ -149,12 +150,13 @@ function GoogleContinueButton({
   role: Role;
 }) {
   const router = useRouter();
-  const { user, isReady, getAccessToken, logout } = usePrivy();
+  const { user, isReady, getAccessToken } = usePrivy();
+  // const { logout } = usePrivy();
   const { login, state } = useLoginWithOAuth();
   const [syncError, setSyncError] = useState<string | null>(null);
   const hasGoogleLinkedAccount = Boolean(user && hasGoogleAccount(user));
   const [isSyncing, setIsSyncing] = useState(false);
-  const [isResetting, setIsResetting] = useState(false);
+  // const [isResetting, setIsResetting] = useState(false);
   const isLoading = state.status === "loading";
   const errorMessage =
     syncError ??
@@ -163,7 +165,7 @@ function GoogleContinueButton({
       : null);
 
   async function handlePress() {
-    if (isLoading || isSyncing || isResetting) return;
+    if (isLoading || isSyncing) return;
 
     setSyncError(null);
 
@@ -221,27 +223,27 @@ function GoogleContinueButton({
     }
   }
 
-  async function handleResetSession() {
-    if (isSyncing || isLoading || isResetting) {
-      return;
-    }
-
-    setSyncError(null);
-    setIsResetting(true);
-
-    try {
-      await logout();
-      await clearStoredAuthState();
-    } catch (error) {
-      setSyncError(
-        error instanceof Error
-          ? error.message
-          : "Could not clear the previous session."
-      );
-    } finally {
-      setIsResetting(false);
-    }
-  }
+  // async function handleResetSession() {
+  //   if (isSyncing || isLoading || isResetting) {
+  //     return;
+  //   }
+// 
+  //   setSyncError(null);
+  //   setIsResetting(true);
+// 
+  //   try {
+  //     await logout();
+  //     await clearStoredAuthState();
+  //   } catch (error) {
+  //     setSyncError(
+  //       error instanceof Error
+  //         ? error.message
+  //         : "Could not clear the previous session."
+  //     );
+  //   } finally {
+  //     setIsResetting(false);
+  //   }
+  // }
 
   return (
     <View style={styles.googleActionBlock}>
@@ -257,11 +259,12 @@ function GoogleContinueButton({
                 ? "Setting up account…"
                 : "Connect with Google"
         }
-        disabled={isResetting}
+        // disabled={isResetting}
         onPress={() => {
           void handlePress();
         }}
       />
+      {/*
       {user ? (
         <AppButton
           title={isResetting ? "Clearing session…" : "Reset session"}
@@ -272,6 +275,7 @@ function GoogleContinueButton({
           }}
         />
       ) : null}
+      */}
       {errorMessage ? (
         <AppText variant="bodySmall" color={theme.colors.danger}>
           {errorMessage}
