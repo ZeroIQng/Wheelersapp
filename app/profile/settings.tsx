@@ -11,6 +11,7 @@ import { SettingsRow } from "@/components/SettingsRow";
 import { SettingOption, settingsOptions, userProfile } from "@/data/mock";
 import { clearStoredAuthState } from "@/lib/auth-state";
 import { isPrivyConfigured } from "@/lib/privy";
+import { getPrivyEmail, getPrivyName } from "@/lib/privy-user";
 import { theme } from "@/theme";
 
 const accountSettingIds = new Set([
@@ -39,6 +40,66 @@ const supportOptions = [
   },
 ] satisfies SettingOption[];
 
+type SettingsProfile = {
+  initials: string;
+  name: string;
+  email: string;
+  verificationState: string;
+};
+
+function titleCaseSegment(value: string): string {
+  if (!value) {
+    return value;
+  }
+
+  return value[0].toUpperCase() + value.slice(1);
+}
+
+function deriveNameFromEmail(email: string): string {
+  const [localPart] = email.split("@");
+  const normalized = localPart
+    .replace(/[._-]+/g, " ")
+    .trim();
+
+  if (!normalized) {
+    return "Wheelers User";
+  }
+
+  return normalized
+    .split(/\s+/)
+    .filter((segment) => segment.length > 0)
+    .map(titleCaseSegment)
+    .join(" ");
+}
+
+function deriveInitials(name: string): string {
+  const letters = name
+    .split(/\s+/)
+    .filter((segment) => segment.length > 0)
+    .slice(0, 2)
+    .map((segment) => segment[0]?.toUpperCase() ?? "")
+    .join("");
+
+  if (letters.length >= 2) {
+    return letters;
+  }
+
+  const compact = name.replace(/\s+/g, "").slice(0, 2).toUpperCase();
+  return compact || userProfile.initials;
+}
+
+function buildProfile(input?: { name?: string; email?: string }): SettingsProfile {
+  const email = input?.email?.trim() || userProfile.email;
+  const name = input?.name?.trim() || deriveNameFromEmail(email);
+
+  return {
+    initials: deriveInitials(name),
+    name,
+    email,
+    verificationState: "Verified account",
+  };
+}
+
 export default function SettingsScreen() {
   if (!isPrivyConfigured) {
     return <LocalSettingsScreen />;
@@ -65,12 +126,18 @@ function LocalSettingsScreen() {
     }
   }
 
-  return <SettingsScreenBody isLoggingOut={isLoggingOut} onLogout={handleLogout} />;
+  return (
+    <SettingsScreenBody
+      isLoggingOut={isLoggingOut}
+      onLogout={handleLogout}
+      profile={buildProfile()}
+    />
+  );
 }
 
 function PrivySettingsScreen() {
   const router = useRouter();
-  const { logout } = usePrivy();
+  const { logout, user } = usePrivy();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   async function handleLogout() {
@@ -88,15 +155,26 @@ function PrivySettingsScreen() {
     }
   }
 
-  return <SettingsScreenBody isLoggingOut={isLoggingOut} onLogout={handleLogout} />;
+  return (
+    <SettingsScreenBody
+      isLoggingOut={isLoggingOut}
+      onLogout={handleLogout}
+      profile={buildProfile({
+        name: user ? getPrivyName(user) : undefined,
+        email: user ? getPrivyEmail(user) : undefined,
+      })}
+    />
+  );
 }
 
 function SettingsScreenBody({
   isLoggingOut,
   onLogout,
+  profile,
 }: {
   isLoggingOut: boolean;
   onLogout: () => Promise<void>;
+  profile: SettingsProfile;
 }) {
   const router = useRouter();
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
@@ -188,16 +266,16 @@ function SettingsScreenBody({
           <View style={styles.profileRow}>
             <View style={styles.avatar}>
               <AppText variant="h3" color={theme.colors.white}>
-                {userProfile.initials}
+                {profile.initials}
               </AppText>
             </View>
             <View style={styles.profileCopy}>
-              <AppText variant="bodyMedium">{userProfile.name}</AppText>
+              <AppText variant="bodyMedium">{profile.name}</AppText>
               <AppText variant="bodySmall" color={theme.colors.muted}>
-                {userProfile.email}
+                {profile.email}
               </AppText>
               <AppText variant="caption" color={theme.colors.orange}>
-                {userProfile.verificationState}
+                {profile.verificationState}
               </AppText>
             </View>
           </View>
