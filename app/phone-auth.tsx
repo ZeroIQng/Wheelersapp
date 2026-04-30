@@ -11,7 +11,10 @@ import { CrossShape, RingStack } from "@/components/decorative-shapes";
 import { FlowHeader } from "@/components/flow-header";
 import { FloatingView, RevealView } from "@/components/motion";
 import { sendPhoneOtp } from "@/lib/api";
-import { storePendingPhoneVerification, storePhoneEntryStep } from "@/lib/auth-state";
+import {
+  storePendingPhoneVerification,
+  storePhoneEntryStep,
+} from "@/lib/auth-state";
 import { theme } from "@/theme";
 
 function toLocalPhoneDigits(phone: string): string {
@@ -71,7 +74,9 @@ export default function PhoneAuthScreen() {
     try {
       normalizedPhone = toE164Phone(phone);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Enter a valid phone number.");
+      setErrorMessage(
+        error instanceof Error ? error.message : "Enter a valid phone number.",
+      );
       return;
     }
 
@@ -158,7 +163,7 @@ export default function PhoneAuthScreen() {
         </RevealView>
 
         <AppText variant="bodySmall" color={mutedColor}>
-          No spam. Ever. Pinky promise.
+          {/* No spam. Ever. Pinky promise. */}
         </AppText>
 
         <RevealView delay={220} style={styles.sendButtonWrap}>

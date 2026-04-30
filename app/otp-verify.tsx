@@ -1,29 +1,31 @@
-import { usePrivy } from '@privy-io/expo';
-import { useRouter } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
-import { StatusBar } from 'expo-status-bar';
-import { Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { usePrivy } from "@privy-io/expo";
+import { useRouter } from "expo-router";
+import { StatusBar } from "expo-status-bar";
+import { useEffect, useRef, useState } from "react";
+import { Pressable, StyleSheet, TextInput, View } from "react-native";
 
-import { AppButton } from '@/components/app-button';
-import { AppScreen } from '@/components/app-screen';
-import { AppText } from '@/components/app-text';
-import { BlobShape, StarBurst } from '@/components/decorative-shapes';
-import { FlowHeader } from '@/components/flow-header';
-import { sendPhoneOtp, verifyPhoneOtp } from '@/lib/api';
+import { AppButton } from "@/components/app-button";
+import { AppScreen } from "@/components/app-screen";
+import { AppText } from "@/components/app-text";
+import { BlobShape, StarBurst } from "@/components/decorative-shapes";
+import { FlowHeader } from "@/components/flow-header";
+import { FloatingView, PulseView, RevealView } from "@/components/motion";
+import { sendPhoneOtp, verifyPhoneOtp } from "@/lib/api";
 import {
   markStoredOnboardingComplete,
   readStoredAuthState,
   storePhoneEntryStep,
-} from '@/lib/auth-state';
-import { FloatingView, PulseView, RevealView } from '@/components/motion';
-import { theme } from '@/theme';
+} from "@/lib/auth-state";
+import { theme } from "@/theme";
 
 const OTP_LENGTH = 6;
 
 export default function OtpVerifyScreen() {
   const router = useRouter();
   const { getAccessToken, isReady } = usePrivy();
-  const [digits, setDigits] = useState<string[]>(Array.from({ length: OTP_LENGTH }, () => ''));
+  const [digits, setDigits] = useState<string[]>(
+    Array.from({ length: OTP_LENGTH }, () => ""),
+  );
   const [pendingPhone, setPendingPhone] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoadingPhone, setIsLoadingPhone] = useState(true);
@@ -33,10 +35,10 @@ export default function OtpVerifyScreen() {
   const backgroundColor = theme.colors.offWhite;
   const textColor = theme.colors.black;
   const mutedColor = theme.colors.muted;
-  const inactiveBorder = '#DCCFC3';
+  const inactiveBorder = "#DCCFC3";
   const filledBackground = theme.colors.orange;
   const filledText = theme.colors.white;
-  const placeholderColor = '#C2B6AB';
+  const placeholderColor = "#C2B6AB";
 
   useEffect(() => {
     let cancelled = false;
@@ -48,7 +50,7 @@ export default function OtpVerifyScreen() {
       }
 
       if (!stored?.pendingPhone) {
-        router.replace('/phone-auth');
+        router.replace("/phone-auth");
         return;
       }
 
@@ -63,7 +65,7 @@ export default function OtpVerifyScreen() {
 
   const updateDigit = (value: string, index: number) => {
     const next = [...digits];
-    next[index] = value.replace(/\D/g, '').slice(-1);
+    next[index] = value.replace(/\D/g, "").slice(-1);
     setDigits(next);
     if (value && index < digits.length - 1) {
       inputRefs.current[index + 1]?.focus();
@@ -71,10 +73,10 @@ export default function OtpVerifyScreen() {
   };
 
   const handleKeyPress = (key: string, index: number) => {
-    if (key !== 'Backspace') return;
+    if (key !== "Backspace") return;
     if (digits[index]) {
       const next = [...digits];
-      next[index] = '';
+      next[index] = "";
       setDigits(next);
       return;
     }
@@ -90,20 +92,20 @@ export default function OtpVerifyScreen() {
 
     setErrorMessage(null);
 
-    const code = digits.join('');
+    const code = digits.join("");
     if (code.length !== OTP_LENGTH) {
-      setErrorMessage('Enter the full 6-digit verification code.');
+      setErrorMessage("Enter the full 6-digit verification code.");
       return;
     }
 
     if (!isReady) {
-      setErrorMessage('Privy is still initializing. Try again in a moment.');
+      setErrorMessage("Privy is still initializing. Try again in a moment.");
       return;
     }
 
     const accessToken = await getAccessToken();
     if (!accessToken) {
-      setErrorMessage('Could not get a Privy access token.');
+      setErrorMessage("Could not get a Privy access token.");
       return;
     }
 
@@ -112,12 +114,12 @@ export default function OtpVerifyScreen() {
     try {
       await verifyPhoneOtp({ accessToken, code });
       await markStoredOnboardingComplete();
-      router.replace('/rider');
+      router.replace("/rider");
     } catch (error) {
       setErrorMessage(
         error instanceof Error
           ? error.message
-          : 'Could not verify the phone code.',
+          : "Could not verify the phone code.",
       );
     } finally {
       setIsVerifying(false);
@@ -132,13 +134,13 @@ export default function OtpVerifyScreen() {
     setErrorMessage(null);
 
     if (!isReady) {
-      setErrorMessage('Privy is still initializing. Try again in a moment.');
+      setErrorMessage("Privy is still initializing. Try again in a moment.");
       return;
     }
 
     const accessToken = await getAccessToken();
     if (!accessToken) {
-      setErrorMessage('Could not get a Privy access token.');
+      setErrorMessage("Could not get a Privy access token.");
       return;
     }
 
@@ -150,7 +152,7 @@ export default function OtpVerifyScreen() {
       setErrorMessage(
         error instanceof Error
           ? error.message
-          : 'Could not resend the phone verification code.',
+          : "Could not resend the phone verification code.",
       );
     } finally {
       setIsResending(false);
@@ -159,19 +161,25 @@ export default function OtpVerifyScreen() {
 
   async function handleChangeNumber() {
     await storePhoneEntryStep();
-    router.replace('/phone-auth');
+    router.replace("/phone-auth");
   }
 
   if (isLoadingPhone) {
     return (
-      <AppScreen backgroundColor={backgroundColor} contentStyle={styles.loadingContainer}>
+      <AppScreen
+        backgroundColor={backgroundColor}
+        contentStyle={styles.loadingContainer}
+      >
         <AppText variant="bodyMedium">Loading verification…</AppText>
       </AppScreen>
     );
   }
 
   return (
-    <AppScreen backgroundColor={backgroundColor} contentStyle={styles.container}>
+    <AppScreen
+      backgroundColor={backgroundColor}
+      contentStyle={styles.container}
+    >
       <StatusBar style="dark" backgroundColor={backgroundColor} />
       <FloatingView style={styles.blob} distance={12} rotate={6}>
         <BlobShape color="rgba(255,92,0,0.06)" />
@@ -186,12 +194,19 @@ export default function OtpVerifyScreen() {
           backHref="/phone-auth"
           align="center"
           overline="VERIFICATION"
-          title={'Enter the\n6-digit code'}
-          subtitle={pendingPhone ? `Sent to ${pendingPhone}` : 'Enter the code we sent you'}
+          title={"Enter the\n6-digit code"}
+          subtitle={
+            pendingPhone
+              ? `Sent to ${pendingPhone}`
+              : "Enter the code we sent you"
+          }
           progress={{ count: 5, active: 3 }}
         />
 
-        <Pressable onPress={() => void handleChangeNumber()} style={styles.changeNumberButton}>
+        <Pressable
+          onPress={() => void handleChangeNumber()}
+          style={styles.changeNumberButton}
+        >
           <AppText variant="monoSmall" color={theme.colors.orange}>
             CHANGE NUMBER?
           </AppText>
@@ -199,14 +214,20 @@ export default function OtpVerifyScreen() {
 
         <View style={styles.digitsRow}>
           {digits.map((digit, index) => (
-            <PulseView key={index} delay={index * 120} scaleTo={digit ? 1.04 : 1.015}>
+            <PulseView
+              key={index}
+              delay={index * 120}
+              scaleTo={digit ? 1.04 : 1.015}
+            >
               <TextInput
                 ref={(ref) => {
                   inputRefs.current[index] = ref;
                 }}
                 keyboardType="number-pad"
                 maxLength={1}
-                onKeyPress={({ nativeEvent }) => handleKeyPress(nativeEvent.key, index)}
+                onKeyPress={({ nativeEvent }) =>
+                  handleKeyPress(nativeEvent.key, index)
+                }
                 onChangeText={(value) => updateDigit(value, index)}
                 placeholder=""
                 placeholderTextColor={placeholderColor}
@@ -214,11 +235,15 @@ export default function OtpVerifyScreen() {
                 style={[
                   styles.digitInput,
                   {
-                    backgroundColor: digit ? filledBackground : theme.colors.white,
+                    backgroundColor: digit
+                      ? filledBackground
+                      : theme.colors.white,
                     borderColor: digit ? theme.colors.orange : inactiveBorder,
                     color: digit ? filledText : textColor,
                   },
-                  !digit && index === digits.findIndex((item) => item === '') ? styles.digitInputActive : null,
+                  !digit && index === digits.findIndex((item) => item === "")
+                    ? styles.digitInputActive
+                    : null,
                 ]}
                 value={digit}
               />
@@ -227,28 +252,39 @@ export default function OtpVerifyScreen() {
         </View>
 
         <PulseView>
-          <AppText variant="monoLarge" color={theme.colors.orange} style={styles.timer}>
-            {isResending ? 'Sending…' : 'Ready'}
+          <AppText
+            variant="monoLarge"
+            color={theme.colors.orange}
+            style={styles.timer}
+          >
+            {isResending ? "Sending…" : "Ready"}
           </AppText>
         </PulseView>
 
         <RevealView delay={180} style={styles.verifyButtonWrap}>
           <AppButton
-            title={isVerifying ? 'Verifying…' : 'Verify'}
+            title={isVerifying ? "Verifying…" : "Verify"}
             disabled={isVerifying || isResending}
             onPress={() => void handleVerify()}
           />
         </RevealView>
 
         {errorMessage ? (
-          <AppText variant="bodySmall" color={theme.colors.danger} style={styles.feedback}>
+          <AppText
+            variant="bodySmall"
+            color={theme.colors.danger}
+            style={styles.feedback}
+          >
             {errorMessage}
           </AppText>
         ) : null}
 
-        <Pressable disabled={isResending || isVerifying} onPress={() => void handleResend()}>
+        <Pressable
+          disabled={isResending || isVerifying}
+          onPress={() => void handleResend()}
+        >
           <AppText variant="bodySmall" color={mutedColor} style={styles.resend}>
-            {isResending ? 'Resending code…' : 'Didn&apos;t receive it? Resend'}
+            {isResending ? "Resending code…" : "Didn&apos;t receive it? Resend"}
           </AppText>
         </Pressable>
       </RevealView>
@@ -263,31 +299,31 @@ const styles = StyleSheet.create({
   },
   loadingContainer: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   blob: {
-    position: 'absolute',
+    position: "absolute",
     top: -10,
     right: -8,
   },
   star: {
-    position: 'absolute',
+    position: "absolute",
     bottom: 80,
     left: 18,
   },
   content: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     gap: theme.spacing.lg,
   },
   changeNumberButton: {
-    alignSelf: 'center',
+    alignSelf: "center",
   },
   digitsRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
+    flexDirection: "row",
+    justifyContent: "center",
     gap: theme.spacing.sm,
     marginVertical: theme.spacing.sm,
   },
@@ -296,7 +332,7 @@ const styles = StyleSheet.create({
     height: 64,
     borderWidth: theme.borders.thick,
     borderRadius: theme.radius.pill,
-    textAlign: 'center',
+    textAlign: "center",
     ...theme.typography.monoLarge,
   },
   digitInputActive: {
@@ -310,16 +346,16 @@ const styles = StyleSheet.create({
     },
   },
   timer: {
-    textAlign: 'center',
+    textAlign: "center",
     marginVertical: theme.spacing.sm,
   },
   verifyButtonWrap: {
-    width: '100%',
+    width: "100%",
   },
   feedback: {
-    textAlign: 'center',
+    textAlign: "center",
   },
   resend: {
-    textAlign: 'center',
+    textAlign: "center",
   },
 });
