@@ -1,4 +1,4 @@
-import { usePrivy } from "@privy-io/expo";
+import { usePrivy, type User } from "@privy-io/expo";
 import { useRouter } from "expo-router";
 import { useEffect, useRef } from "react";
 import { StatusBar } from "expo-status-bar";
@@ -17,16 +17,74 @@ import Animated, {
 import { AppScreen } from "@/components/app-screen";
 import { AppText } from "@/components/app-text";
 import { BlobShape, DiamondPair, StarBurst } from "@/components/decorative-shapes";
+import { isBackendConfigured, syncPrivyAuth } from "@/lib/api";
 import {
   clearStoredAuthState,
   getAuthenticatedRoute,
+  persistAuthenticatedRole,
   readStoredAuthState,
   type AuthenticatedRoute,
 } from "@/lib/auth-state";
 import { isPrivyConfigured } from "@/lib/privy";
+import {
+  getPrivyEmail,
+  getPrivyEthereumWalletAddress,
+  getPrivyName,
+} from "@/lib/privy-user";
 import { theme } from "@/theme";
 
 type SplashRoute = "/role-selection" | AuthenticatedRoute;
+type AccessTokenGetter = () => Promise<string | null | undefined>;
+
+async function resolvePrivyDestination({
+  user,
+  getAccessToken,
+}: {
+  user: User | null;
+  getAccessToken: AccessTokenGetter;
+}): Promise<SplashRoute> {
+  if (!user) {
+    await clearStoredAuthState();
+    return "/role-selection";
+  }
+
+  const storedAuthState = await readStoredAuthState();
+  if (storedAuthState) {
+    return getAuthenticatedRoute(storedAuthState);
+  }
+
+  if (!isBackendConfigured()) {
+    return "/role-selection";
+  }
+
+  const accessToken = await getAccessToken();
+  if (!accessToken) {
+    return "/role-selection";
+  }
+
+  try {
+    const response = await syncPrivyAuth({
+      accessToken,
+      authMethod: "google",
+      role: "RIDER",
+      email: getPrivyEmail(user),
+      name: getPrivyName(user),
+      walletAddress: getPrivyEthereumWalletAddress(user),
+    });
+    const nextState = await persistAuthenticatedRole(
+      response.user.role === "DRIVER" ? "DRIVER" : "RIDER",
+      {
+        phoneVerified:
+          response.user.role !== "DRIVER" &&
+          typeof response.user.phone === "string" &&
+          response.user.phone.length > 0,
+      },
+    );
+    return getAuthenticatedRoute(nextState);
+  } catch {
+    return "/role-selection";
+  }
+}
 
 export default function SplashScreen() {
   if (!isPrivyConfigured) {
@@ -67,7 +125,7 @@ function GuestSplashScreen() {
 
 function PrivyAwareSplashScreen() {
   const router = useRouter();
-  const { isReady, user } = usePrivy();
+  const { getAccessToken, isReady, user } = usePrivy();
   const hasNavigated = useRef(false);
 
   function navigate(href: SplashRoute) {
@@ -79,20 +137,6 @@ function PrivyAwareSplashScreen() {
     router.replace(href);
   }
 
-  async function resolveDestination(): Promise<SplashRoute> {
-    if (!user) {
-      await clearStoredAuthState();
-      return "/role-selection";
-    }
-
-    const storedAuthState = await readStoredAuthState();
-    if (!storedAuthState) {
-      return "/role-selection";
-    }
-
-    return getAuthenticatedRoute(storedAuthState);
-  }
-
   useEffect(() => {
     if (!isReady || hasNavigated.current) {
       return;
@@ -101,19 +145,10 @@ function PrivyAwareSplashScreen() {
     let cancelled = false;
 
     void (async () => {
-      const destination = await (async (): Promise<SplashRoute> => {
-        if (!user) {
-          await clearStoredAuthState();
-          return "/role-selection";
-        }
-
-        const storedAuthState = await readStoredAuthState();
-        if (!storedAuthState) {
-          return "/role-selection";
-        }
-
-        return getAuthenticatedRoute(storedAuthState);
-      })();
+      const destination = await resolvePrivyDestination({
+        user,
+        getAccessToken,
+      });
 
       if (cancelled || hasNavigated.current) {
         return;
@@ -126,7 +161,7 @@ function PrivyAwareSplashScreen() {
     return () => {
       cancelled = true;
     };
-  }, [isReady, router, user]);
+  }, [getAccessToken, isReady, router, user]);
 
   function handleContinue() {
     if (!isReady || hasNavigated.current) {
@@ -134,7 +169,12 @@ function PrivyAwareSplashScreen() {
     }
 
     void (async () => {
-      navigate(await resolveDestination());
+      navigate(
+        await resolvePrivyDestination({
+          user,
+          getAccessToken,
+        }),
+      );
     })();
   }
 
