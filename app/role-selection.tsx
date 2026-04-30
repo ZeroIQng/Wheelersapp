@@ -1,4 +1,4 @@
-import { useLoginWithOAuth, usePrivy } from "@privy-io/expo";
+import { useLoginWithOAuth, usePrivy, type User } from "@privy-io/expo";
 import { Href, useRouter } from "expo-router";
 import { useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
@@ -32,6 +32,10 @@ import {
 import { theme } from "@/theme";
 
 type Role = "ride" | "drive";
+
+function hasGoogleAccount(user: User): boolean {
+  return user.linked_accounts.some((account) => account.type === "google_oauth");
+}
 
 const walletConnectTheme = {
   type: "light" as const,
@@ -150,6 +154,7 @@ function GoogleContinueButton({
   const { user, isReady, getAccessToken } = usePrivy();
   const { login, state } = useLoginWithOAuth();
   const [syncError, setSyncError] = useState<string | null>(null);
+  const hasGoogleLinkedAccount = Boolean(user && hasGoogleAccount(user));
   const [isSyncing, setIsSyncing] = useState(false);
   const isLoading = state.status === "loading";
   const errorMessage =
@@ -174,7 +179,7 @@ function GoogleContinueButton({
     }
 
     let authenticatedUser = user ?? undefined;
-    if (!authenticatedUser) {
+    if (!authenticatedUser || !hasGoogleAccount(authenticatedUser)) {
       authenticatedUser = await login({
         provider: "google",
         redirectUri: privyOAuthRedirectPath,
@@ -218,7 +223,7 @@ function GoogleContinueButton({
     <View style={styles.googleActionBlock}>
       <AppButton
         title={
-          user
+          hasGoogleLinkedAccount
             ? isSyncing
               ? "Setting up account…"
               : "Continue"
