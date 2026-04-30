@@ -1,6 +1,6 @@
 import { useLoginWithOAuth, usePrivy, type User } from "@privy-io/expo";
 import { useRouter } from "expo-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 
 import { AppButton } from "@/components/app-button";
@@ -11,7 +11,7 @@ import { RingStack, StarBurst } from "@/components/decorative-shapes";
 import { FlowHeader } from "@/components/flow-header";
 import { FloatingView, PulseView, RevealView } from "@/components/motion";
 import { RoleMotionBadge } from "@/components/role-motion-badge";
-import { isBackendConfigured, syncPrivyAuth } from "@/lib/api";
+import { isBackendConfigured, syncPrivyAuth, type BackendRole } from "@/lib/api";
 import { getAuthenticatedRoute, persistAuthenticatedRole } from "@/lib/auth-state";
 // import { clearStoredAuthState } from "@/lib/auth-state";
 import { isPrivyConfigured, privyOAuthRedirectPath } from "@/lib/privy";
@@ -34,9 +34,44 @@ import {
 import { theme } from "@/theme";
 
 type Role = "ride" | "drive";
+type AccessTokenGetter = () => Promise<string | null | undefined>;
 
 function hasGoogleAccount(user: User): boolean {
   return user.linked_accounts.some((account) => account.type === "google_oauth");
+}
+
+async function resolveAuthenticatedRoute({
+  authenticatedUser,
+  getAccessToken,
+  requestedRole,
+}: {
+  authenticatedUser: User;
+  getAccessToken: AccessTokenGetter;
+  requestedRole?: BackendRole;
+}) {
+  const accessToken = await getAccessToken();
+  if (!accessToken) {
+    throw new Error("Could not get a Privy access token.");
+  }
+
+  const response = await syncPrivyAuth({
+    accessToken,
+    authMethod: "google",
+    role: requestedRole,
+    email: getPrivyEmail(authenticatedUser),
+    name: getPrivyName(authenticatedUser),
+    walletAddress: getPrivyEthereumWalletAddress(authenticatedUser),
+  });
+
+  const resolvedRole = response.user.role === "DRIVER" ? "DRIVER" : "RIDER";
+  const nextState = await persistAuthenticatedRole(resolvedRole, {
+    phoneVerified:
+      resolvedRole === "RIDER" &&
+      typeof response.user.phone === "string" &&
+      response.user.phone.length > 0,
+  });
+
+  return getAuthenticatedRoute(nextState);
 }
 
 const walletConnectTheme = {
@@ -77,9 +112,60 @@ const walletConnectTheme = {
 
 export default function RoleSelectionScreen() {
   const router = useRouter();
+  const { getAccessToken, isReady, user } = usePrivy();
   const [selectedRole, setSelectedRole] = useState<Role>("ride");
   const [rideMotionKey, setRideMotionKey] = useState(0);
   const [driveMotionKey, setDriveMotionKey] = useState(1);
+  const [restoreAttempt, setRestoreAttempt] = useState(0);
+  const [restoreError, setRestoreError] = useState<string | null>(null);
+  const [isRestoringSession, setIsRestoringSession] = useState(false);
+
+  useEffect(() => {
+    if (!isPrivyConfigured || !isReady || !user) {
+      return;
+    }
+
+    let cancelled = false;
+
+    if (!isBackendConfigured()) {
+      setRestoreError("Set EXPO_PUBLIC_API_BASE_URL before continuing.");
+      setIsRestoringSession(false);
+      return;
+    }
+
+    setRestoreError(null);
+    setIsRestoringSession(true);
+
+    void (async () => {
+      try {
+        const destination = await resolveAuthenticatedRoute({
+          authenticatedUser: user,
+          getAccessToken,
+        });
+
+        if (cancelled) {
+          return;
+        }
+
+        router.replace(destination);
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
+        setRestoreError(
+          error instanceof Error
+            ? error.message
+            : "Could not restore your account.",
+        );
+        setIsRestoringSession(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [getAccessToken, isReady, restoreAttempt, router, user]);
 
   function handleRolePress(role: Role) {
     setSelectedRole(role);
@@ -88,6 +174,20 @@ export default function RoleSelectionScreen() {
       return;
     }
     setDriveMotionKey((current) => current + 1);
+  }
+
+  if (isPrivyConfigured && (!isReady || user)) {
+    return (
+      <RestoringAccountScreen
+        errorMessage={restoreError}
+        isRestoring={isRestoringSession || !isReady}
+        onRetry={
+          !isRestoringSession && isReady && user
+            ? () => setRestoreAttempt((current) => current + 1)
+            : undefined
+        }
+      />
+    );
   }
 
   return (
@@ -144,6 +244,51 @@ export default function RoleSelectionScreen() {
   );
 }
 
+function RestoringAccountScreen({
+  isRestoring,
+  errorMessage,
+  onRetry,
+}: {
+  isRestoring: boolean;
+  errorMessage: string | null;
+  onRetry?: () => void;
+}) {
+  return (
+    <AppScreen
+      backgroundColor={theme.colors.offWhite}
+      contentStyle={styles.restoreContainer}
+    >
+      <FloatingView style={styles.rings} distance={10} rotate={8}>
+        <RingStack color="rgba(255,92,0,0.12)" />
+      </FloatingView>
+      <FloatingView style={styles.star} delay={200} distance={12} rotate={-12}>
+        <StarBurst color="rgba(13,13,13,0.08)" width={46} height={46} />
+      </FloatingView>
+      <View style={styles.restoreCard}>
+        <AppText variant="monoSmall" color={theme.colors.orange}>
+          ACCOUNT
+        </AppText>
+        <AppText variant="h2" style={styles.restoreTitle}>
+          {isRestoring ? "Opening your app…" : "Could not restore session"}
+        </AppText>
+        <AppText
+          variant="bodySmall"
+          color={theme.colors.muted}
+          style={styles.restoreBody}
+        >
+          {isRestoring
+            ? "Checking your saved login and taking you straight back in."
+            : (errorMessage ??
+              "We could not restore your account automatically yet.")}
+        </AppText>
+        {!isRestoring && onRetry ? (
+          <AppButton title="Retry" onPress={onRetry} />
+        ) : null}
+      </View>
+    </AppScreen>
+  );
+}
+
 function GoogleContinueButton({
   role,
 }: {
@@ -179,49 +324,37 @@ function GoogleContinueButton({
       return;
     }
 
+    const selectedBackendRole: BackendRole =
+      role === "drive" ? "DRIVER" : "RIDER";
     let authenticatedUser = user ?? undefined;
+    let requestedRole: BackendRole | undefined = selectedBackendRole;
     if (!authenticatedUser || !hasGoogleAccount(authenticatedUser)) {
       authenticatedUser = await login({
         provider: "google",
         redirectUri: privyOAuthRedirectPath,
       });
+    } else {
+      requestedRole = undefined;
     }
 
     if (!authenticatedUser) {
       return;
     }
 
-    const accessToken = await getAccessToken();
-    if (!accessToken) {
-      setSyncError("Could not get a Privy access token.");
-      return;
-    }
-
     setIsSyncing(true);
 
-    const authRole = role === "drive" ? "DRIVER" : "RIDER";
-
     try {
-      const response = await syncPrivyAuth({
-        accessToken,
-        authMethod: "google",
-        role: authRole,
-        email: getPrivyEmail(authenticatedUser),
-        name: getPrivyName(authenticatedUser),
-        walletAddress: getPrivyEthereumWalletAddress(authenticatedUser),
+      const destination = await resolveAuthenticatedRoute({
+        authenticatedUser,
+        getAccessToken,
+        requestedRole,
       });
-      const nextState = await persistAuthenticatedRole(authRole, {
-        phoneVerified:
-          authRole === "RIDER" &&
-          typeof response.user?.phone === "string" &&
-          response.user.phone.length > 0,
-      });
-      router.replace(getAuthenticatedRoute(nextState));
+      router.replace(destination);
     } catch (error) {
       setSyncError(
         error instanceof Error
           ? error.message
-          : "Could not sync your account with Wheelers."
+          : "Could not sync your account with Wheelers.",
       );
     } finally {
       setIsSyncing(false);
@@ -386,6 +519,18 @@ function RoleCard({
 
 const styles = StyleSheet.create({
   container: { gap: theme.spacing.xl, paddingTop: theme.spacing.lg },
+  restoreContainer: {
+    justifyContent: "center",
+    gap: theme.spacing.lg,
+    paddingTop: theme.spacing.lg,
+  },
+  restoreCard: {
+    gap: theme.spacing.md,
+    alignItems: "center",
+    paddingHorizontal: theme.spacing.lg,
+  },
+  restoreTitle: { textAlign: "center" },
+  restoreBody: { textAlign: "center", maxWidth: 280 },
   headerWrap: { marginTop: theme.spacing.sm },
   rings: { position: "absolute", top: -20, right: -32 },
   star: { position: "absolute", bottom: 42, left: 16 },
