@@ -36,6 +36,31 @@ import { theme } from "@/theme";
 type SplashRoute = "/role-selection" | AuthenticatedRoute;
 type AccessTokenGetter = () => Promise<string | null | undefined>;
 
+const SESSION_RESTORE_GRACE_MS = 1200;
+const ACCESS_TOKEN_RETRY_ATTEMPTS = 6;
+const ACCESS_TOKEN_RETRY_DELAY_MS = 250;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function getAccessTokenWithRetry(
+  getAccessToken: AccessTokenGetter,
+): Promise<string | null> {
+  for (let attempt = 0; attempt < ACCESS_TOKEN_RETRY_ATTEMPTS; attempt += 1) {
+    const accessToken = await getAccessToken();
+    if (accessToken) {
+      return accessToken;
+    }
+
+    if (attempt < ACCESS_TOKEN_RETRY_ATTEMPTS - 1) {
+      await sleep(ACCESS_TOKEN_RETRY_DELAY_MS);
+    }
+  }
+
+  return null;
+}
+
 async function resolvePrivyDestination({
   user,
   getAccessToken,
@@ -45,6 +70,7 @@ async function resolvePrivyDestination({
 }): Promise<SplashRoute> {
   if (!user) {
     await clearStoredAuthState();
+    await sleep(SESSION_RESTORE_GRACE_MS);
     return "/role-selection";
   }
 
@@ -57,7 +83,7 @@ async function resolvePrivyDestination({
     return "/role-selection";
   }
 
-  const accessToken = await getAccessToken();
+  const accessToken = await getAccessTokenWithRetry(getAccessToken);
   if (!accessToken) {
     return "/role-selection";
   }
@@ -66,7 +92,6 @@ async function resolvePrivyDestination({
     const response = await syncPrivyAuth({
       accessToken,
       authMethod: "google",
-      role: "RIDER",
       email: getPrivyEmail(user),
       name: getPrivyName(user),
       walletAddress: getPrivyEthereumWalletAddress(user),

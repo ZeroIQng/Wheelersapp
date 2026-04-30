@@ -17,7 +17,7 @@ export interface BackendUser {
 
 interface SyncPrivyAuthInput {
   accessToken: string;
-  role: BackendRole;
+  role?: BackendRole;
   authMethod?: "email" | "google" | "apple" | "wallet";
   email?: string;
   name?: string;
