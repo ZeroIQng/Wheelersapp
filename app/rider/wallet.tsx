@@ -63,6 +63,7 @@ export default function WalletScreen() {
     depositAmount?: string | string[];
     redirectReason?: string | string[];
     rideName?: string | string[];
+    itinerary?: string | string[];
   }>();
   const [depositAmount, setDepositAmount] = useState("");
   const [isDepositModalVisible, setDepositModalVisible] = useState(false);
@@ -75,6 +76,9 @@ export default function WalletScreen() {
   const redirectReason = Array.isArray(params.redirectReason)
     ? params.redirectReason[0]
     : params.redirectReason;
+  const itineraryParam = Array.isArray(params.itinerary)
+    ? params.itinerary[0]
+    : params.itinerary;
 
   useEffect(() => {
     if (!toastMessage) {
@@ -199,7 +203,16 @@ export default function WalletScreen() {
 
     if (redirectReason === "insufficient-funds") {
       setPayOnlineModalVisible(false);
-      router.replace("/matching");
+      router.replace(
+        itineraryParam
+          ? {
+              pathname: "/matching",
+              params: {
+                itinerary: itineraryParam,
+              },
+            }
+          : "/matching",
+      );
       return;
     }
 

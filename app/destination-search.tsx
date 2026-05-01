@@ -1,8 +1,14 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Pressable, StyleSheet, TextInput, View } from "react-native";
+import {
+  PanResponder,
+  Pressable,
+  StyleSheet,
+  TextInput,
+  View,
+} from "react-native";
 
 import { AppButton } from "@/components/app-button";
 import { AppScreen } from "@/components/app-screen";
@@ -14,9 +20,15 @@ import {
   isOsmPlacesConfigured,
   type PlaceSuggestion,
 } from "@/lib/osm-places";
+import {
+  MAX_ADDITIONAL_STOPS,
+  MAX_ROUTE_STOPS,
+  moveRouteStop,
+  parseRideItineraryParam,
+  serializeRideItinerary,
+  type RideItinerary,
+} from "@/lib/ride-route";
 import { theme } from "@/theme";
-
-const currentPickup = "Current location • Lekki Phase 1";
 
 const searchSuggestions = [
   ...recentPlaces.map((place) => ({
@@ -45,21 +57,87 @@ const searchSuggestions = [
   },
 ] as const;
 
-type ActiveField = "from" | "to";
+type ActiveField =
+  | { type: "pickup" }
+  | { type: "stop"; index: number };
 type ScreenMode = "form" | "search";
+type FlowMode = "booking" | "trip-edit";
+
+const DRAG_SWAP_THRESHOLD = 88;
+
+function getStopLabel(stopCount: number, index: number) {
+  if (stopCount === 1) {
+    return "Destination";
+  }
+
+  if (index === stopCount - 1) {
+    return "Final destination";
+  }
+
+  return `Stop ${index + 1}`;
+}
+
+function getSearchHeading(activeField: ActiveField, stopCount: number) {
+  if (activeField.type === "pickup") {
+    return "Search pickup";
+  }
+
+  if (stopCount === 1) {
+    return "Search destination";
+  }
+
+  return activeField.index === stopCount - 1
+    ? "Search final destination"
+    : `Search stop ${activeField.index + 1}`;
+}
+
+function getActiveSummaryLabel(activeField: ActiveField, stopCount: number) {
+  if (activeField.type === "pickup") {
+    return "Editing pickup";
+  }
+
+  if (stopCount === 1) {
+    return "Editing destination";
+  }
+
+  return activeField.index === stopCount - 1
+    ? "Editing final destination"
+    : `Editing stop ${activeField.index + 1}`;
+}
+
+function formatSuggestionValue(item: PlaceSuggestion) {
+  return item.subtitle ? `${item.title}, ${item.subtitle}` : item.title;
+}
 
 export default function DestinationSearchScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{
+    flowMode?: string | string[];
+    itinerary?: string | string[];
+  }>();
+  const initialItinerary = useMemo(
+    () => parseRideItineraryParam(params.itinerary),
+    [params.itinerary],
+  );
+  const flowMode: FlowMode =
+    (Array.isArray(params.flowMode) ? params.flowMode[0] : params.flowMode) ===
+    "trip-edit"
+      ? "trip-edit"
+      : "booking";
   const inputRef = useRef<TextInput>(null);
   const [mode, setMode] = useState<ScreenMode>("form");
-  const [activeField, setActiveField] = useState<ActiveField>("to");
-  const [fromValue, setFromValue] = useState(currentPickup);
-  const [toValue, setToValue] = useState("");
+  const [activeField, setActiveField] = useState<ActiveField>({
+    type: "stop",
+    index: 0,
+  });
+  const [pickupValue, setPickupValue] = useState(initialItinerary.pickup);
+  const [routeStops, setRouteStops] = useState(initialItinerary.stops);
   const [searchQuery, setSearchQuery] = useState("");
   const [providerSuggestions, setProviderSuggestions] = useState<
     PlaceSuggestion[]
   >([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
 
   useEffect(() => {
     if (mode !== "search") {
@@ -144,7 +222,9 @@ export default function DestinationSearchScreen() {
 
   const openSearch = (field: ActiveField) => {
     setActiveField(field);
-    setSearchQuery(field === "from" ? fromValue : toValue);
+    setSearchQuery(
+      field.type === "pickup" ? pickupValue : routeStops[field.index] ?? "",
+    );
     setMode("search");
   };
 
@@ -159,17 +239,74 @@ export default function DestinationSearchScreen() {
   };
 
   const handleSuggestionPress = (value: string) => {
-    if (activeField === "from") {
-      setFromValue(value);
-      setMode("form");
-      setSearchQuery("");
-      return;
+    if (activeField.type === "pickup") {
+      setPickupValue(value);
+    } else {
+      setRouteStops((current) =>
+        current.map((stop, index) =>
+          index === activeField.index ? value : stop,
+        ),
+      );
     }
 
-    setToValue(value);
     setMode("form");
     setSearchQuery("");
   };
+
+  const handleAddStop = () => {
+    if (routeStops.length >= MAX_ROUTE_STOPS) {
+      return;
+    }
+
+    const nextIndex = routeStops.length;
+    setRouteStops((current) => [...current, ""]);
+    openSearch({ type: "stop", index: nextIndex });
+  };
+
+  const handleRemoveStop = (index: number) => {
+    if (routeStops.length <= 1) {
+      return;
+    }
+
+    setRouteStops((current) =>
+      current.filter((_, itemIndex) => itemIndex !== index),
+    );
+  };
+
+  const handleReorderStop = (index: number, dy: number) => {
+    const offset = Math.round(dy / DRAG_SWAP_THRESHOLD);
+
+    if (offset === 0) {
+      return;
+    }
+
+    setRouteStops((current) => {
+      const nextIndex = Math.max(
+        0,
+        Math.min(current.length - 1, index + offset),
+      );
+      return moveRouteStop(current, index, nextIndex);
+    });
+  };
+
+  const itinerary: RideItinerary = {
+    pickup: pickupValue,
+    stops: routeStops,
+  };
+  const filledStops = routeStops.filter((stop) => stop.trim().length > 0).length;
+  const canAddStop =
+    routeStops.length < MAX_ROUTE_STOPS &&
+    routeStops[0]?.trim().length > 0 &&
+    routeStops.every((stop) => stop.trim().length > 0);
+  const isConfirmDisabled =
+    !pickupValue.trim() || routeStops.some((stop) => stop.trim().length === 0);
+  const serializedItinerary = serializeRideItinerary(itinerary);
+  const searchHeading = getSearchHeading(activeField, routeStops.length);
+  const activeSummaryLabel = getActiveSummaryLabel(
+    activeField,
+    routeStops.length,
+  );
+  const maxStopsReached = routeStops.length >= MAX_ROUTE_STOPS;
 
   return (
     <AppScreen
@@ -189,163 +326,182 @@ export default function DestinationSearchScreen() {
                   SEARCH RIDE
                 </AppText>
                 <AppText variant="bodySmall" color={theme.colors.muted}>
-                  Choose pickup and destination
+                  Set pickup, destination, and extra stops here
                 </AppText>
               </View>
             </View>
 
             <View style={styles.formSheet}>
-              <View style={styles.formConnector} />
+              <View
+                style={[
+                  styles.formConnector,
+                  {
+                    height: 44 + routeStops.length * 86,
+                  },
+                ]}
+              />
+
               <SearchTriggerField
                 color={theme.colors.green}
-                label="From"
+                label="Pickup"
                 marker="circle"
-                onPress={() => openSearch("from")}
-                value={fromValue}
+                onPress={() => openSearch({ type: "pickup" })}
+                value={pickupValue}
               />
-              <SearchTriggerField
-                color={theme.colors.orange}
-                label="To"
-                marker="square"
-                onPress={() => openSearch("to")}
-                placeholder="Where are you going?"
-                value={toValue}
-              />
+
+              {routeStops.map((stop, index) => (
+                <StopRouteField
+                  canRemove={routeStops.length > 1}
+                  isDragging={draggingIndex === index}
+                  isFinal={index === routeStops.length - 1}
+                  key={`route-stop-${index}`}
+                  label={getStopLabel(routeStops.length, index)}
+                  onPress={() => openSearch({ type: "stop", index })}
+                  onRemove={() => handleRemoveStop(index)}
+                  onReorder={(dy) => handleReorderStop(index, dy)}
+                  onReorderEnd={() => setDraggingIndex(null)}
+                  onReorderStart={() => setDraggingIndex(index)}
+                  value={stop}
+                />
+              ))}
+
+              <Pressable
+                disabled={!canAddStop}
+                onPress={handleAddStop}
+                style={[
+                  styles.addStopRow,
+                  !canAddStop ? styles.addStopRowDisabled : null,
+                ]}
+              >
+                <View style={styles.addStopIcon}>
+                  <MaterialIcons
+                    color={theme.colors.black}
+                    name="add"
+                    size={18}
+                  />
+                </View>
+                <View style={styles.addStopCopy}>
+                  <AppText variant="bodyMedium">
+                    {maxStopsReached ? "Maximum stops reached" : "Add stop"}
+                  </AppText>
+                  <AppText variant="bodySmall" color={theme.colors.muted}>
+                    {maxStopsReached
+                      ? `Up to ${MAX_ADDITIONAL_STOPS} extra stops supported.`
+                      : `Add up to ${MAX_ADDITIONAL_STOPS} extra stops before arrival.`}
+                  </AppText>
+                </View>
+              </Pressable>
             </View>
 
             <View style={styles.helperBlock}>
+              <View style={styles.helperChipRow}>
+                <HelperChip
+                  label={`${filledStops}/${routeStops.length} places set`}
+                />
+                <HelperChip
+                  label={`${Math.max(0, routeStops.length - 1)} extra stop${routeStops.length - 1 === 1 ? "" : "s"}`}
+                />
+              </View>
               <AppText variant="bodySmall" color={theme.colors.muted}>
-                Tap either field to search places and fill it in.
+                Enter the main destination first, then tap + to add stops. Use
+                X to remove and drag the handle to reorder.
               </AppText>
             </View>
 
             <AppButton
-              disabled={!fromValue.trim() || !toValue.trim()}
-              title="Confirm destination"
-              onPress={() => router.push("/ride-selection")}
+              disabled={isConfirmDisabled}
+              title={
+                flowMode === "trip-edit" ? "Update trip route" : "Confirm route"
+              }
+              onPress={() => {
+                if (flowMode === "trip-edit") {
+                  router.replace({
+                    pathname: "/rider/active-trip",
+                    params: {
+                      itinerary: serializedItinerary,
+                    },
+                  });
+                  return;
+                }
+
+                router.push({
+                  pathname: "/ride-selection",
+                  params: {
+                    itinerary: serializedItinerary,
+                  },
+                });
+              }}
             />
           </>
         ) : (
           <>
-            {activeField === "to" ? (
-              <>
-                <View style={styles.formTopBar}>
-                  <BackArrow onPress={handleBack} />
-                  <View style={styles.formTopCopy}>
-                    <AppText variant="monoSmall" color={theme.colors.muted}>
-                      SEARCH TO
-                    </AppText>
-                    <AppText variant="bodySmall" color={theme.colors.muted}>
-                      Choose your destination
-                    </AppText>
-                  </View>
-                </View>
+            <View style={styles.searchHeader}>
+              <BackArrow onPress={handleBack} />
+              <View style={styles.searchBar}>
+                <MaterialIcons
+                  color={theme.colors.muted}
+                  name="search"
+                  size={18}
+                />
+                <TextInput
+                  autoFocus
+                  onChangeText={setSearchQuery}
+                  placeholder={searchHeading}
+                  placeholderTextColor="#A59B92"
+                  ref={inputRef}
+                  style={styles.searchInput}
+                  value={searchQuery}
+                />
+              </View>
+            </View>
 
-                <View style={styles.formSheet}>
-                  <View style={styles.formConnector} />
-                  <SearchTriggerField
-                    color={theme.colors.green}
-                    label="From"
-                    marker="circle"
-                    onPress={() => openSearch("from")}
-                    value={fromValue}
-                  />
-                  <View style={styles.triggerFieldBlock}>
-                    <AppText variant="bodySmall" color={theme.colors.muted}>
-                      To
-                    </AppText>
-                    <View
-                      style={[styles.triggerField, styles.activeInputField]}
-                    >
-                      <View
-                        style={[
-                          styles.markerSquare,
-                          { backgroundColor: theme.colors.orange },
-                        ]}
-                      />
-                      <MaterialIcons
-                        color={theme.colors.muted}
-                        name="search"
-                        size={18}
-                      />
-                      <TextInput
-                        autoFocus
-                        onChangeText={setSearchQuery}
-                        placeholder="Where are you going?"
-                        placeholderTextColor="#A59B92"
-                        ref={inputRef}
-                        style={styles.searchFieldInput}
-                        value={searchQuery}
-                      />
-                    </View>
-                  </View>
-                </View>
-              </>
-            ) : (
-              <>
-                <View style={styles.searchHeader}>
-                  <BackArrow onPress={handleBack} />
-                  <View style={styles.searchBar}>
-                    <MaterialIcons
-                      color={theme.colors.muted}
-                      name="search"
-                      size={18}
-                    />
-                    <TextInput
-                      autoFocus
-                      onChangeText={setSearchQuery}
-                      placeholder="Search pickup"
-                      placeholderTextColor="#A59B92"
-                      ref={inputRef}
-                      style={styles.searchInput}
-                      value={searchQuery}
-                    />
-                  </View>
-                </View>
+            <View style={styles.activeSummary}>
+              <View style={styles.summaryMarkerWrap}>
+                <View
+                  style={[
+                    activeField.type === "pickup"
+                      ? styles.markerCircle
+                      : styles.markerSquare,
+                    {
+                      backgroundColor:
+                        activeField.type === "pickup"
+                          ? theme.colors.green
+                          : theme.colors.orange,
+                    },
+                  ]}
+                />
+              </View>
+              <View style={styles.summaryCopy}>
+                <AppText variant="bodySmall" color={theme.colors.muted}>
+                  {activeSummaryLabel}
+                </AppText>
+                <AppText variant="bodyMedium">
+                  {searchQuery ||
+                    (activeField.type === "pickup"
+                      ? pickupValue
+                      : routeStops[activeField.index] || "Search for a place")}
+                </AppText>
+              </View>
+            </View>
 
-                <View style={styles.activeSummary}>
-                  <View style={styles.summaryMarkerWrap}>
-                    <View
-                      style={[
-                        styles.markerCircle,
-                        { backgroundColor: theme.colors.green },
-                      ]}
-                    />
-                  </View>
-                  <View style={styles.summaryCopy}>
-                    <AppText variant="bodySmall" color={theme.colors.muted}>
-                      Editing pickup
-                    </AppText>
-                    <AppText variant="bodyMedium">
-                      {searchQuery || fromValue}
-                    </AppText>
-                  </View>
-                </View>
-
-                <Pressable
-                  style={styles.secondarySummary}
-                  onPress={() => openSearch("to")}
-                >
-                  <View style={styles.summaryMarkerWrap}>
-                    <View
-                      style={[
-                        styles.markerSquare,
-                        { backgroundColor: theme.colors.orange },
-                      ]}
-                    />
-                  </View>
-                  <View style={styles.summaryCopy}>
-                    <AppText variant="bodySmall" color={theme.colors.muted}>
-                      To
-                    </AppText>
-                    <AppText variant="bodyMedium">{toValue}</AppText>
-                  </View>
-                  <AppText variant="monoSmall" color={theme.colors.orange}>
-                    Edit
-                  </AppText>
-                </Pressable>
-              </>
-            )}
+            <View style={styles.routePreviewCard}>
+              <AppText variant="monoSmall" color={theme.colors.muted}>
+                ROUTE PREVIEW
+              </AppText>
+              <PreviewRow
+                color={theme.colors.green}
+                label="Pickup"
+                value={pickupValue}
+              />
+              {routeStops.map((stop, index) => (
+                <PreviewRow
+                  color={theme.colors.orange}
+                  key={`preview-stop-${index}`}
+                  label={getStopLabel(routeStops.length, index)}
+                  value={stop || "Not set yet"}
+                />
+              ))}
+            </View>
 
             <View style={styles.resultsSection}>
               <AppText variant="bodySmall" color={theme.colors.muted}>
@@ -367,7 +523,9 @@ export default function DestinationSearchScreen() {
                 filteredSuggestions.map((item) => (
                   <Pressable
                     key={item.id}
-                    onPress={() => handleSuggestionPress(item.title)}
+                    onPress={() =>
+                      handleSuggestionPress(formatSuggestionValue(item))
+                    }
                     style={styles.resultRow}
                   >
                     <View style={styles.resultIcon}>
@@ -406,7 +564,6 @@ type SearchTriggerFieldProps = {
   label: string;
   marker: "circle" | "square";
   onPress: () => void;
-  placeholder?: string;
   value: string;
 };
 
@@ -415,7 +572,6 @@ function SearchTriggerField({
   label,
   marker,
   onPress,
-  placeholder,
   value,
 }: SearchTriggerFieldProps) {
   return (
@@ -430,14 +586,138 @@ function SearchTriggerField({
             { backgroundColor: color },
           ]}
         />
-        <AppText
-          variant="body"
-          color={value ? theme.colors.black : "#A59B92"}
-          style={styles.triggerText}
-        >
-          {value || placeholder}
+        <AppText variant="body" style={styles.triggerText}>
+          {value}
         </AppText>
       </Pressable>
+    </View>
+  );
+}
+
+type StopRouteFieldProps = {
+  canRemove: boolean;
+  isDragging: boolean;
+  isFinal: boolean;
+  label: string;
+  onPress: () => void;
+  onRemove: () => void;
+  onReorder: (dy: number) => void;
+  onReorderEnd: () => void;
+  onReorderStart: () => void;
+  value: string;
+};
+
+function StopRouteField({
+  canRemove,
+  isDragging,
+  isFinal,
+  label,
+  onPress,
+  onRemove,
+  onReorder,
+  onReorderEnd,
+  onReorderStart,
+  value,
+}: StopRouteFieldProps) {
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: (_, gestureState) =>
+          Math.abs(gestureState.dy) > 4,
+        onPanResponderGrant: onReorderStart,
+        onPanResponderRelease: (_, gestureState) => {
+          onReorder(gestureState.dy);
+          onReorderEnd();
+        },
+        onPanResponderTerminate: onReorderEnd,
+      }),
+    [onReorder, onReorderEnd, onReorderStart],
+  );
+
+  return (
+    <View style={styles.triggerFieldBlock}>
+      <AppText variant="bodySmall" color={theme.colors.muted}>
+        {label}
+      </AppText>
+      <View
+        style={[
+          styles.stopFieldRow,
+          isDragging ? styles.stopFieldRowDragging : null,
+        ]}
+      >
+        <Pressable onPress={onPress} style={styles.stopFieldPressable}>
+          <View
+            style={[
+              styles.markerSquare,
+              {
+                backgroundColor: isFinal
+                  ? theme.colors.orange
+                  : theme.colors.orangeLight,
+              },
+            ]}
+          />
+          <AppText
+            variant="body"
+            color={value ? theme.colors.black : "#A59B92"}
+            style={styles.triggerText}
+          >
+            {value || "Search for a stop"}
+          </AppText>
+        </Pressable>
+
+        <View style={styles.stopFieldActions}>
+          {canRemove ? (
+            <Pressable onPress={onRemove} style={styles.iconButton}>
+              <MaterialIcons
+                color={theme.colors.black}
+                name="close"
+                size={18}
+              />
+            </Pressable>
+          ) : null}
+          <View
+            {...panResponder.panHandlers}
+            style={[styles.iconButton, styles.dragButton]}
+          >
+            <MaterialIcons
+              color={theme.colors.black}
+              name="drag-handle"
+              size={18}
+            />
+          </View>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+function PreviewRow({
+  color,
+  label,
+  value,
+}: {
+  color: string;
+  label: string;
+  value: string;
+}) {
+  return (
+    <View style={styles.previewRow}>
+      <View style={[styles.previewDot, { backgroundColor: color }]} />
+      <View style={styles.previewCopy}>
+        <AppText variant="bodySmall" color={theme.colors.muted}>
+          {label}
+        </AppText>
+        <AppText variant="bodyMedium">{value}</AppText>
+      </View>
+    </View>
+  );
+}
+
+function HelperChip({ label }: { label: string }) {
+  return (
+    <View style={styles.helperChip}>
+      <AppText variant="monoSmall">{label}</AppText>
     </View>
   );
 }
@@ -473,7 +753,6 @@ const styles = StyleSheet.create({
     left: 27,
     top: 58,
     width: 2,
-    height: 40,
     backgroundColor: theme.colors.borderLight,
   },
   triggerFieldBlock: {
@@ -511,15 +790,18 @@ const styles = StyleSheet.create({
   helperBlock: {
     gap: theme.spacing.xs,
   },
-  activeInputField: {
-    borderColor: theme.colors.orange,
-    backgroundColor: "#FFF8F2",
+  helperChipRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: theme.spacing.sm,
   },
-  searchFieldInput: {
-    flex: 1,
-    fontFamily: theme.fonts.body,
-    fontSize: 14,
-    color: theme.colors.black,
+  helperChip: {
+    borderWidth: theme.borders.regular,
+    borderColor: theme.colors.black,
+    borderRadius: theme.radius.pill,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: 6,
+    backgroundColor: theme.colors.white,
   },
   searchHeader: {
     flexDirection: "row",
@@ -528,7 +810,7 @@ const styles = StyleSheet.create({
   },
   searchBar: {
     flex: 1,
-    minHeight: 52,
+    minHeight: 54,
     borderWidth: theme.borders.thick,
     borderColor: theme.colors.black,
     borderRadius: theme.radius.sm,
@@ -544,58 +826,152 @@ const styles = StyleSheet.create({
     fontFamily: theme.fonts.body,
     fontSize: 14,
     color: theme.colors.black,
+    paddingVertical: 0,
   },
   activeSummary: {
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing.sm,
-    paddingBottom: theme.spacing.sm,
-    borderBottomWidth: 1.5,
-    borderBottomColor: theme.colors.borderLight,
-  },
-  secondarySummary: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing.sm,
-    paddingBottom: theme.spacing.sm,
-    borderBottomWidth: 1.5,
-    borderBottomColor: theme.colors.borderLight,
+    padding: theme.spacing.md,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    borderRadius: theme.radius.md,
+    backgroundColor: theme.colors.white,
+    ...theme.shadows.card,
   },
   summaryMarkerWrap: {
-    width: 36,
+    width: 22,
     alignItems: "center",
   },
   summaryCopy: {
     flex: 1,
     gap: 2,
   },
+  routePreviewCard: {
+    gap: theme.spacing.sm,
+    padding: theme.spacing.md,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    borderRadius: theme.radius.md,
+    backgroundColor: theme.colors.white,
+    ...theme.shadows.card,
+  },
+  previewRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing.sm,
+  },
+  previewDot: {
+    width: 12,
+    height: 12,
+    borderRadius: theme.radius.pill,
+    borderWidth: theme.borders.regular,
+    borderColor: theme.colors.black,
+  },
+  previewCopy: {
+    flex: 1,
+    gap: 1,
+  },
   resultsSection: {
-    gap: theme.spacing.xs,
+    gap: theme.spacing.sm,
   },
   resultRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing.sm,
-    paddingVertical: theme.spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.borderLight,
-  },
-  resultIcon: {
-    width: 36,
-    height: 36,
+    paddingVertical: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.sm,
     borderWidth: theme.borders.thick,
     borderColor: theme.colors.black,
     borderRadius: theme.radius.sm,
+    backgroundColor: theme.colors.white,
+    ...theme.shadows.card,
+  },
+  resultIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: theme.radius.pill,
     backgroundColor: theme.colors.orangeLight,
+    borderWidth: theme.borders.regular,
+    borderColor: theme.colors.black,
     alignItems: "center",
     justifyContent: "center",
   },
   resultCopy: {
     flex: 1,
-    gap: 2,
+    gap: 1,
   },
   emptyState: {
-    gap: theme.spacing.xs,
     paddingVertical: theme.spacing.md,
+    gap: theme.spacing.xs,
+  },
+  stopFieldRow: {
+    flexDirection: "row",
+    alignItems: "stretch",
+    gap: theme.spacing.sm,
+  },
+  stopFieldRowDragging: {
+    opacity: 0.72,
+  },
+  stopFieldPressable: {
+    flex: 1,
+    minHeight: 58,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    borderRadius: theme.radius.sm,
+    backgroundColor: theme.colors.white,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.md,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing.sm,
+  },
+  stopFieldActions: {
+    flexDirection: "row",
+    gap: theme.spacing.xs,
+  },
+  iconButton: {
+    width: 44,
+    minHeight: 58,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    borderRadius: theme.radius.sm,
+    backgroundColor: theme.colors.white,
+    ...theme.shadows.subtle,
+  },
+  dragButton: {
+    backgroundColor: "#FFF4EA",
+  },
+  addStopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing.sm,
+    minHeight: 64,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    borderRadius: theme.radius.sm,
+    backgroundColor: "#FFF4EA",
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.md,
+    ...theme.shadows.card,
+  },
+  addStopRowDisabled: {
+    opacity: 0.55,
+  },
+  addStopIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: theme.radius.pill,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: theme.borders.regular,
+    borderColor: theme.colors.black,
+    backgroundColor: theme.colors.white,
+  },
+  addStopCopy: {
+    flex: 1,
+    gap: 2,
   },
 });

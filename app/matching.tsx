@@ -1,6 +1,6 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import * as Haptics from "expo-haptics";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useMemo, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
@@ -40,6 +40,12 @@ const searchStages = [
 
 export default function MatchingScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{
+    itinerary?: string | string[];
+  }>();
+  const itineraryParam = Array.isArray(params.itinerary)
+    ? params.itinerary[0]
+    : params.itinerary;
   const [stageIndex, setStageIndex] = useState(0);
   const [driverFound, setDriverFound] = useState(false);
 
@@ -187,14 +193,14 @@ export default function MatchingScreen() {
               </View>
               <AppText variant="bodySmall" color={theme.colors.muted}>
                 Nearby drivers are getting the request now. You can still edit
-                your pickup or cancel the ride.
+                your route or cancel the ride.
               </AppText>
             </View>
 
             <View style={styles.actionsRow}>
               <View style={styles.actionSlot}>
                 <CompactActionButton
-                  title="Edit Pickup"
+                  title="Edit Route"
                   variant="ghost"
                   onPress={() => router.back()}
                 />
@@ -217,7 +223,18 @@ export default function MatchingScreen() {
             </AppText>
 
             <Pressable
-              onPress={() => router.push("/driver-found")}
+              onPress={() =>
+                router.push(
+                  itineraryParam
+                    ? {
+                        pathname: "/driver-found",
+                        params: {
+                          itinerary: itineraryParam,
+                        },
+                      }
+                    : "/driver-found",
+                )
+              }
               style={styles.driverFoundCard}
             >
               <View style={styles.driverFoundTop}>
@@ -256,7 +273,18 @@ export default function MatchingScreen() {
               <View style={styles.actionSlot}>
                 <CompactActionButton
                   title="View Ride"
-                  onPress={() => router.push("/driver-found")}
+                  onPress={() =>
+                    router.push(
+                      itineraryParam
+                        ? {
+                            pathname: "/driver-found",
+                            params: {
+                              itinerary: itineraryParam,
+                            },
+                          }
+                        : "/driver-found",
+                    )
+                  }
                 />
               </View>
               <View style={styles.actionSlot}>

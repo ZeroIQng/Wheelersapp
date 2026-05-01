@@ -1,6 +1,6 @@
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { useRef } from "react";
+import { useMemo, useRef } from "react";
 import {
   Dimensions,
   PanResponder,
@@ -21,21 +21,17 @@ import { BackArrow } from "@/components/back-arrow";
 import { FloatingView } from "@/components/motion";
 import { StaticMap } from "@/components/static-map";
 import { walletOverview } from "@/data/mock";
+import {
+  estimateRide,
+  getRideRouteRows,
+  parseRideItineraryParam,
+  serializeRideItinerary,
+} from "@/lib/ride-route";
 import { theme } from "@/theme";
+
 const { height, width } = Dimensions.get("window");
 
-const wheelerRide = {
-  name: "Wheeler",
-  price: "₦3,800",
-  eta: "3 min away",
-  distance: "5.2 km trip",
-  subtitle: "Fast bike ride for 1 rider",
-  pickup: "Current location • Lekki Phase 1",
-  destination: "Civic Centre, Victoria Island",
-} as const;
-
-// Route coordinates as percentages of the map area
-// Pickup: Lagos Island (top-left-ish), Destination: Victoria Island (bottom-right-ish)
+// Pickup and destination markers remain illustrative; route details below are now dynamic.
 const PICKUP_PCT = { x: 0.33, y: 0.52 };
 const DEST_PCT = { x: 0.84, y: 0.84 };
 
@@ -62,13 +58,11 @@ function RouteOverlay({
   const dy = y2 - y1;
   const lineLength = Math.sqrt(dx * dx + dy * dy);
   const angle = Math.atan2(dy, dx) * (180 / Math.PI);
-
-  const DOT_SIZE = 14;
-  const BORDER = 2;
+  const dotSize = 14;
+  const border = 2;
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
-      {/* Route line */}
       <View
         style={{
           position: "absolute",
@@ -84,32 +78,30 @@ function RouteOverlay({
         }}
       />
 
-      {/* Pickup dot — orange */}
       <View
         style={{
           position: "absolute",
-          left: x1 - DOT_SIZE / 2,
-          top: y1 - DOT_SIZE / 2,
-          width: DOT_SIZE,
-          height: DOT_SIZE,
-          borderRadius: DOT_SIZE / 2,
+          left: x1 - dotSize / 2,
+          top: y1 - dotSize / 2,
+          width: dotSize,
+          height: dotSize,
+          borderRadius: dotSize / 2,
           backgroundColor: theme.colors.orange,
-          borderWidth: BORDER,
+          borderWidth: border,
           borderColor: theme.colors.black,
         }}
       />
 
-      {/* Destination dot — green */}
       <View
         style={{
           position: "absolute",
-          left: x2 - DOT_SIZE / 2,
-          top: y2 - DOT_SIZE / 2,
-          width: DOT_SIZE,
-          height: DOT_SIZE,
-          borderRadius: DOT_SIZE / 2,
+          left: x2 - dotSize / 2,
+          top: y2 - dotSize / 2,
+          width: dotSize,
+          height: dotSize,
+          borderRadius: dotSize / 2,
           backgroundColor: theme.colors.green,
-          borderWidth: BORDER,
+          borderWidth: border,
           borderColor: theme.colors.black,
         }}
       />
@@ -119,13 +111,22 @@ function RouteOverlay({
 
 export default function RideSelectionScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{
+    itinerary?: string | string[];
+  }>();
+  const itinerary = useMemo(
+    () => parseRideItineraryParam(params.itinerary),
+    [params.itinerary],
+  );
+  const estimate = useMemo(() => estimateRide(itinerary), [itinerary]);
+  const routeRows = useMemo(() => getRideRouteRows(itinerary), [itinerary]);
   const collapsedSheetOffset = 196;
   const sheetOffset = useSharedValue(0);
-  const rideFare = parseAmount(wheelerRide.price);
+  const rideFare = estimate.priceNgn;
   const walletBalance = parseAmount(walletOverview.fiatApprox);
+  const serializedItinerary = serializeRideItinerary(itinerary);
 
-  // Map area height = full screen height minus the bottom sheet height
-  const SHEET_MIN_HEIGHT = 438;
+  const SHEET_MIN_HEIGHT = 470;
   const mapHeight = height - SHEET_MIN_HEIGHT;
   const mapWidth = width;
 
@@ -169,7 +170,12 @@ export default function RideSelectionScreen() {
 
   const handleBookRide = () => {
     if (walletBalance >= rideFare) {
-      router.push("/matching");
+      router.push({
+        pathname: "/matching",
+        params: {
+          itinerary: serializedItinerary,
+        },
+      });
       return;
     }
 
@@ -178,7 +184,8 @@ export default function RideSelectionScreen() {
       params: {
         depositAmount: String(rideFare),
         redirectReason: "insufficient-funds",
-        rideName: wheelerRide.name,
+        rideName: "Wheeler",
+        itinerary: serializedItinerary,
       },
     });
   };
@@ -193,7 +200,6 @@ export default function RideSelectionScreen() {
 
       <View style={styles.mapWrap}>
         <StaticMap height={height} scene="rideSelection">
-          {/* ── Route overlay ── */}
           <RouteOverlay mapWidth={mapWidth} mapHeight={mapHeight} />
 
           <View style={styles.topBar}>
@@ -201,7 +207,7 @@ export default function RideSelectionScreen() {
             <FloatingView distance={5}>
               <View style={styles.mapChip}>
                 <AppText variant="monoSmall">
-                  Wheeler • {wheelerRide.eta}
+                  Wheeler • {estimate.etaLabel}
                 </AppText>
               </View>
             </FloatingView>
@@ -212,7 +218,7 @@ export default function RideSelectionScreen() {
               <AppText variant="bodySmall" color={theme.colors.muted}>
                 Estimated fare
               </AppText>
-              <AppText variant="monoLarge">{wheelerRide.price}</AppText>
+              <AppText variant="monoLarge">{estimate.priceLabel}</AppText>
             </View>
           </FloatingView>
         </StaticMap>
@@ -231,9 +237,9 @@ export default function RideSelectionScreen() {
             <AppText variant="monoSmall" color={theme.colors.orange}>
               RIDE OPTION
             </AppText>
-            <AppText variant="h1">{wheelerRide.name}</AppText>
+            <AppText variant="h1">Wheeler</AppText>
             <AppText variant="bodySmall" color={theme.colors.muted}>
-              {wheelerRide.subtitle}
+              Fast bike ride with multi-stop routing
             </AppText>
           </View>
           <View style={styles.rideIcon}>
@@ -245,12 +251,12 @@ export default function RideSelectionScreen() {
           <View style={styles.rideCardMain}>
             <View style={styles.rideCopy}>
               <View style={styles.metricRow}>
-                <MetricPill label={wheelerRide.eta} />
-                <MetricPill label={wheelerRide.distance} muted />
+                <MetricPill label={estimate.etaLabel} />
+                <MetricPill label={estimate.distanceLabel} muted />
               </View>
               <AppText variant="h3">Wheeler</AppText>
               <AppText variant="bodySmall" color={theme.colors.muted}>
-                {/* Direct ride with pickup and drop-off shown on map */}
+                {estimate.routeNote}
               </AppText>
             </View>
             <View style={styles.priceBlock}>
@@ -258,24 +264,25 @@ export default function RideSelectionScreen() {
                 NGN
               </AppText>
               <AppText variant="h2" color={theme.colors.offWhite}>
-                {wheelerRide.price}
+                {estimate.priceNgn.toLocaleString("en-NG")}
               </AppText>
             </View>
           </View>
         </Pressable>
 
         <View style={styles.routeBox}>
-          <RouteRow
-            color={theme.colors.green}
-            label="Pickup"
-            value={wheelerRide.pickup}
-          />
-          <View style={styles.routeDivider} />
-          <RouteRow
-            color={theme.colors.orange}
-            label="Destination"
-            value={wheelerRide.destination}
-          />
+          {routeRows.map((row, index) => (
+            <View key={row.id}>
+              <RouteRow
+                kind={row.kind}
+                label={row.label}
+                value={row.value}
+              />
+              {index < routeRows.length - 1 ? (
+                <View style={styles.routeDivider} />
+              ) : null}
+            </View>
+          ))}
         </View>
 
         <AppButton title="Book Wheeler" onPress={handleBookRide} />
@@ -300,17 +307,26 @@ function MetricPill({ label, muted }: { label: string; muted?: boolean }) {
 }
 
 function RouteRow({
-  color,
+  kind,
   label,
   value,
 }: {
-  color: string;
+  kind: "pickup" | "stop" | "destination";
   label: string;
   value: string;
 }) {
   return (
     <View style={styles.routeRow}>
-      <View style={[styles.routeDot, { backgroundColor: color }]} />
+      <View
+        style={[
+          styles.routeDot,
+          kind === "pickup"
+            ? styles.routeDotPickup
+            : kind === "destination"
+              ? styles.routeDotDestination
+              : styles.routeDotStop,
+        ]}
+      />
       <View style={styles.routeCopy}>
         <AppText variant="monoSmall" color={theme.colors.muted}>
           {label}
@@ -378,7 +394,7 @@ const styles = StyleSheet.create({
     paddingTop: theme.spacing.sm,
     paddingBottom: theme.spacing.xl,
     gap: theme.spacing.md,
-    minHeight: 438,
+    minHeight: 470,
   },
   handleArea: {
     alignItems: "center",
@@ -445,7 +461,7 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.white,
   },
   priceBlock: {
-    minWidth: 108,
+    minWidth: 118,
     alignSelf: "stretch",
     borderWidth: theme.borders.regular,
     borderColor: theme.colors.black,
@@ -473,9 +489,20 @@ const styles = StyleSheet.create({
   routeDot: {
     width: 14,
     height: 14,
-    borderRadius: theme.radius.pill,
     borderWidth: theme.borders.regular,
     borderColor: theme.colors.black,
+  },
+  routeDotPickup: {
+    borderRadius: theme.radius.pill,
+    backgroundColor: theme.colors.green,
+  },
+  routeDotStop: {
+    borderRadius: 4,
+    backgroundColor: "#FFD1B5",
+  },
+  routeDotDestination: {
+    borderRadius: 4,
+    backgroundColor: theme.colors.orange,
   },
   routeCopy: {
     flex: 1,
@@ -485,5 +512,6 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: theme.colors.borderLight,
     marginLeft: 22,
+    marginVertical: theme.spacing.sm,
   },
 });
