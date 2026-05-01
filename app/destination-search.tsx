@@ -3,6 +3,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  Keyboard,
   PanResponder,
   Pressable,
   ScrollView,
@@ -59,26 +60,24 @@ const searchSuggestions = [
 
 type ActiveField =
   | { type: "pickup" }
-  | { type: "stop"; index: number };
+  | { type: "stop"; index: number }
+  | { type: "destination" };
+
 type ScreenMode = "form" | "search";
 type FlowMode = "booking" | "trip-edit";
 
 const DRAG_SWAP_THRESHOLD = 88;
 
 function getSearchHeading(activeField: ActiveField) {
-  if (activeField.type === "pickup") {
-    return "Search pickup";
-  }
-
-  return `Search stop ${activeField.index + 1}`;
+  if (activeField.type === "pickup") return "Search pickup";
+  if (activeField.type === "destination") return "Search destination";
+  return `Search stop ${(activeField as { type: "stop"; index: number }).index + 1}`;
 }
 
 function getActiveSummaryLabel(activeField: ActiveField) {
-  if (activeField.type === "pickup") {
-    return "Editing pickup";
-  }
-
-  return `Editing stop ${activeField.index + 1}`;
+  if (activeField.type === "pickup") return "Editing pickup";
+  if (activeField.type === "destination") return "Editing destination";
+  return `Editing stop ${(activeField as { type: "stop"; index: number }).index + 1}`;
 }
 
 function formatSuggestionValue(item: PlaceSuggestion) {
@@ -100,6 +99,7 @@ export default function DestinationSearchScreen() {
     "trip-edit"
       ? "trip-edit"
       : "booking";
+
   const inputRef = useRef<TextInput>(null);
   const [mode, setMode] = useState<ScreenMode>("form");
   const [activeField, setActiveField] = useState<ActiveField>({
@@ -108,36 +108,28 @@ export default function DestinationSearchScreen() {
   });
   const [pickupValue, setPickupValue] = useState(initialItinerary.pickup);
   const [routeStops, setRouteStops] = useState(initialItinerary.stops);
+  // Single shared search query — used in both form inline mode and full search mode
   const [searchQuery, setSearchQuery] = useState("");
-  const [providerSuggestions, setProviderSuggestions] = useState<
-    PlaceSuggestion[]
-  >([]);
+  const [providerSuggestions, setProviderSuggestions] = useState<PlaceSuggestion[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  // Which field is currently being edited inline in form mode
   const [activeRouteIndex, setActiveRouteIndex] = useState<number | null>(null);
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
+
   const destinationValue = routeStops[routeStops.length - 1] ?? "";
   const intermediateStops = routeStops.slice(0, -1);
-  const isSearchActive = mode === "search" || activeRouteIndex !== null;
 
+  // ─── Focus search input when entering search mode ───────────────────────────
   useEffect(() => {
-    if (mode !== "search") {
-      return;
-    }
-
-    const timeout = setTimeout(() => {
-      inputRef.current?.focus();
-    }, 50);
-
+    if (mode !== "search") return;
+    const timeout = setTimeout(() => inputRef.current?.focus(), 50);
     return () => clearTimeout(timeout);
   }, [activeField, mode]);
 
+  // ─── OSM search — runs whenever searchQuery changes, regardless of mode ─────
+  // FIX: removed the isSearchActive gate that was killing OSM in form mode.
+  // We always search as long as there's a query and OSM is configured.
   useEffect(() => {
-    if (!isSearchActive) {
-      setProviderSuggestions([]);
-      setIsSearching(false);
-      return;
-    }
-
     if (!isOsmPlacesConfigured()) {
       setProviderSuggestions([]);
       setIsSearching(false);
@@ -158,18 +150,11 @@ export default function DestinationSearchScreen() {
     const timeout = setTimeout(async () => {
       try {
         const suggestions = await fetchOsmPlaceSuggestions(normalized);
-
-        if (!cancelled) {
-          setProviderSuggestions(suggestions);
-        }
+        if (!cancelled) setProviderSuggestions(suggestions);
       } catch {
-        if (!cancelled) {
-          setProviderSuggestions([]);
-        }
+        if (!cancelled) setProviderSuggestions([]);
       } finally {
-        if (!cancelled) {
-          setIsSearching(false);
-        }
+        if (!cancelled) setIsSearching(false);
       }
     }, 220);
 
@@ -177,35 +162,48 @@ export default function DestinationSearchScreen() {
       cancelled = true;
       clearTimeout(timeout);
     };
-  }, [isSearchActive, searchQuery]);
+  }, [searchQuery]); // ← only depends on searchQuery now, not isSearchActive
 
+  // ─── Fallback suggestions (history + static) ────────────────────────────────
   const fallbackSuggestions = useMemo(() => {
     const normalized = searchQuery.trim().toLowerCase();
-
-    if (!normalized) {
-      return searchSuggestions.slice(0, 6);
-    }
-
-    return searchSuggestions.filter((item) => {
-      return (
+    if (!normalized) return searchSuggestions.slice(0, 6);
+    return searchSuggestions.filter(
+      (item) =>
         item.title.toLowerCase().includes(normalized) ||
-        item.subtitle.toLowerCase().includes(normalized)
-      );
-    });
+        item.subtitle.toLowerCase().includes(normalized),
+    );
   }, [searchQuery]);
 
   const shouldUseProviderResults =
-    isSearchActive && isOsmPlacesConfigured() && searchQuery.trim().length > 0;
+    isOsmPlacesConfigured() && searchQuery.trim().length > 0;
+
   const filteredSuggestions = shouldUseProviderResults
     ? providerSuggestions
     : fallbackSuggestions;
 
+  const uniqueSuggestions = useMemo(() => {
+    const seen = new Set<string>();
+    return filteredSuggestions.filter((item) => {
+      const key = `${item.id}:${item.title}:${item.subtitle}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [filteredSuggestions]);
+
+  // ─── Open full-screen search for pickup (not editable inline) ───────────────
   const openSearch = (field: ActiveField) => {
     setActiveRouteIndex(null);
     setActiveField(field);
-    setSearchQuery(
-      field.type === "pickup" ? pickupValue : routeStops[field.index] ?? "",
-    );
+    const currentVal =
+      field.type === "pickup"
+        ? pickupValue
+        : field.type === "destination"
+        ? destinationValue
+        : routeStops[(field as { type: "stop"; index: number }).index] ?? "";
+    // Set query BEFORE switching mode so OSM fires immediately
+    setSearchQuery(currentVal);
     setMode("search");
   };
 
@@ -215,11 +213,35 @@ export default function DestinationSearchScreen() {
       setSearchQuery("");
       return;
     }
-
     router.back();
   };
 
+  // ─── Pick a suggestion ──────────────────────────────────────────────────────
   const handleSuggestionPress = (value: string) => {
+    Keyboard.dismiss();
+
+    if (mode === "search") {
+      // Full search mode — update the field that triggered it
+      if (activeField.type === "pickup") {
+        setPickupValue(value);
+      } else if (activeField.type === "destination") {
+        setRouteStops((current) =>
+          current.map((stop, index) =>
+            index === current.length - 1 ? value : stop,
+          ),
+        );
+      } else {
+        const idx = (activeField as { type: "stop"; index: number }).index;
+        setRouteStops((current) =>
+          current.map((stop, index) => (index === idx ? value : stop)),
+        );
+      }
+      setMode("form");
+      setSearchQuery("");
+      return;
+    }
+
+    // Form inline mode — update whichever stop index is active
     if (activeRouteIndex != null) {
       setRouteStops((current) =>
         current.map((stop, index) =>
@@ -228,28 +250,11 @@ export default function DestinationSearchScreen() {
       );
       setActiveRouteIndex(null);
       setSearchQuery("");
-      return;
     }
-
-    if (activeField.type === "pickup") {
-      setPickupValue(value);
-    } else {
-      setRouteStops((current) =>
-        current.map((stop, index) =>
-          index === activeField.index ? value : stop,
-        ),
-      );
-    }
-
-    setMode("form");
-    setSearchQuery("");
   };
 
   const handleAddStop = () => {
-    if (intermediateStops.length >= MAX_ADDITIONAL_STOPS) {
-      return;
-    }
-
+    if (intermediateStops.length >= MAX_ADDITIONAL_STOPS) return;
     const insertIndex = routeStops.length - 1;
     setRouteStops((current) => {
       const next = [...current];
@@ -257,43 +262,31 @@ export default function DestinationSearchScreen() {
       return next;
     });
     setActiveRouteIndex(insertIndex);
-    setSearchQuery("");
+    // Don't clear searchQuery — let whatever was there persist
   };
 
   const handleRemoveStop = (index: number) => {
-    if (intermediateStops.length === 0) {
-      return;
-    }
-
+    if (intermediateStops.length === 0) return;
     if (activeRouteIndex === index) {
       setActiveRouteIndex(null);
       setSearchQuery("");
     }
-
-    setRouteStops((current) =>
-      current.filter((_, itemIndex) => itemIndex !== index),
-    );
+    setRouteStops((current) => current.filter((_, i) => i !== index));
   };
 
   const handleReorderStop = (index: number, dy: number) => {
     const offset = Math.round(dy / DRAG_SWAP_THRESHOLD);
-
-    if (offset === 0) {
-      return;
-    }
-
+    if (offset === 0) return;
     setActiveRouteIndex(null);
     setSearchQuery("");
     setRouteStops((current) => {
       const lastMovableIndex = current.length - 2;
-      const nextIndex = Math.max(
-        0,
-        Math.min(lastMovableIndex, index + offset),
-      );
+      const nextIndex = Math.max(0, Math.min(lastMovableIndex, index + offset));
       return moveRouteStop(current, index, nextIndex);
     });
   };
 
+  // Destination inline edit
   const handleDestinationChange = (value: string) => {
     setRouteStops((current) =>
       current.map((stop, index) =>
@@ -303,17 +296,15 @@ export default function DestinationSearchScreen() {
     setSearchQuery(value);
   };
 
+  // Stop inline edit
   const handleStopChange = (index: number, value: string) => {
     setRouteStops((current) =>
-      current.map((stop, itemIndex) => (itemIndex === index ? value : stop)),
+      current.map((stop, i) => (i === index ? value : stop)),
     );
     setSearchQuery(value);
   };
 
-  const itinerary: RideItinerary = {
-    pickup: pickupValue,
-    stops: routeStops,
-  };
+  const itinerary: RideItinerary = { pickup: pickupValue, stops: routeStops };
   const canAddStop =
     intermediateStops.length < MAX_ADDITIONAL_STOPS &&
     destinationValue.trim().length > 0 &&
@@ -328,6 +319,9 @@ export default function DestinationSearchScreen() {
   const maxStopsReached = intermediateStops.length >= MAX_ADDITIONAL_STOPS;
   const hasExtraStops = intermediateStops.length > 0;
 
+  // Show results panel in form mode whenever a route field is focused
+  const showInlineResults = activeRouteIndex != null;
+
   return (
     <AppScreen
       backgroundColor={theme.colors.offWhite}
@@ -339,6 +333,7 @@ export default function DestinationSearchScreen() {
       <View style={styles.content}>
         {mode === "form" ? (
           <View style={styles.modeLayout}>
+            {/* ── Top bar ── */}
             <View style={styles.formTopBar}>
               <BackArrow onPress={handleBack} />
               <View style={styles.formTopCopy}>
@@ -351,21 +346,24 @@ export default function DestinationSearchScreen() {
               </View>
             </View>
 
+            {/* ── Scrollable form + results ── */}
+            {/* FIX: scrollEnabled is ALWAYS true. We removed the lock that broke scroll. */}
             <ScrollView
               bounces={false}
               contentContainerStyle={styles.formScrollContent}
+              keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
             >
+              {/* Form card */}
               <View style={styles.formSheet}>
                 <View
                   style={[
                     styles.formConnector,
-                    {
-                      height: 40 + (intermediateStops.length + 1) * 78,
-                    },
+                    { height: 40 + (intermediateStops.length + 1) * 78 },
                   ]}
                 />
 
+                {/* Pickup — taps into full search mode */}
                 <SearchTriggerField
                   color={theme.colors.green}
                   label="Pickup"
@@ -374,29 +372,31 @@ export default function DestinationSearchScreen() {
                   value={pickupValue}
                 />
 
-                {hasExtraStops ? (
-                  intermediateStops.map((stop, index) => (
-                    <StopRouteField
-                      canRemove
-                      isEditing={activeRouteIndex === index}
-                      isDragging={draggingIndex === index}
-                      key={`route-stop-${index}`}
-                      label={`Stop ${index + 1}`}
-                      onChangeText={(value) => handleStopChange(index, value)}
-                      onFocus={() => {
-                        setActiveRouteIndex(index);
-                        setSearchQuery(stop);
-                      }}
-                      onRemove={() => handleRemoveStop(index)}
-                      onReorder={(dy) => handleReorderStop(index, dy)}
-                      onReorderEnd={() => setDraggingIndex(null)}
-                      onReorderStart={() => setDraggingIndex(index)}
-                      onSubmitEditing={() => setActiveRouteIndex(null)}
-                      value={stop}
-                    />
-                  ))
-                ) : null}
+                {/* Intermediate stops — inline editable */}
+                {hasExtraStops
+                  ? intermediateStops.map((stop, index) => (
+                      <StopRouteField
+                        canRemove
+                        isEditing={activeRouteIndex === index}
+                        isDragging={draggingIndex === index}
+                        key={`route-stop-${index}`}
+                        label={`Stop ${index + 1}`}
+                        onChangeText={(value) => handleStopChange(index, value)}
+                        onFocus={() => {
+                          setActiveRouteIndex(index);
+                          setSearchQuery(stop);
+                        }}
+                        onRemove={() => handleRemoveStop(index)}
+                        onReorder={(dy) => handleReorderStop(index, dy)}
+                        onReorderEnd={() => setDraggingIndex(null)}
+                        onReorderStart={() => setDraggingIndex(index)}
+                        onSubmitEditing={() => setActiveRouteIndex(null)}
+                        value={stop}
+                      />
+                    ))
+                  : null}
 
+                {/* Destination — inline editable */}
                 <DestinationField
                   isEditing={activeRouteIndex === routeStops.length - 1}
                   onChangeText={handleDestinationChange}
@@ -408,6 +408,7 @@ export default function DestinationSearchScreen() {
                   value={destinationValue}
                 />
 
+                {/* Add stop */}
                 <Pressable
                   disabled={!canAddStop}
                   onPress={handleAddStop}
@@ -417,11 +418,7 @@ export default function DestinationSearchScreen() {
                   ]}
                 >
                   <View style={styles.addStopIcon}>
-                    <MaterialIcons
-                      color={theme.colors.black}
-                      name="add"
-                      size={18}
-                    />
+                    <MaterialIcons color={theme.colors.black} name="add" size={18} />
                   </View>
                   <View style={styles.addStopCopy}>
                     <AppText variant="bodyMedium">
@@ -431,7 +428,8 @@ export default function DestinationSearchScreen() {
                 </Pressable>
               </View>
 
-              {activeRouteIndex != null ? (
+              {/* ── Inline results — shown when any stop/destination field is active ── */}
+              {showInlineResults ? (
                 <View style={styles.resultsSection}>
                   {isSearching ? (
                     <View style={styles.emptyState}>
@@ -440,162 +438,12 @@ export default function DestinationSearchScreen() {
                         Finding matching locations.
                       </AppText>
                     </View>
-                  ) : filteredSuggestions.length > 0 ? (
-                    <ScrollView
-                      bounces={false}
-                      keyboardShouldPersistTaps="handled"
-                      nestedScrollEnabled
-                      showsVerticalScrollIndicator={false}
-                      style={styles.resultsList}
-                    >
-                      <View style={styles.resultsListContent}>
-                        {filteredSuggestions.map((item) => (
-                          <Pressable
-                            key={item.id}
-                            onPress={() =>
-                              handleSuggestionPress(formatSuggestionValue(item))
-                            }
-                            style={styles.resultRow}
-                          >
-                            <View style={styles.resultIcon}>
-                              <MaterialIcons
-                                color={theme.colors.black}
-                                name={item.icon}
-                                size={18}
-                              />
-                            </View>
-                            <View style={styles.resultCopy}>
-                              <AppText variant="bodyMedium">{item.title}</AppText>
-                              <AppText
-                                variant="bodySmall"
-                                color={theme.colors.muted}
-                              >
-                                {item.subtitle}
-                              </AppText>
-                            </View>
-                          </Pressable>
-                        ))}
-                      </View>
-                    </ScrollView>
-                  ) : (
-                    <View style={styles.emptyState}>
-                      <AppText variant="bodyMedium">No places found</AppText>
-                      <AppText variant="bodySmall" color={theme.colors.muted}>
-                        Keep typing to search for a location.
-                      </AppText>
-                    </View>
-                  )}
-                </View>
-              ) : null}
-            </ScrollView>
-
-            <View style={styles.footerActionBar}>
-              <AppButton
-                disabled={isConfirmDisabled}
-                title={
-                  flowMode === "trip-edit"
-                    ? "Update trip route"
-                    : "Confirm route"
-                }
-                onPress={() => {
-                  if (flowMode === "trip-edit") {
-                    router.replace({
-                      pathname: "/rider/active-trip",
-                      params: {
-                        itinerary: serializedItinerary,
-                      },
-                    });
-                    return;
-                  }
-
-                  router.push({
-                    pathname: "/ride-selection",
-                    params: {
-                      itinerary: serializedItinerary,
-                    },
-                  });
-                }}
-              />
-            </View>
-          </View>
-        ) : (
-          <View style={styles.modeLayout}>
-            <View style={styles.searchHeader}>
-              <BackArrow onPress={handleBack} />
-              <View style={styles.searchBar}>
-                <MaterialIcons
-                  color={theme.colors.muted}
-                  name="search"
-                  size={18}
-                />
-                <TextInput
-                  autoFocus
-                  onChangeText={setSearchQuery}
-                  placeholder={searchHeading}
-                  placeholderTextColor="#A59B92"
-                  ref={inputRef}
-                  style={styles.searchInput}
-                  value={searchQuery}
-                />
-              </View>
-            </View>
-
-            <ScrollView
-              bounces={false}
-              contentContainerStyle={styles.searchScrollContent}
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
-            >
-              <View style={styles.activeSummary}>
-                <View style={styles.summaryMarkerWrap}>
-                  <View
-                    style={[
-                      activeField.type === "pickup"
-                        ? styles.markerCircle
-                        : styles.markerSquare,
-                      {
-                        backgroundColor:
-                          activeField.type === "pickup"
-                            ? theme.colors.green
-                            : theme.colors.orange,
-                      },
-                    ]}
-                  />
-                </View>
-                <View style={styles.summaryCopy}>
-                  <AppText variant="bodySmall" color={theme.colors.muted}>
-                    {activeSummaryLabel}
-                  </AppText>
-                  <AppText variant="bodyMedium">
-                    {searchQuery ||
-                      (activeField.type === "pickup"
-                        ? pickupValue
-                        : routeStops[activeField.index] ||
-                          "Search for a place")}
-                  </AppText>
-                </View>
-              </View>
-
-              <View style={styles.resultsSection}>
-                {isSearching ? (
-                  <View style={styles.emptyState}>
-                    <AppText variant="bodyMedium">Searching places...</AppText>
-                    <AppText variant="bodySmall" color={theme.colors.muted}>
-                      Finding matching locations.
-                    </AppText>
-                  </View>
-                ) : filteredSuggestions.length > 0 ? (
-                  <ScrollView
-                    bounces={false}
-                    keyboardShouldPersistTaps="handled"
-                    nestedScrollEnabled
-                    showsVerticalScrollIndicator={false}
-                    style={styles.resultsList}
-                  >
+                  ) : uniqueSuggestions.length > 0 ? (
+                    /* FIX: no maxHeight cap — scroll is handled by the parent ScrollView */
                     <View style={styles.resultsListContent}>
-                      {filteredSuggestions.map((item) => (
+                      {uniqueSuggestions.map((item, index) => (
                         <Pressable
-                          key={item.id}
+                          key={`${item.id}-${index}`}
                           onPress={() =>
                             handleSuggestionPress(formatSuggestionValue(item))
                           }
@@ -610,23 +458,201 @@ export default function DestinationSearchScreen() {
                           </View>
                           <View style={styles.resultCopy}>
                             <AppText variant="bodyMedium">{item.title}</AppText>
-                            <AppText
-                              variant="bodySmall"
-                              color={theme.colors.muted}
-                            >
+                            <AppText variant="bodySmall" color={theme.colors.muted}>
                               {item.subtitle}
                             </AppText>
                           </View>
                         </Pressable>
                       ))}
                     </View>
-                  </ScrollView>
-                ) : (
+                  ) : searchQuery.trim().length > 0 ? (
+                    <View style={styles.emptyState}>
+                      <AppText variant="bodyMedium">No places found</AppText>
+                      <AppText variant="bodySmall" color={theme.colors.muted}>
+                        Keep typing to search for a location.
+                      </AppText>
+                    </View>
+                  ) : (
+                    // Empty query → show fallback suggestions immediately
+                    <View style={styles.resultsListContent}>
+                      {fallbackSuggestions.map((item, index) => (
+                        <Pressable
+                          key={`fallback-${item.id}-${index}`}
+                          onPress={() =>
+                            handleSuggestionPress(formatSuggestionValue(item))
+                          }
+                          style={styles.resultRow}
+                        >
+                          <View style={styles.resultIcon}>
+                            <MaterialIcons
+                              color={theme.colors.black}
+                              name={item.icon}
+                              size={18}
+                            />
+                          </View>
+                          <View style={styles.resultCopy}>
+                            <AppText variant="bodyMedium">{item.title}</AppText>
+                            <AppText variant="bodySmall" color={theme.colors.muted}>
+                              {item.subtitle}
+                            </AppText>
+                          </View>
+                        </Pressable>
+                      ))}
+                    </View>
+                  )}
+                </View>
+              ) : null}
+            </ScrollView>
+
+            {/* ── Confirm button ── */}
+            <View style={styles.footerActionBar}>
+              <AppButton
+                disabled={isConfirmDisabled}
+                title={
+                  flowMode === "trip-edit" ? "Update trip route" : "Confirm route"
+                }
+                onPress={() => {
+                  if (flowMode === "trip-edit") {
+                    router.replace({
+                      pathname: "/rider/active-trip",
+                      params: { itinerary: serializedItinerary },
+                    });
+                    return;
+                  }
+                  router.push({
+                    pathname: "/ride-selection",
+                    params: { itinerary: serializedItinerary },
+                  });
+                }}
+              />
+            </View>
+          </View>
+        ) : (
+          /* ── Full search mode ── */
+          <View style={styles.modeLayout}>
+            <View style={styles.searchHeader}>
+              <BackArrow onPress={handleBack} />
+              <View style={styles.searchBar}>
+                <MaterialIcons color={theme.colors.muted} name="search" size={18} />
+                <TextInput
+                  autoFocus
+                  onChangeText={setSearchQuery}
+                  placeholder={searchHeading}
+                  placeholderTextColor="#A59B92"
+                  ref={inputRef}
+                  style={styles.searchInput}
+                  value={searchQuery}
+                />
+              </View>
+            </View>
+
+            <View style={styles.activeSummary}>
+              <View style={styles.summaryMarkerWrap}>
+                <View
+                  style={[
+                    activeField.type === "pickup"
+                      ? styles.markerCircle
+                      : styles.markerSquare,
+                    {
+                      backgroundColor:
+                        activeField.type === "pickup"
+                          ? theme.colors.green
+                          : theme.colors.orange,
+                    },
+                  ]}
+                />
+              </View>
+              <View style={styles.summaryCopy}>
+                <AppText variant="bodySmall" color={theme.colors.muted}>
+                  {activeSummaryLabel}
+                </AppText>
+                <AppText variant="bodyMedium">
+                  {searchQuery ||
+                    (activeField.type === "pickup"
+                      ? pickupValue
+                      : activeField.type === "destination"
+                      ? destinationValue
+                      : routeStops[
+                          (activeField as { type: "stop"; index: number }).index
+                        ] || "Search for a place")}
+                </AppText>
+              </View>
+            </View>
+
+            {/* FIX: always-scrollable results in search mode */}
+            <ScrollView
+              bounces={false}
+              contentContainerStyle={styles.searchScrollContent}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              <View style={styles.resultsSection}>
+                {isSearching ? (
+                  <View style={styles.emptyState}>
+                    <AppText variant="bodyMedium">Searching places...</AppText>
+                    <AppText variant="bodySmall" color={theme.colors.muted}>
+                      Finding matching locations.
+                    </AppText>
+                  </View>
+                ) : uniqueSuggestions.length > 0 ? (
+                  <View style={styles.resultsListContent}>
+                    {uniqueSuggestions.map((item, index) => (
+                      <Pressable
+                        key={`${item.id}-${index}`}
+                        onPress={() =>
+                          handleSuggestionPress(formatSuggestionValue(item))
+                        }
+                        style={styles.resultRow}
+                      >
+                        <View style={styles.resultIcon}>
+                          <MaterialIcons
+                            color={theme.colors.black}
+                            name={item.icon}
+                            size={18}
+                          />
+                        </View>
+                        <View style={styles.resultCopy}>
+                          <AppText variant="bodyMedium">{item.title}</AppText>
+                          <AppText variant="bodySmall" color={theme.colors.muted}>
+                            {item.subtitle}
+                          </AppText>
+                        </View>
+                      </Pressable>
+                    ))}
+                  </View>
+                ) : searchQuery.trim().length > 0 ? (
                   <View style={styles.emptyState}>
                     <AppText variant="bodyMedium">No places found</AppText>
                     <AppText variant="bodySmall" color={theme.colors.muted}>
                       Keep typing to search for a location.
                     </AppText>
+                  </View>
+                ) : (
+                  // No query yet → show history/static suggestions
+                  <View style={styles.resultsListContent}>
+                    {fallbackSuggestions.map((item, index) => (
+                      <Pressable
+                        key={`fallback-${item.id}-${index}`}
+                        onPress={() =>
+                          handleSuggestionPress(formatSuggestionValue(item))
+                        }
+                        style={styles.resultRow}
+                      >
+                        <View style={styles.resultIcon}>
+                          <MaterialIcons
+                            color={theme.colors.black}
+                            name={item.icon}
+                            size={18}
+                          />
+                        </View>
+                        <View style={styles.resultCopy}>
+                          <AppText variant="bodyMedium">{item.title}</AppText>
+                          <AppText variant="bodySmall" color={theme.colors.muted}>
+                            {item.subtitle}
+                          </AppText>
+                        </View>
+                      </Pressable>
+                    ))}
                   </View>
                 )}
               </View>
@@ -637,6 +663,8 @@ export default function DestinationSearchScreen() {
     </AppScreen>
   );
 }
+
+// ─── Sub-components ────────────────────────────────────────────────────────────
 
 type SearchTriggerFieldProps = {
   color: string;
@@ -665,11 +693,7 @@ function SearchTriggerField({
             { backgroundColor: color },
           ]}
         />
-        <AppText
-          numberOfLines={1}
-          variant="body"
-          style={styles.triggerText}
-        >
+        <AppText numberOfLines={1} variant="body" style={styles.triggerText}>
           {value}
         </AppText>
       </Pressable>
@@ -696,12 +720,7 @@ function DestinationField({
         Destination
       </AppText>
       <View style={[styles.triggerField, isEditing ? styles.routeInputActive : null]}>
-        <View
-          style={[
-            styles.markerSquare,
-            { backgroundColor: theme.colors.orange },
-          ]}
-        />
+        <View style={[styles.markerSquare, { backgroundColor: theme.colors.orange }]} />
         <TextInput
           onChangeText={onChangeText}
           onFocus={onFocus}
@@ -779,10 +798,7 @@ function StopRouteField({
           ]}
         >
           <View
-            style={[
-              styles.markerSquare,
-              { backgroundColor: theme.colors.orangeLight },
-            ]}
+            style={[styles.markerSquare, { backgroundColor: theme.colors.orangeLight }]}
           />
           <TextInput
             onChangeText={onChangeText}
@@ -805,11 +821,7 @@ function StopRouteField({
 
         {canRemove ? (
           <Pressable onPress={onRemove} style={styles.iconButton}>
-            <MaterialIcons
-              color={theme.colors.black}
-              name="close"
-              size={18}
-            />
+            <MaterialIcons color={theme.colors.black} name="close" size={18} />
           </Pressable>
         ) : (
           <View style={styles.iconButtonPlaceholder} />
@@ -818,6 +830,8 @@ function StopRouteField({
     </View>
   );
 }
+
+// ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   container: {
@@ -831,6 +845,7 @@ const styles = StyleSheet.create({
   modeLayout: {
     flex: 1,
     gap: theme.spacing.md,
+    overflow: "hidden",
   },
   formTopBar: {
     flexDirection: "row",
@@ -842,9 +857,12 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   formScrollContent: {
-    paddingBottom: theme.spacing.md,
+    flexGrow: 1,
+    paddingBottom: theme.spacing.xl,
+    gap: theme.spacing.md,
   },
   searchScrollContent: {
+    flexGrow: 1,
     paddingBottom: theme.spacing.xl,
   },
   footerActionBar: {
@@ -955,9 +973,7 @@ const styles = StyleSheet.create({
   resultsSection: {
     gap: theme.spacing.sm,
   },
-  resultsList: {
-    maxHeight: 280,
-  },
+  // FIX: removed maxHeight from resultsList — parent ScrollView handles scrolling
   resultsListContent: {
     gap: theme.spacing.sm,
     paddingBottom: theme.spacing.xs,
