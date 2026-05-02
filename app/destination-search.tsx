@@ -29,6 +29,7 @@ import {
   serializeRideItinerary,
   type RideItinerary,
 } from "@/lib/ride-route";
+import { useRideSession } from "@/lib/ride-session";
 import { theme } from "@/theme";
 
 const searchSuggestions = [
@@ -86,6 +87,7 @@ function formatSuggestionValue(item: PlaceSuggestion) {
 
 export default function DestinationSearchScreen() {
   const router = useRouter();
+  const { updateRideRoute } = useRideSession();
   const params = useLocalSearchParams<{
     flowMode?: string | string[];
     itinerary?: string | string[];
@@ -115,6 +117,8 @@ export default function DestinationSearchScreen() {
   // Which field is currently being edited inline in form mode
   const [activeRouteIndex, setActiveRouteIndex] = useState<number | null>(null);
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
+  const [isSubmittingRoute, setIsSubmittingRoute] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const destinationValue = routeStops[routeStops.length - 1] ?? "";
   const intermediateStops = routeStops.slice(0, -1);
@@ -505,18 +509,42 @@ export default function DestinationSearchScreen() {
             </ScrollView>
 
             {/* ── Confirm button ── */}
+            {submitError ? (
+              <View style={styles.footerNotice}>
+                <AppText variant="bodySmall" color={theme.colors.danger}>
+                  {submitError}
+                </AppText>
+              </View>
+            ) : null}
             <View style={styles.footerActionBar}>
               <AppButton
-                disabled={isConfirmDisabled}
+                disabled={isConfirmDisabled || isSubmittingRoute}
                 title={
-                  flowMode === "trip-edit" ? "Update trip route" : "Confirm route"
+                  flowMode === "trip-edit"
+                    ? isSubmittingRoute
+                      ? "Updating route..."
+                      : "Update trip route"
+                    : "Confirm route"
                 }
-                onPress={() => {
+                onPress={async () => {
                   if (flowMode === "trip-edit") {
-                    router.replace({
-                      pathname: "/rider/active-trip",
-                      params: { itinerary: serializedItinerary },
-                    });
+                    setSubmitError(null);
+                    setIsSubmittingRoute(true);
+                    try {
+                      await updateRideRoute(itinerary);
+                      router.replace({
+                        pathname: "/rider/active-trip",
+                        params: { itinerary: serializedItinerary },
+                      });
+                    } catch (error) {
+                      setSubmitError(
+                        error instanceof Error
+                          ? error.message
+                          : "Could not update the ride route.",
+                      );
+                    } finally {
+                      setIsSubmittingRoute(false);
+                    }
                     return;
                   }
                   router.push({
@@ -869,6 +897,9 @@ const styles = StyleSheet.create({
     paddingTop: theme.spacing.xs,
     paddingBottom: theme.spacing.xl,
     backgroundColor: theme.colors.offWhite,
+  },
+  footerNotice: {
+    paddingTop: theme.spacing.sm,
   },
   formSheet: {
     position: "relative",
