@@ -9,6 +9,7 @@ import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
 import { useColorScheme } from "react-native";
 
+import { RideSessionProvider } from "@/lib/ride-session";
 import { isPrivyConfigured, privyAppId, privyClientId } from "@/lib/privy";
 import { ThirdwebProvider } from "@/lib/thirdweb-runtime";
 import { theme } from "@/theme";
@@ -76,7 +77,7 @@ export default function RootLayout() {
         },
       }}
     >
-      {withWalletKit}
+      <RideSessionProvider>{withWalletKit}</RideSessionProvider>
     </PrivyProvider>
   );
 }

@@ -55,6 +55,23 @@ export function isBackendConfigured(): boolean {
   return Boolean(apiBaseUrl);
 }
 
+export function getApiBaseUrl(): string | null {
+  return apiBaseUrl ?? null;
+}
+
+export function getBackendWebSocketUrl(): string | null {
+  if (!apiBaseUrl) {
+    return null;
+  }
+
+  const url = new URL(apiBaseUrl);
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  url.pathname = "/ws";
+  url.search = "";
+  url.hash = "";
+  return url.toString();
+}
+
 function getErrorMessage(payload: unknown, fallback: string): string {
   if (
     payload &&
