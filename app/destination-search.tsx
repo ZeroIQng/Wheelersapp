@@ -81,7 +81,7 @@ function getActiveSummaryLabel(activeField: ActiveField) {
   return `Editing stop ${(activeField as { type: "stop"; index: number }).index + 1}`;
 }
 
-function formatSuggestionValue(item: PlaceSuggestion) {
+function formatSuggestionValue(item: { title: string; subtitle: string }) {
   return item.subtitle ? `${item.title}, ${item.subtitle}` : item.title;
 }
 

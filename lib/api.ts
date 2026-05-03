@@ -87,7 +87,7 @@ function getErrorMessage(payload: unknown, fallback: string): string {
 
 async function postJson<TResponse>(
   path: string,
-  body: Record<string, unknown>,
+  body: unknown,
   options?: { accessToken?: string; fallbackError: string },
 ): Promise<TResponse> {
   if (!apiBaseUrl) {
