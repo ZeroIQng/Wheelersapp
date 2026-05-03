@@ -1,6 +1,6 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { StyleSheet, View } from "react-native";
 
 import { BackArrow } from "@/components/back-arrow";
@@ -18,20 +18,52 @@ import {
   parseRideItineraryParam,
   serializeRideItinerary,
 } from "@/lib/ride-route";
+import { useRideSession } from "@/lib/ride-session";
 import { theme } from "@/theme";
+
+function formatUsdt(value: number | undefined, fallback: string): string {
+  return typeof value === "number" ? `${value.toFixed(2)} USDT` : fallback;
+}
 
 export default function DriverFoundScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{
     itinerary?: string | string[];
   }>();
-  const itinerary = useMemo(
+  const fallbackItinerary = useMemo(
     () => parseRideItineraryParam(params.itinerary),
     [params.itinerary],
   );
+  const { cancelRide, currentRide } = useRideSession();
+  const itinerary = currentRide?.itinerary ?? fallbackItinerary;
   const estimate = useMemo(() => estimateRide(itinerary), [itinerary]);
   const extraStops = getAdditionalStopCount(itinerary);
   const serializedItinerary = serializeRideItinerary(itinerary);
+  const liveDriver = currentRide?.driver;
+  const etaMinutes = liveDriver?.etaSeconds
+    ? Math.max(1, Math.ceil(liveDriver.etaSeconds / 60))
+    : driver.etaMinutes;
+  const fareLabel = formatUsdt(
+    liveDriver?.lockedFareUsdt ?? currentRide?.fareEstimateUsdt,
+    driver.fare,
+  );
+
+  useEffect(() => {
+    if (currentRide?.status === "active") {
+      router.replace({
+        pathname: "/rider/active-trip",
+        params: { itinerary: serializedItinerary },
+      });
+    }
+  }, [currentRide?.status, router, serializedItinerary]);
+
+  async function handleCancelRide() {
+    try {
+      await cancelRide("rider_cancelled");
+    } finally {
+      router.replace("/rider");
+    }
+  }
 
   return (
     <AppScreen
@@ -45,18 +77,18 @@ export default function DriverFoundScreen() {
             <BackArrow onPress={() => router.back()} />
           </FloatingView>
           <FloatingView style={styles.etaChip} distance={6}>
-            <AppText variant="monoSmall">
-              ETA: {driver.etaMinutes} min
-            </AppText>
+            <AppText variant="monoSmall">ETA: {etaMinutes} min</AppText>
           </FloatingView>
         </StaticMap>
       </RevealView>
 
       <RevealView delay={120} style={styles.content}>
         <View style={styles.headerRow}>
-          <AppBadge label="DRIVER MATCHED" />
+          <AppBadge
+            label={currentRide?.status === "active" ? "TRIP STARTED" : "DRIVER MATCHED"}
+          />
           <AppText variant="monoSmall" color={theme.colors.green}>
-            ● CONFIRMED
+            ● {currentRide?.status === "active" ? "LIVE" : "CONFIRMED"}
           </AppText>
         </View>
 
@@ -64,18 +96,24 @@ export default function DriverFoundScreen() {
           <PulseView>
             <View style={styles.avatar}>
               <AppText variant="h3" color={theme.colors.white}>
-                {driver.initials}
+                {(liveDriver?.driverName ?? driver.name)
+                  .split(" ")
+                  .map((part) => part[0])
+                  .join("")
+                  .slice(0, 2)
+                  .toUpperCase()}
               </AppText>
             </View>
           </PulseView>
           <View style={styles.driverText}>
-            <AppText variant="h3">{driver.name}</AppText>
+            <AppText variant="h3">{liveDriver?.driverName ?? driver.name}</AppText>
             <AppText variant="bodySmall" color={theme.colors.muted}>
-              ⭐ {driver.rating} · {driver.vehicle}
+              ⭐ {liveDriver?.driverRating?.toFixed(1) ?? driver.rating} · {" "}
+              {liveDriver?.vehicleModel ?? driver.vehicle}
             </AppText>
             <View style={styles.plate}>
               <AppText variant="monoSmall" color={theme.colors.offWhite}>
-                {driver.plate}
+                {liveDriver?.vehiclePlate ?? driver.plate}
               </AppText>
             </View>
           </View>
@@ -96,14 +134,14 @@ export default function DriverFoundScreen() {
 
         <View style={styles.statsRow}>
           <RevealView delay={180} style={styles.statSlot}>
-            <StatCard value={`${driver.etaMinutes}`} label="MIN AWAY" accent />
+            <StatCard value={`${etaMinutes}`} label="MIN AWAY" accent />
           </RevealView>
           <RevealView delay={240} style={styles.statSlot}>
-            <StatCard value={estimate.priceLabel} label="FARE" />
+            <StatCard value={fareLabel} label="LIVE FARE" />
           </RevealView>
           <RevealView delay={300} style={styles.statSlot}>
             <StatCard
-              value={`${estimate.etaMinutes + 12}`}
+              value={`${currentRide?.plannedDurationSeconds ? Math.max(1, Math.ceil(currentRide.plannedDurationSeconds / 60)) : estimate.etaMinutes + 12}`}
               label="MIN TRIP"
             />
           </RevealView>
@@ -115,9 +153,7 @@ export default function DriverFoundScreen() {
             onPress={() =>
               router.push({
                 pathname: "/rider/active-trip",
-                params: {
-                  itinerary: serializedItinerary,
-                },
+                params: { itinerary: serializedItinerary },
               })
             }
             style={styles.primaryAction}
@@ -131,7 +167,7 @@ export default function DriverFoundScreen() {
             <AppButton
               title="Cancel"
               variant="danger"
-              onPress={() => router.replace("/rider")}
+              onPress={handleCancelRide}
               style={styles.secondaryButton}
             />
           </View>
