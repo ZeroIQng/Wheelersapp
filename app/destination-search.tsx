@@ -156,9 +156,8 @@ export default function DestinationSearchScreen() {
   const shouldUseProviderResults =
     isOsmPlacesConfigured() && searchQuery.trim().length > 0;
 
-  const filteredSuggestions = shouldUseProviderResults ? providerSuggestions : [];
-
   const uniqueSuggestions = useMemo(() => {
+    const filteredSuggestions = shouldUseProviderResults ? providerSuggestions : [];
     const seen = new Set<string>();
     return filteredSuggestions.filter((item) => {
       const key = `${item.id}:${item.title}:${item.subtitle}`;
@@ -166,7 +165,7 @@ export default function DestinationSearchScreen() {
       seen.add(key);
       return true;
     });
-  }, [filteredSuggestions]);
+  }, [providerSuggestions, shouldUseProviderResults]);
 
   // ─── Open full-screen search for pickup (not editable inline) ───────────────
   const openSearch = (field: ActiveField) => {

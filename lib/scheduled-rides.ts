@@ -1,5 +1,5 @@
 import { usePrivy } from "@privy-io/expo";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { getAccessTokenWithRetry } from "@/lib/access-token";
 import {
@@ -94,7 +94,7 @@ export function useScheduledRides(limit = 20): {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function load(): Promise<void> {
+  const load = useCallback(async (): Promise<void> => {
     if (!isBackendConfigured() || !isReady || !user) {
       setRawItems([]);
       setItems([]);
@@ -129,11 +129,11 @@ export function useScheduledRides(limit = 20): {
     } finally {
       setIsLoading(false);
     }
-  }
+  }, [getAccessToken, isReady, limit, user]);
 
   useEffect(() => {
     void load();
-  }, [getAccessToken, isReady, limit, user]);
+  }, [load]);
 
   async function cancelItem(
     scheduledRideId: string,

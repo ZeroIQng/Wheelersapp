@@ -36,7 +36,7 @@ const riderServices = [
     label: "Schedule",
     tag: "Later",
     cardColor: "#FFF4CC",
-    route: "/destination-search" as Href,
+    route: "/destination-search?flowMode=schedule" as Href,
   },
   {
     id: "group-ride",

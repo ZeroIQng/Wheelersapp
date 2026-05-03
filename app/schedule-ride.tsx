@@ -9,12 +9,10 @@ import { AppCard } from "@/components/app-card";
 import { AppScreen } from "@/components/app-screen";
 import { AppText } from "@/components/app-text";
 import { BackArrow } from "@/components/back-arrow";
-import { getAccessTokenWithRetry } from "@/lib/access-token";
 import { parseRideEstimateParam } from "@/lib/ride-estimate";
 import {
   getRideRouteRows,
   parseRideItineraryParam,
-  type RideItinerary,
 } from "@/lib/ride-route";
 import { resolvePlaceQuery } from "@/lib/osm-places";
 import { submitScheduledRide } from "@/lib/scheduled-rides";

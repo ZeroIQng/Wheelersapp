@@ -1,4 +1,5 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
+import { useLocalSearchParams } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
@@ -8,6 +9,7 @@ import { AppScreen } from "@/components/app-screen";
 import { AppText } from "@/components/app-text";
 import { SectionHeader } from "@/components/SectionHeader";
 import { useRiderHistory } from "@/lib/rider-history";
+import { useScheduledRides } from "@/lib/scheduled-rides";
 import { theme } from "@/theme";
 
 const rideTabs = [
@@ -16,11 +18,22 @@ const rideTabs = [
 ] as const;
 
 export default function RiderHistoryScreen() {
+  const params = useLocalSearchParams<{ tab?: string | string[] }>();
   const { items: rides, isLoading, error } = useRiderHistory(30);
+  const {
+    items: scheduledRides,
+    isLoading: isLoadingScheduled,
+    error: scheduledError,
+    cancelItem,
+  } = useScheduledRides(30);
+  const initialTab =
+    (Array.isArray(params.tab) ? params.tab[0] : params.tab) === "scheduled"
+      ? "scheduled"
+      : "history";
   const [activeTab, setActiveTab] = useState<(typeof rideTabs)[number]["id"]>(
-    "history"
+    initialTab
   );
-  const visibleRides = activeTab === "history" ? rides : [];
+  const visibleRides = activeTab === "history" ? rides : scheduledRides;
 
   return (
     <AppScreen
@@ -79,9 +92,15 @@ export default function RiderHistoryScreen() {
           </AppText>
         ) : null}
 
-        {activeTab === "scheduled" ? (
+        {activeTab === "scheduled" && isLoadingScheduled && visibleRides.length === 0 ? (
           <AppText variant="bodySmall" color={theme.colors.muted}>
-            Scheduled rides are not live yet.
+            Loading scheduled rides...
+          </AppText>
+        ) : null}
+
+        {activeTab === "scheduled" && scheduledError ? (
+          <AppText variant="bodySmall" color={theme.colors.muted}>
+            {scheduledError}
           </AppText>
         ) : null}
 
@@ -91,6 +110,15 @@ export default function RiderHistoryScreen() {
         visibleRides.length === 0 ? (
           <AppText variant="bodySmall" color={theme.colors.muted}>
             No completed rides yet.
+          </AppText>
+        ) : null}
+
+        {activeTab === "scheduled" &&
+        !isLoadingScheduled &&
+        !scheduledError &&
+        visibleRides.length === 0 ? (
+          <AppText variant="bodySmall" color={theme.colors.muted}>
+            No scheduled rides yet.
           </AppText>
         ) : null}
 
@@ -116,6 +144,15 @@ export default function RiderHistoryScreen() {
               <AppText variant="bodySmall" color={theme.colors.muted}>
                 {ride.statusLabel}
               </AppText>
+              {activeTab === "scheduled" ? (
+                <Pressable
+                  onPress={() => void cancelItem(ride.id, "rider_cancelled_schedule")}
+                >
+                  <AppText variant="monoSmall" color={theme.colors.danger}>
+                    Cancel
+                  </AppText>
+                </Pressable>
+              ) : null}
             </View>
           </AppCard>
         ))}
