@@ -43,7 +43,7 @@ type ActiveField =
   | { type: "destination" };
 
 type ScreenMode = "form" | "search";
-type FlowMode = "booking" | "trip-edit" | "schedule";
+type FlowMode = "booking" | "trip-edit";
 
 const DRAG_SWAP_THRESHOLD = 88;
 
@@ -79,9 +79,6 @@ export default function DestinationSearchScreen() {
     (Array.isArray(params.flowMode) ? params.flowMode[0] : params.flowMode) ===
     "trip-edit"
       ? "trip-edit"
-      : (Array.isArray(params.flowMode) ? params.flowMode[0] : params.flowMode) ===
-          "schedule"
-        ? "schedule"
       : "booking";
 
   const inputRef = useRef<TextInput>(null);
@@ -547,8 +544,6 @@ export default function DestinationSearchScreen() {
                     ? isSubmittingRoute
                       ? "Updating route..."
                       : "Update trip route"
-                    : flowMode === "schedule"
-                      ? "Continue to schedule"
                     : "Confirm route"
                 }
                 onPress={async () => {
@@ -570,19 +565,6 @@ export default function DestinationSearchScreen() {
                     } finally {
                       setIsSubmittingRoute(false);
                     }
-                    return;
-                  }
-                  if (flowMode === "schedule") {
-                    setSubmitError(null);
-                    router.push({
-                      pathname: "/schedule-ride",
-                      params: {
-                        itinerary: serializedItinerary,
-                        ...(prefetchedEstimate
-                          ? { estimate: serializeRideEstimate(prefetchedEstimate) }
-                          : {}),
-                      },
-                    });
                     return;
                   }
                   setSubmitError(null);
