@@ -2,7 +2,7 @@ import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import * as Haptics from "expo-haptics";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import Animated, {
   useAnimatedStyle,
@@ -18,88 +18,197 @@ import { BackArrow } from "@/components/back-arrow";
 import { FloatingView } from "@/components/motion";
 import { PulseCircle, StaticMap } from "@/components/static-map";
 import { driver } from "@/data/mock";
+import { parseRideItineraryParam, serializeRideItinerary } from "@/lib/ride-route";
+import { useRideSession } from "@/lib/ride-session";
 import { theme } from "@/theme";
 
 const searchStages = [
   {
     id: "requesting",
-    title: "Finding drivers",
-    subtitle: "Sending your Wheeler request to nearby drivers",
+    title: "Preparing route",
+    subtitle: "Resolving your pickup, destination, and stops for the live request",
   },
   {
     id: "ringing",
-    title: "Drivers are responding",
-    subtitle: "Phones nearby are ringing for this trip",
+    title: "Finding nearby drivers",
+    subtitle: "Wheelers is sending the trip to the best drivers around your route",
   },
   {
     id: "matching",
-    title: "Almost matched",
-    subtitle: "Best Wheeler for your pickup is being selected",
+    title: "Waiting for acceptance",
+    subtitle: "A nearby driver is reviewing the route details now",
   },
 ] as const;
+
+function isTerminalStatus(status: string | undefined): boolean {
+  return status === "completed" || status === "cancelled";
+}
+
+function formatUsdt(value: number | undefined, fallback: string): string {
+  return typeof value === "number" ? `${value.toFixed(2)} USDT` : fallback;
+}
+
+function describeIssue(
+  explicitError: string | null,
+  cancelReason: string | undefined,
+): string | null {
+  if (explicitError) {
+    return explicitError;
+  }
+
+  if (!cancelReason) {
+    return null;
+  }
+
+  if (cancelReason === "no_drivers_available") {
+    return "No drivers are available around this route right now.";
+  }
+
+  return cancelReason.replace(/_/g, " ");
+}
 
 export default function MatchingScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{
     itinerary?: string | string[];
   }>();
-  const itineraryParam = Array.isArray(params.itinerary)
-    ? params.itinerary[0]
-    : params.itinerary;
+  const itinerary = useMemo(
+    () => parseRideItineraryParam(params.itinerary),
+    [params.itinerary],
+  );
+  const serializedItinerary = useMemo(
+    () => serializeRideItinerary(itinerary),
+    [itinerary],
+  );
+  const { cancelRide, clearRide, currentRide, error, requestRide } = useRideSession();
   const [stageIndex, setStageIndex] = useState(0);
-  const [driverFound, setDriverFound] = useState(false);
+  const requestKeyRef = useRef<string | null>(null);
+  const previousStatusRef = useRef<string | null>(null);
+  const liveRideKey = currentRide
+    ? serializeRideItinerary(currentRide.itinerary)
+    : null;
 
   useEffect(() => {
-    if (driverFound) {
+    if (
+      currentRide &&
+      !isTerminalStatus(currentRide.status) &&
+      liveRideKey === serializedItinerary
+    ) {
+      return;
+    }
+
+    if (
+      currentRide &&
+      !isTerminalStatus(currentRide.status) &&
+      liveRideKey &&
+      liveRideKey !== serializedItinerary
+    ) {
+      return;
+    }
+
+    if (requestKeyRef.current === serializedItinerary) {
+      return;
+    }
+
+    requestKeyRef.current = serializedItinerary;
+    void requestRide(itinerary).catch(() => undefined);
+  }, [currentRide, itinerary, liveRideKey, requestRide, serializedItinerary]);
+
+  useEffect(() => {
+    const nextStatus = currentRide?.status ?? null;
+    if (!nextStatus || previousStatusRef.current === nextStatus) {
+      return;
+    }
+
+    previousStatusRef.current = nextStatus;
+
+    if (nextStatus === "matched" || nextStatus === "active") {
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       return;
     }
 
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-
-    const timer = setTimeout(() => {
-      setStageIndex((current) => {
-        if (current >= searchStages.length - 1) {
-          setDriverFound(true);
-          return current;
-        }
-
-        return current + 1;
-      });
-    }, 1300);
-
-    return () => clearTimeout(timer);
-  }, [driverFound, stageIndex]);
+    if (nextStatus === "cancelled") {
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    }
+  }, [currentRide?.status]);
 
   useEffect(() => {
-    if (driverFound) {
+    if (currentRide?.status === "matched") {
+      router.replace({
+        pathname: "/driver-found",
+        params: { itinerary: serializedItinerary },
+      });
       return;
     }
 
-    const interval = setInterval(() => {
+    if (currentRide?.status === "active") {
+      router.replace({
+        pathname: "/rider/active-trip",
+        params: { itinerary: serializedItinerary },
+      });
+    }
+  }, [currentRide?.status, router, serializedItinerary]);
+
+  useEffect(() => {
+    if (
+      currentRide?.status !== "requesting" &&
+      currentRide?.status !== "matching"
+    ) {
+      return;
+    }
+
+    const timer = setInterval(() => {
+      setStageIndex((current) => (current + 1) % searchStages.length);
       void Haptics.selectionAsync();
-    }, 850);
+    }, 1200);
 
-    return () => clearInterval(interval);
-  }, [driverFound]);
+    return () => clearInterval(timer);
+  }, [currentRide?.status]);
 
-  const activeStage =
-    searchStages[Math.min(stageIndex, searchStages.length - 1)];
+  const issue = describeIssue(error, currentRide?.cancelReason);
+  const activeStage = searchStages[Math.min(stageIndex, searchStages.length - 1)];
+  const matchedDriver = currentRide?.driver;
   const nearbyDriversLabel = useMemo(() => {
-    if (driverFound) {
+    if (issue) {
+      return "Request update";
+    }
+
+    if (currentRide?.status === "matched") {
       return "Driver found";
     }
 
-    if (stageIndex === 0) {
-      return "3 drivers nearby";
+    if (currentRide?.status === "active") {
+      return "Trip started";
     }
 
-    if (stageIndex === 1) {
-      return "2 drivers reviewing";
+    if (currentRide?.status === "requesting") {
+      return "Resolving route";
     }
 
-    return "Choosing best match";
-  }, [driverFound, stageIndex]);
+    if (currentRide?.status === "matching") {
+      return "Searching nearby";
+    }
+
+    return "Live request";
+  }, [currentRide?.status, issue]);
+
+  async function handleCancelRide() {
+    try {
+      await cancelRide("rider_cancelled");
+    } finally {
+      router.replace("/rider");
+    }
+  }
+
+  async function handleRetryRequest() {
+    requestKeyRef.current = null;
+    clearRide();
+    try {
+      await requestRide(itinerary);
+    } catch {
+      // Provider error state is enough for the UI.
+    }
+  }
 
   return (
     <AppScreen
@@ -111,14 +220,18 @@ export default function MatchingScreen() {
 
       <View style={styles.mapWrap}>
         <StaticMap height={780} scene="driverFound">
-          {!driverFound ? <MapSearchPulse /> : null}
+          {!issue ? <MapSearchPulse /> : null}
 
           <View style={styles.mapTopRow}>
             <BackArrow onPress={() => router.back()} />
             <FloatingView distance={5}>
               <View style={styles.mapChip}>
                 <MaterialIcons
-                  name={driverFound ? "local-taxi" : "location-on"}
+                  name={
+                    currentRide?.status === "matched" || currentRide?.status === "active"
+                      ? "local-taxi"
+                      : "location-on"
+                  }
                   size={16}
                   color={theme.colors.black}
                 />
@@ -130,10 +243,18 @@ export default function MatchingScreen() {
           <FloatingView style={styles.mapBadge} distance={6}>
             <View style={styles.mapBadgeInner}>
               <AppText variant="bodySmall" color={theme.colors.muted}>
-                {driverFound ? "Driver matched" : "Searching nearby"}
+                {issue
+                  ? "Ride request paused"
+                  : currentRide?.status === "matched"
+                    ? "Driver matched"
+                    : currentRide?.status === "active"
+                      ? "Trip started"
+                      : "Searching nearby"}
               </AppText>
               <AppText variant="monoLarge">
-                {driverFound ? `${driver.etaMinutes} min away` : "Live request"}
+                {matchedDriver?.etaSeconds
+                  ? `${Math.max(1, Math.ceil(matchedDriver.etaSeconds / 60))} min away`
+                  : "Live request"}
               </AppText>
             </View>
           </FloatingView>
@@ -141,10 +262,133 @@ export default function MatchingScreen() {
       </View>
 
       <View style={styles.sheet}>
-        {!driverFound ? (
-          <>
-            <View style={styles.sheetHandle} />
+        <View style={styles.sheetHandle} />
 
+        {issue ? (
+          <>
+            <View style={styles.errorHeader}>
+              <View style={styles.searchIconWrap}>
+                <MaterialIcons
+                  name="error-outline"
+                  size={24}
+                  color={theme.colors.offWhite}
+                />
+              </View>
+              <View style={styles.searchCopy}>
+                <AppText variant="monoSmall" color={theme.colors.danger}>
+                  RIDE REQUEST
+                </AppText>
+                <AppText variant="h2">Couldn&apos;t finish matching</AppText>
+                <AppText variant="bodySmall" color={theme.colors.muted}>
+                  {issue}
+                </AppText>
+              </View>
+            </View>
+
+            <View style={styles.searchInfoCard}>
+              <View style={styles.searchInfoRow}>
+                <MaterialIcons
+                  name="route"
+                  size={18}
+                  color={theme.colors.orange}
+                />
+                <AppText variant="bodyMedium">
+                  {itinerary.pickup} to {itinerary.stops[itinerary.stops.length - 1]}
+                </AppText>
+              </View>
+              <AppText variant="bodySmall" color={theme.colors.muted}>
+                Retry the same route or go back and change your stops before sending another live request.
+              </AppText>
+            </View>
+
+            <View style={styles.actionsRow}>
+              <View style={styles.actionSlot}>
+                <CompactActionButton title="Retry request" onPress={handleRetryRequest} />
+              </View>
+              <View style={styles.actionSlot}>
+                <CompactActionButton
+                  title="Back home"
+                  variant="ghost"
+                  onPress={() => router.replace("/rider")}
+                />
+              </View>
+            </View>
+          </>
+        ) : matchedDriver ? (
+          <>
+            <AppText variant="monoSmall" color={theme.colors.green}>
+              DRIVER FOUND
+            </AppText>
+
+            <Pressable
+              onPress={() =>
+                router.push({
+                  pathname: "/driver-found",
+                  params: { itinerary: serializedItinerary },
+                })
+              }
+              style={styles.driverFoundCard}
+            >
+              <View style={styles.driverFoundTop}>
+                <View style={styles.carIconWrap}>
+                  <MaterialIcons
+                    name="local-taxi"
+                    size={26}
+                    color={theme.colors.offWhite}
+                  />
+                </View>
+                <View style={styles.driverFoundCopy}>
+                  <AppText variant="h2">Driver found</AppText>
+                  <AppText variant="bodySmall" color={theme.colors.muted}>
+                    {matchedDriver.driverName ?? driver.name} • {" "}
+                    {matchedDriver.vehicleModel ?? driver.vehicle}
+                  </AppText>
+                </View>
+                <MaterialIcons
+                  name="keyboard-arrow-right"
+                  size={24}
+                  color={theme.colors.black}
+                />
+              </View>
+
+              <View style={styles.driverMetaRow}>
+                <MetaPill
+                  label={`ETA ${Math.max(1, Math.ceil((matchedDriver.etaSeconds ?? 120) / 60))} min`}
+                />
+                <MetaPill label={matchedDriver.vehiclePlate ?? driver.plate} />
+                <MetaPill
+                  label={formatUsdt(matchedDriver.lockedFareUsdt, driver.fare)}
+                />
+              </View>
+
+              <AppText variant="bodySmall" color={theme.colors.muted}>
+                Open the live driver card to track the route and rider-side trip details.
+              </AppText>
+            </Pressable>
+
+            <View style={styles.actionsRow}>
+              <View style={styles.actionSlot}>
+                <CompactActionButton
+                  title="View ride"
+                  onPress={() =>
+                    router.push({
+                      pathname: "/driver-found",
+                      params: { itinerary: serializedItinerary },
+                    })
+                  }
+                />
+              </View>
+              <View style={styles.actionSlot}>
+                <CompactActionButton
+                  title="Cancel ride"
+                  variant="danger"
+                  onPress={handleCancelRide}
+                />
+              </View>
+            </View>
+          </>
+        ) : (
+          <>
             <View style={styles.searchHeader}>
               <View style={styles.searchIconWrap}>
                 <MaterialIcons
@@ -170,13 +414,8 @@ export default function MatchingScreen() {
                   key={stage.id}
                   style={[
                     styles.progressDot,
-                    index < stageIndex ||
-                    (driverFound && index === searchStages.length - 1)
-                      ? styles.progressDotDone
-                      : null,
-                    index === stageIndex && !driverFound
-                      ? styles.progressDotActive
-                      : null,
+                    index < stageIndex ? styles.progressDotDone : null,
+                    index === stageIndex ? styles.progressDotActive : null,
                   ]}
                 />
               ))}
@@ -189,109 +428,32 @@ export default function MatchingScreen() {
                   size={18}
                   color={theme.colors.orange}
                 />
-                <AppText variant="bodyMedium">Ride request sent</AppText>
+                <AppText variant="bodyMedium">Ride request is live</AppText>
               </View>
               <AppText variant="bodySmall" color={theme.colors.muted}>
-                Nearby drivers are getting the request now. You can still edit
-                your route or cancel the ride.
+                Wheelers is matching your rider route from {itinerary.pickup} to {" "}
+                {itinerary.stops[itinerary.stops.length - 1]}.
               </AppText>
+              {currentRide?.fareEstimateUsdt ? (
+                <AppText variant="bodySmall" color={theme.colors.muted}>
+                  Current backend fare estimate: {formatUsdt(currentRide.fareEstimateUsdt, driver.fare)}
+                </AppText>
+              ) : null}
             </View>
 
             <View style={styles.actionsRow}>
               <View style={styles.actionSlot}>
                 <CompactActionButton
-                  title="Edit Route"
+                  title="Edit route"
                   variant="ghost"
                   onPress={() => router.back()}
                 />
               </View>
               <View style={styles.actionSlot}>
                 <CompactActionButton
-                  title="Cancel Ride"
+                  title="Cancel ride"
                   variant="danger"
-                  onPress={() => router.back()}
-                />
-              </View>
-            </View>
-          </>
-        ) : (
-          <>
-            <View style={styles.sheetHandle} />
-
-            <AppText variant="monoSmall" color={theme.colors.green}>
-              DRIVER FOUND
-            </AppText>
-
-            <Pressable
-              onPress={() =>
-                router.push(
-                  itineraryParam
-                    ? {
-                        pathname: "/driver-found",
-                        params: {
-                          itinerary: itineraryParam,
-                        },
-                      }
-                    : "/driver-found",
-                )
-              }
-              style={styles.driverFoundCard}
-            >
-              <View style={styles.driverFoundTop}>
-                <View style={styles.carIconWrap}>
-                  <MaterialIcons
-                    name="local-taxi"
-                    size={26}
-                    color={theme.colors.offWhite}
-                  />
-                </View>
-                <View style={styles.driverFoundCopy}>
-                  <AppText variant="h2">Driver found</AppText>
-                  <AppText variant="bodySmall" color={theme.colors.muted}>
-                    {driver.name} • {driver.vehicle}
-                  </AppText>
-                </View>
-                <MaterialIcons
-                  name="keyboard-arrow-right"
-                  size={24}
-                  color={theme.colors.black}
-                />
-              </View>
-
-              <View style={styles.driverMetaRow}>
-                <MetaPill label={`ETA ${driver.etaMinutes} min`} />
-                <MetaPill label={driver.plate} />
-                <MetaPill label={driver.fare} />
-              </View>
-
-              <AppText variant="bodySmall" color={theme.colors.muted}>
-                Tap this ride card to open the full driver details.
-              </AppText>
-            </Pressable>
-
-            <View style={styles.actionsRow}>
-              <View style={styles.actionSlot}>
-                <CompactActionButton
-                  title="View Ride"
-                  onPress={() =>
-                    router.push(
-                      itineraryParam
-                        ? {
-                            pathname: "/driver-found",
-                            params: {
-                              itinerary: itineraryParam,
-                            },
-                          }
-                        : "/driver-found",
-                    )
-                  }
-                />
-              </View>
-              <View style={styles.actionSlot}>
-                <CompactActionButton
-                  title="Cancel Ride"
-                  variant="danger"
-                  onPress={() => router.replace("/rider")}
+                  onPress={handleCancelRide}
                 />
               </View>
             </View>
@@ -333,7 +495,6 @@ function CompactActionButton({
         pressed ? styles.compactButtonActive : null,
       ]}
     >
-      {/* ✅ Swapped raw <Text> → <AppText> to fix ClashDisplay font metrics clipping */}
       <AppText
         numberOfLines={1}
         style={[
@@ -519,12 +680,17 @@ const styles = StyleSheet.create({
   },
   searchHeader: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing.md,
+    alignItems: "flex-start",
+    gap: theme.spacing.sm,
+  },
+  errorHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: theme.spacing.sm,
   },
   searchIconWrap: {
-    width: 54,
-    height: 54,
+    width: 48,
+    height: 48,
     borderRadius: theme.radius.pill,
     borderWidth: theme.borders.thick,
     borderColor: theme.colors.black,
@@ -543,23 +709,23 @@ const styles = StyleSheet.create({
   },
   progressDot: {
     flex: 1,
-    height: 8,
+    height: 10,
     borderRadius: theme.radius.pill,
-    backgroundColor: "#E4D8CE",
+    backgroundColor: "#E4D7CB",
+  },
+  progressDotDone: {
+    backgroundColor: theme.colors.orangeLight,
   },
   progressDotActive: {
     backgroundColor: theme.colors.orange,
   },
-  progressDotDone: {
-    backgroundColor: theme.colors.green,
-  },
   searchInfoCard: {
-    backgroundColor: theme.colors.white,
+    gap: theme.spacing.sm,
+    padding: theme.spacing.md,
     borderWidth: theme.borders.thick,
     borderColor: theme.colors.black,
-    borderRadius: theme.radius.lg,
-    padding: theme.spacing.md,
-    gap: theme.spacing.sm,
+    borderRadius: theme.radius.md,
+    backgroundColor: theme.colors.white,
     ...theme.shadows.card,
   },
   searchInfoRow: {
@@ -570,44 +736,34 @@ const styles = StyleSheet.create({
   actionsRow: {
     flexDirection: "row",
     gap: theme.spacing.sm,
-    alignItems: "stretch",
   },
   actionSlot: {
     flex: 1,
-    flexBasis: 0,
-    minWidth: 0,
-    overflow: "hidden",
   },
   compactButton: {
-    width: "100%",
-    minWidth: 0,
-    height: 52,
+    minHeight: 48,
+    borderRadius: theme.radius.sm,
     borderWidth: theme.borders.thick,
     borderColor: theme.colors.black,
-    borderRadius: theme.radius.sm,
     backgroundColor: theme.colors.orange,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: 0,
-    overflow: "hidden", // ✅ prevents any bleed
+    paddingHorizontal: theme.spacing.sm,
+    ...theme.shadows.card,
   },
   compactButtonGhost: {
     backgroundColor: theme.colors.white,
   },
   compactButtonDanger: {
-    backgroundColor: theme.colors.dangerLight,
     borderColor: theme.colors.danger,
+    backgroundColor: theme.colors.offWhite,
   },
   compactButtonActive: {
-    opacity: 0.9,
+    transform: [{ translateX: 2 }, { translateY: 2 }],
+    shadowOpacity: 0,
+    elevation: 0,
   },
   compactButtonLabel: {
-    // ✅ Removed lineHeight: 18 — was clipping ClashDisplay font descenders at rest
-    // ✅ Removed width: "100%", maxWidth: "100%", textAlignVertical — caused layout bleed
-    ...theme.typography.bodySmall,
-    includeFontPadding: false,
-    flexShrink: 1,
     textAlign: "center",
   },
   compactButtonLabelPrimary: {
@@ -620,26 +776,26 @@ const styles = StyleSheet.create({
     color: theme.colors.danger,
   },
   driverFoundCard: {
-    backgroundColor: theme.colors.white,
+    gap: theme.spacing.md,
+    padding: theme.spacing.md,
     borderWidth: theme.borders.thick,
     borderColor: theme.colors.black,
-    borderRadius: theme.radius.lg,
-    padding: theme.spacing.md,
-    gap: theme.spacing.sm,
+    borderRadius: theme.radius.md,
+    backgroundColor: theme.colors.white,
     ...theme.shadows.card,
   },
   driverFoundTop: {
     flexDirection: "row",
     alignItems: "center",
-    gap: theme.spacing.md,
+    gap: theme.spacing.sm,
   },
   carIconWrap: {
-    width: 54,
-    height: 54,
+    width: 48,
+    height: 48,
     borderRadius: theme.radius.pill,
     borderWidth: theme.borders.thick,
     borderColor: theme.colors.black,
-    backgroundColor: theme.colors.green,
+    backgroundColor: theme.colors.orange,
     alignItems: "center",
     justifyContent: "center",
     ...theme.shadows.card,
@@ -650,15 +806,15 @@ const styles = StyleSheet.create({
   },
   driverMetaRow: {
     flexDirection: "row",
-    gap: theme.spacing.sm,
     flexWrap: "wrap",
+    gap: theme.spacing.xs,
   },
   metaPill: {
-    backgroundColor: theme.colors.orangeLight,
-    borderWidth: theme.borders.regular,
-    borderColor: theme.colors.black,
-    borderRadius: theme.radius.pill,
     paddingHorizontal: theme.spacing.sm,
     paddingVertical: 6,
+    borderRadius: theme.radius.pill,
+    borderWidth: theme.borders.regular,
+    borderColor: theme.colors.black,
+    backgroundColor: theme.colors.orangeLight,
   },
 });
