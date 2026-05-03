@@ -25,6 +25,7 @@ import { walletOverview } from "@/data/mock";
 import { getAccessTokenWithRetry } from "@/lib/access-token";
 import { getRideEstimate, isBackendConfigured, type RideEstimateResponse } from "@/lib/api";
 import { resolvePlaceQuery } from "@/lib/osm-places";
+import { parseRideEstimateParam } from "@/lib/ride-estimate";
 import {
   estimateRide,
   getRideRouteRows,
@@ -118,15 +119,21 @@ export default function RideSelectionScreen() {
   const { getAccessToken, isReady, user } = usePrivy();
   const params = useLocalSearchParams<{
     itinerary?: string | string[];
+    estimate?: string | string[];
   }>();
   const itinerary = useMemo(
     () => parseRideItineraryParam(params.itinerary),
     [params.itinerary],
   );
+  const initialEstimate = useMemo(
+    () => parseRideEstimateParam(params.estimate),
+    [params.estimate],
+  );
   const fallbackEstimate = useMemo(() => estimateRide(itinerary), [itinerary]);
   const routeRows = useMemo(() => getRideRouteRows(itinerary), [itinerary]);
-  const [liveEstimate, setLiveEstimate] = useState<RideEstimateResponse | null>(null);
-  const [isLoadingEstimate, setIsLoadingEstimate] = useState(false);
+  const [liveEstimate, setLiveEstimate] = useState<RideEstimateResponse | null>(
+    initialEstimate,
+  );
   const [estimateError, setEstimateError] = useState<string | null>(null);
   const collapsedSheetOffset = 196;
   const sheetOffset = useSharedValue(0);
@@ -135,7 +142,10 @@ export default function RideSelectionScreen() {
   const approxUsdtToNgnRate =
     walletUsdtBalance > 0 ? walletNgnBalance / walletUsdtBalance : 0;
   const serializedItinerary = serializeRideItinerary(itinerary);
-  const shouldUseBackendEstimate = isBackendConfigured() && isReady && Boolean(user);
+
+  useEffect(() => {
+    setLiveEstimate(initialEstimate);
+  }, [initialEstimate]);
 
   const SHEET_MIN_HEIGHT = 470;
   const mapHeight = height - SHEET_MIN_HEIGHT;
@@ -186,7 +196,6 @@ export default function RideSelectionScreen() {
       if (!isBackendConfigured() || !isReady || !user) {
         if (!cancelled) {
           setLiveEstimate(null);
-          setIsLoadingEstimate(false);
         }
         return;
       }
@@ -195,12 +204,10 @@ export default function RideSelectionScreen() {
       if (!destinationLabel) {
         if (!cancelled) {
           setLiveEstimate(null);
-          setIsLoadingEstimate(false);
         }
         return;
       }
 
-      setIsLoadingEstimate(true);
       setEstimateError(null);
 
       try {
@@ -235,9 +242,7 @@ export default function RideSelectionScreen() {
           );
         }
       } finally {
-        if (!cancelled) {
-          setIsLoadingEstimate(false);
-        }
+        // no-op
       }
     }
 
@@ -250,39 +255,19 @@ export default function RideSelectionScreen() {
 
   const displayEtaLabel = liveEstimate
     ? `${Math.max(1, Math.ceil(liveEstimate.plannedDurationSeconds / 60))} min trip`
-    : shouldUseBackendEstimate
-      ? isLoadingEstimate
-        ? "Calculating ETA..."
-        : "ETA unavailable"
-      : fallbackEstimate.etaLabel;
+    : fallbackEstimate.etaLabel;
   const displayDistanceLabel = liveEstimate
     ? `${liveEstimate.plannedDistanceKm.toFixed(1)} km route`
-    : shouldUseBackendEstimate
-      ? isLoadingEstimate
-        ? "Calculating km..."
-        : "KM unavailable"
-      : fallbackEstimate.distanceLabel;
+    : fallbackEstimate.distanceLabel;
   const displayFareLabel = liveEstimate
     ? `${liveEstimate.fareEstimateUsdt.toFixed(2)} USDT`
-    : shouldUseBackendEstimate
-      ? isLoadingEstimate
-        ? "Calculating..."
-        : "Unavailable"
-      : fallbackEstimate.priceLabel;
+    : fallbackEstimate.priceLabel;
   const routeNote = liveEstimate
     ? "Live backend route preview using the same planner as ride requests."
-    : shouldUseBackendEstimate
-      ? isLoadingEstimate
-        ? "Fetching live route distance and travel time from the backend."
-        : "Live route preview could not be loaded from the backend."
-      : fallbackEstimate.routeNote;
-  const canBookRide = shouldUseBackendEstimate ? Boolean(liveEstimate) : true;
+    : fallbackEstimate.routeNote;
+  const canBookRide = true;
 
   const handleBookRide = () => {
-    if (shouldUseBackendEstimate && !liveEstimate) {
-      return;
-    }
-
     if (liveEstimate) {
       if (walletUsdtBalance >= liveEstimate.fareEstimateUsdt) {
         router.push({
@@ -359,11 +344,7 @@ export default function RideSelectionScreen() {
           <FloatingView style={styles.priceBadge} distance={6}>
             <View style={styles.priceBadgeInner}>
               <AppText variant="bodySmall" color={theme.colors.muted}>
-                {shouldUseBackendEstimate
-                  ? isLoadingEstimate
-                    ? "Calculating live fare"
-                    : "Backend fare preview"
-                  : "Estimated fare"}
+                {liveEstimate ? "Backend fare preview" : "Estimated fare"}
               </AppText>
               <AppText variant="monoLarge">{displayFareLabel}</AppText>
             </View>
@@ -405,23 +386,19 @@ export default function RideSelectionScreen() {
               <AppText variant="bodySmall" color={theme.colors.muted}>
                 {routeNote}
               </AppText>
-              {estimateError && shouldUseBackendEstimate ? (
+              {estimateError && !liveEstimate ? (
                 <AppText variant="bodySmall" color={theme.colors.muted}>
-                  {estimateError}
+                  Refining live route in the background.
                 </AppText>
               ) : null}
             </View>
             <View style={styles.priceBlock}>
               <AppText variant="monoSmall" color={theme.colors.offWhite}>
-                {shouldUseBackendEstimate ? "USDT" : liveEstimate ? "USDT" : "NGN"}
+                {liveEstimate ? "USDT" : "NGN"}
               </AppText>
               <AppText variant="h2" color={theme.colors.offWhite}>
-                {shouldUseBackendEstimate
-                  ? liveEstimate
-                    ? liveEstimate.fareEstimateUsdt.toFixed(2)
-                    : isLoadingEstimate
-                      ? "..."
-                      : "--"
+                {liveEstimate
+                  ? liveEstimate.fareEstimateUsdt.toFixed(2)
                   : fallbackEstimate.priceNgn.toLocaleString("en-NG")}
               </AppText>
             </View>
@@ -444,13 +421,7 @@ export default function RideSelectionScreen() {
         </View>
 
         <AppButton
-          title={
-            shouldUseBackendEstimate && !liveEstimate
-              ? isLoadingEstimate
-                ? "Calculating route..."
-                : "Route preview unavailable"
-              : "Book Wheeler"
-          }
+          title="Book Wheeler"
           onPress={handleBookRide}
           disabled={!canBookRide}
         />

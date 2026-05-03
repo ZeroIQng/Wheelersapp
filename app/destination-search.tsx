@@ -1,5 +1,6 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { usePrivy } from "@privy-io/expo";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -17,11 +18,16 @@ import { AppScreen } from "@/components/app-screen";
 import { AppText } from "@/components/app-text";
 import { BackArrow } from "@/components/back-arrow";
 import { recentPlaces } from "@/data/mock";
+import { getAccessTokenWithRetry } from "@/lib/access-token";
+import { getRideEstimate, isBackendConfigured } from "@/lib/api";
 import {
   fetchOsmPlaceSuggestions,
   isOsmPlacesConfigured,
+  resolvePlaceQuery,
   type PlaceSuggestion,
 } from "@/lib/osm-places";
+import type { RideEstimateResponse } from "@/lib/api";
+import { serializeRideEstimate } from "@/lib/ride-estimate";
 import {
   MAX_ADDITIONAL_STOPS,
   moveRouteStop,
@@ -87,6 +93,7 @@ function formatSuggestionValue(item: { title: string; subtitle: string }) {
 
 export default function DestinationSearchScreen() {
   const router = useRouter();
+  const { getAccessToken, isReady, user } = usePrivy();
   const { updateRideRoute } = useRideSession();
   const params = useLocalSearchParams<{
     flowMode?: string | string[];
@@ -119,6 +126,9 @@ export default function DestinationSearchScreen() {
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
   const [isSubmittingRoute, setIsSubmittingRoute] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [prefetchedEstimate, setPrefetchedEstimate] =
+    useState<RideEstimateResponse | null>(null);
+  const estimateRequestRef = useRef(0);
 
   const destinationValue = routeStops[routeStops.length - 1] ?? "";
   const intermediateStops = routeStops.slice(0, -1);
@@ -308,7 +318,10 @@ export default function DestinationSearchScreen() {
     setSearchQuery(value);
   };
 
-  const itinerary: RideItinerary = { pickup: pickupValue, stops: routeStops };
+  const itinerary = useMemo<RideItinerary>(
+    () => ({ pickup: pickupValue, stops: routeStops }),
+    [pickupValue, routeStops],
+  );
   const canAddStop =
     intermediateStops.length < MAX_ADDITIONAL_STOPS &&
     destinationValue.trim().length > 0 &&
@@ -325,6 +338,75 @@ export default function DestinationSearchScreen() {
 
   // Show results panel in form mode whenever a route field is focused
   const showInlineResults = activeRouteIndex != null;
+
+  useEffect(() => {
+    if (
+      flowMode !== "booking" ||
+      !isBackendConfigured() ||
+      !isReady ||
+      !user ||
+      isConfirmDisabled
+    ) {
+      setPrefetchedEstimate(null);
+      return;
+    }
+
+    let cancelled = false;
+    const requestId = estimateRequestRef.current + 1;
+    estimateRequestRef.current = requestId;
+
+    const timeout = setTimeout(async () => {
+      try {
+        const destinationLabel = itinerary.stops[itinerary.stops.length - 1];
+        if (!destinationLabel) {
+          if (!cancelled && estimateRequestRef.current === requestId) {
+            setPrefetchedEstimate(null);
+          }
+          return;
+        }
+
+        const accessToken = await getAccessTokenWithRetry(getAccessToken);
+        if (!accessToken) {
+          return;
+        }
+
+        const [pickup, destination, ...stops] = await Promise.all([
+          resolvePlaceQuery(itinerary.pickup),
+          resolvePlaceQuery(destinationLabel),
+          ...itinerary.stops
+            .slice(0, -1)
+            .map((stop) => resolvePlaceQuery(stop)),
+        ]);
+
+        const estimate = await getRideEstimate({
+          accessToken,
+          pickup,
+          destination,
+          stops,
+        });
+
+        if (!cancelled && estimateRequestRef.current === requestId) {
+          setPrefetchedEstimate(estimate);
+        }
+      } catch {
+        if (!cancelled && estimateRequestRef.current === requestId) {
+          setPrefetchedEstimate(null);
+        }
+      }
+    }, 250);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timeout);
+    };
+  }, [
+    flowMode,
+    getAccessToken,
+    isConfirmDisabled,
+    isReady,
+    itinerary,
+    user,
+  ]);
 
   return (
     <AppScreen
@@ -547,9 +629,15 @@ export default function DestinationSearchScreen() {
                     }
                     return;
                   }
+                  setSubmitError(null);
                   router.push({
                     pathname: "/ride-selection",
-                    params: { itinerary: serializedItinerary },
+                    params: {
+                      itinerary: serializedItinerary,
+                      ...(prefetchedEstimate
+                        ? { estimate: serializeRideEstimate(prefetchedEstimate) }
+                        : {}),
+                    },
                   });
                 }}
               />

@@ -10,7 +10,11 @@ export type PlaceSuggestion = {
 
 export type ResolvedPlace = Pick<PlaceSuggestion, 'lat' | 'lng' | 'address'>;
 
-const nigeriaBbox = '2.668,4.24,14.678,13.892';
+const lagosBbox = '3.0,6.23,3.7,6.7';
+const lagosCenter = {
+  lat: '6.5244',
+  lon: '3.3792',
+};
 
 type PhotonFeature = {
   geometry?: {
@@ -20,7 +24,14 @@ type PhotonFeature = {
     osm_id?: number | string;
     name?: string;
     street?: string;
+    housenumber?: string;
     city?: string;
+    district?: string;
+    suburb?: string;
+    county?: string;
+    state_district?: string;
+    locality?: string;
+    postcode?: string;
     state?: string;
     country?: string;
     osm_value?: string;
@@ -95,17 +106,71 @@ function mapPhotonValueToIcon(value: string | undefined): PlaceSuggestion['icon'
   return 'location-on';
 }
 
+function cleanPart(value: string | undefined): string | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function joinUnique(parts: (string | null)[]): string[] {
+  const seen = new Set<string>();
+  return parts.filter((part): part is string => {
+    if (!part) {
+      return false;
+    }
+
+    const normalized = part.toLowerCase();
+    if (seen.has(normalized)) {
+      return false;
+    }
+
+    seen.add(normalized);
+    return true;
+  });
+}
+
+function buildStreetLine(feature: PhotonFeature): string | null {
+  const properties = feature.properties;
+  const houseNumber = cleanPart(properties?.housenumber);
+  const street = cleanPart(properties?.street);
+
+  if (!houseNumber && !street) {
+    return null;
+  }
+
+  return [houseNumber, street].filter(Boolean).join(' ');
+}
+
+function buildTitle(feature: PhotonFeature): string | null {
+  const properties = feature.properties;
+  const name = cleanPart(properties?.name);
+  const streetLine = buildStreetLine(feature);
+
+  if (name && streetLine && name.toLowerCase() === streetLine.toLowerCase()) {
+    return streetLine;
+  }
+
+  return name ?? streetLine;
+}
+
 function buildSubtitle(feature: PhotonFeature): string {
   const properties = feature.properties;
+  const streetLine = buildStreetLine(feature);
 
-  return [
-    properties?.street,
-    properties?.city,
-    properties?.state,
-    properties?.country,
-  ]
-    .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
-    .join(', ');
+  return joinUnique([
+    streetLine,
+    cleanPart(properties?.suburb),
+    cleanPart(properties?.district),
+    cleanPart(properties?.locality),
+    cleanPart(properties?.city),
+    cleanPart(properties?.state_district),
+    cleanPart(properties?.state),
+    cleanPart(properties?.postcode),
+    cleanPart(properties?.country),
+  ]).join(', ');
 }
 
 function buildAddress(title: string, subtitle: string): string {
@@ -121,16 +186,48 @@ function findStaticPlace(input: string): ResolvedPlace | null {
   return staticPlaces[normalized] ?? null;
 }
 
-export function isOsmPlacesConfigured(): boolean {
-  return true;
+function isLagosFeature(feature: PhotonFeature): boolean {
+  const properties = feature.properties;
+  const country = cleanPart(properties?.country)?.toLowerCase();
+  if (country !== 'nigeria') {
+    return false;
+  }
+
+  const locationParts = [
+    properties?.city,
+    properties?.state,
+    properties?.district,
+    properties?.suburb,
+    properties?.county,
+    properties?.state_district,
+    properties?.locality,
+  ]
+    .map((value) => cleanPart(value)?.toLowerCase())
+    .filter((value): value is string => Boolean(value));
+
+  return locationParts.some((value) => value.includes('lagos'));
 }
 
-export async function fetchOsmPlaceSuggestions(input: string): Promise<PlaceSuggestion[]> {
+function detailScore(feature: PhotonFeature): number {
+  const properties = feature.properties;
+  let score = 0;
+
+  if (cleanPart(properties?.housenumber)) score += 4;
+  if (cleanPart(properties?.street)) score += 3;
+  if (cleanPart(properties?.suburb) || cleanPart(properties?.district)) score += 2;
+  if (cleanPart(properties?.city)) score += 1;
+
+  return score;
+}
+
+async function fetchPhotonSuggestions(query: string): Promise<PhotonResponse> {
   const params = new URLSearchParams({
-    q: `${input}, Nigeria`,
-    limit: '6',
+    q: query,
+    limit: '8',
     lang: 'en',
-    bbox: nigeriaBbox,
+    bbox: lagosBbox,
+    lat: lagosCenter.lat,
+    lon: lagosCenter.lon,
     osm_tag: '!boundary',
   });
 
@@ -140,15 +237,26 @@ export async function fetchOsmPlaceSuggestions(input: string): Promise<PlaceSugg
     throw new Error(`osm_places_failed:${response.status}`);
   }
 
-  const data = (await response.json()) as PhotonResponse;
+  return (await response.json()) as PhotonResponse;
+}
 
-  return (data.features ?? [])
-    .filter((feature) => {
-      const country = feature.properties?.country?.trim().toLowerCase();
-      return country === 'nigeria';
-    })
+export function isOsmPlacesConfigured(): boolean {
+  return true;
+}
+
+export async function fetchOsmPlaceSuggestions(input: string): Promise<PlaceSuggestion[]> {
+  const normalizedInput = input.trim();
+  const primaryData = await fetchPhotonSuggestions(`${normalizedInput}, Lagos, Nigeria`);
+  const fallbackData =
+    (primaryData.features?.length ?? 0) > 0
+      ? null
+      : await fetchPhotonSuggestions(normalizedInput);
+
+  return (fallbackData?.features ?? primaryData.features ?? [])
+    .filter((feature) => isLagosFeature(feature))
+    .sort((left, right) => detailScore(right) - detailScore(left))
     .map((feature) => {
-      const title = feature.properties?.name?.trim() ?? '';
+      const title = buildTitle(feature) ?? '';
       const id = String(feature.properties?.osm_id ?? '').trim();
       const coordinates = feature.geometry?.coordinates;
       const lng = coordinates?.[0];
@@ -170,7 +278,14 @@ export async function fetchOsmPlaceSuggestions(input: string): Promise<PlaceSugg
         address: buildAddress(title, subtitle),
       } satisfies PlaceSuggestion;
     })
-    .filter((item): item is PlaceSuggestion => item != null);
+    .filter((item): item is PlaceSuggestion => item != null)
+    .filter((item, index, items) => {
+      const key = `${item.title.toLowerCase()}|${item.address.toLowerCase()}`;
+      return items.findIndex((candidate) => {
+        const candidateKey = `${candidate.title.toLowerCase()}|${candidate.address.toLowerCase()}`;
+        return candidateKey === key;
+      }) === index;
+    });
 }
 
 export async function resolvePlaceQuery(input: string): Promise<ResolvedPlace> {
