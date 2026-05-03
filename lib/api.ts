@@ -86,6 +86,25 @@ interface RiderHistoryResponse {
   nextCursor: string | null;
 }
 
+export interface ScheduledRide {
+  id: string;
+  status: "SCHEDULED" | "DISPATCHING" | "DISPATCHED" | "CANCELLED" | "EXPIRED";
+  scheduledFor: string;
+  paymentMethod: "wallet_balance" | "smart_account";
+  pickupAddress: string;
+  destAddress: string;
+  plannedDistanceKm: number | null;
+  plannedDurationSeconds: number | null;
+  fareEstimateUsdt: number | null;
+  requestedRideId: string | null;
+  createdAt: string;
+}
+
+interface ScheduledRideListResponse {
+  items: ScheduledRide[];
+  nextCursor: string | null;
+}
+
 export function isBackendConfigured(): boolean {
   return Boolean(apiBaseUrl);
 }
@@ -254,4 +273,64 @@ export async function getRiderRideHistory(input: {
     accessToken: input.accessToken,
     fallbackError: "Could not load ride history.",
   });
+}
+
+export async function createScheduledRide(input: {
+  accessToken: string;
+  scheduledFor: string;
+  pickup: RideEstimateWaypoint;
+  destination: RideEstimateWaypoint;
+  stops?: RideEstimateWaypoint[];
+  paymentMethod?: "wallet_balance" | "smart_account";
+}): Promise<{ item: ScheduledRide }> {
+  return postJson<{ item: ScheduledRide }>(
+    "/scheduled-rides",
+    {
+      scheduledFor: input.scheduledFor,
+      pickup: input.pickup,
+      destination: input.destination,
+      stops: input.stops ?? [],
+      paymentMethod: input.paymentMethod ?? "wallet_balance",
+    },
+    {
+      accessToken: input.accessToken,
+      fallbackError: "Could not schedule this ride.",
+    },
+  );
+}
+
+export async function getScheduledRides(input: {
+  accessToken: string;
+  limit?: number;
+  cursor?: string;
+}): Promise<ScheduledRideListResponse> {
+  const params = new URLSearchParams();
+  if (input.limit) {
+    params.set("limit", String(input.limit));
+  }
+  if (input.cursor) {
+    params.set("cursor", input.cursor);
+  }
+
+  const path =
+    params.size > 0 ? `/scheduled-rides?${params.toString()}` : "/scheduled-rides";
+  return getJson<ScheduledRideListResponse>(path, {
+    accessToken: input.accessToken,
+    fallbackError: "Could not load scheduled rides.",
+  });
+}
+
+export async function cancelScheduledRide(input: {
+  accessToken: string;
+  scheduledRideId: string;
+  reason?: string;
+}): Promise<{ cancelled: boolean; scheduledRideId: string }> {
+  return postJson<{ cancelled: boolean; scheduledRideId: string }>(
+    `/scheduled-rides/${encodeURIComponent(input.scheduledRideId)}/cancel`,
+    input.reason ? { reason: input.reason } : {},
+    {
+      accessToken: input.accessToken,
+      fallbackError: "Could not cancel scheduled ride.",
+    },
+  );
 }

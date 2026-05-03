@@ -17,7 +17,6 @@ import { AppButton } from "@/components/app-button";
 import { AppScreen } from "@/components/app-screen";
 import { AppText } from "@/components/app-text";
 import { BackArrow } from "@/components/back-arrow";
-import { recentPlaces } from "@/data/mock";
 import { getAccessTokenWithRetry } from "@/lib/access-token";
 import { getRideEstimate, isBackendConfigured } from "@/lib/api";
 import {
@@ -38,40 +37,13 @@ import {
 import { useRideSession } from "@/lib/ride-session";
 import { theme } from "@/theme";
 
-const searchSuggestions = [
-  ...recentPlaces.map((place) => ({
-    id: place.id,
-    title: place.name,
-    subtitle: place.meta,
-    icon: "history" as const,
-  })),
-  {
-    id: "civic-center",
-    title: "Civic Centre",
-    subtitle: "Ozumba Mbadiwe Ave, Victoria Island",
-    icon: "location-on" as const,
-  },
-  {
-    id: "palms",
-    title: "The Palms Mall",
-    subtitle: "Bisway St, Lekki",
-    icon: "storefront" as const,
-  },
-  {
-    id: "airport-intl",
-    title: "Murtala Muhammed International Airport",
-    subtitle: "Airport Rd, Ikeja",
-    icon: "flight" as const,
-  },
-] as const;
-
 type ActiveField =
   | { type: "pickup" }
   | { type: "stop"; index: number }
   | { type: "destination" };
 
 type ScreenMode = "form" | "search";
-type FlowMode = "booking" | "trip-edit";
+type FlowMode = "booking" | "trip-edit" | "schedule";
 
 const DRAG_SWAP_THRESHOLD = 88;
 
@@ -107,6 +79,9 @@ export default function DestinationSearchScreen() {
     (Array.isArray(params.flowMode) ? params.flowMode[0] : params.flowMode) ===
     "trip-edit"
       ? "trip-edit"
+      : (Array.isArray(params.flowMode) ? params.flowMode[0] : params.flowMode) ===
+          "schedule"
+        ? "schedule"
       : "booking";
 
   const inputRef = useRef<TextInput>(null);
@@ -178,23 +153,10 @@ export default function DestinationSearchScreen() {
     };
   }, [searchQuery]); // ← only depends on searchQuery now, not isSearchActive
 
-  // ─── Fallback suggestions (history + static) ────────────────────────────────
-  const fallbackSuggestions = useMemo(() => {
-    const normalized = searchQuery.trim().toLowerCase();
-    if (!normalized) return searchSuggestions.slice(0, 6);
-    return searchSuggestions.filter(
-      (item) =>
-        item.title.toLowerCase().includes(normalized) ||
-        item.subtitle.toLowerCase().includes(normalized),
-    );
-  }, [searchQuery]);
-
   const shouldUseProviderResults =
     isOsmPlacesConfigured() && searchQuery.trim().length > 0;
 
-  const filteredSuggestions = shouldUseProviderResults
-    ? providerSuggestions
-    : fallbackSuggestions;
+  const filteredSuggestions = shouldUseProviderResults ? providerSuggestions : [];
 
   const uniqueSuggestions = useMemo(() => {
     const seen = new Set<string>();
@@ -559,31 +521,11 @@ export default function DestinationSearchScreen() {
                       </AppText>
                     </View>
                   ) : (
-                    // Empty query → show fallback suggestions immediately
-                    <View style={styles.resultsListContent}>
-                      {fallbackSuggestions.map((item, index) => (
-                        <Pressable
-                          key={`fallback-${item.id}-${index}`}
-                          onPress={() =>
-                            handleSuggestionPress(formatSuggestionValue(item))
-                          }
-                          style={styles.resultRow}
-                        >
-                          <View style={styles.resultIcon}>
-                            <MaterialIcons
-                              color={theme.colors.black}
-                              name={item.icon}
-                              size={18}
-                            />
-                          </View>
-                          <View style={styles.resultCopy}>
-                            <AppText variant="bodyMedium">{item.title}</AppText>
-                            <AppText variant="bodySmall" color={theme.colors.muted}>
-                              {item.subtitle}
-                            </AppText>
-                          </View>
-                        </Pressable>
-                      ))}
+                    <View style={styles.emptyState}>
+                      <AppText variant="bodyMedium">Search Lagos addresses</AppText>
+                      <AppText variant="bodySmall" color={theme.colors.muted}>
+                        Start typing a street, estate, building, or bus stop.
+                      </AppText>
                     </View>
                   )}
                 </View>
@@ -606,6 +548,8 @@ export default function DestinationSearchScreen() {
                     ? isSubmittingRoute
                       ? "Updating route..."
                       : "Update trip route"
+                    : flowMode === "schedule"
+                      ? "Continue to schedule"
                     : "Confirm route"
                 }
                 onPress={async () => {
@@ -627,6 +571,19 @@ export default function DestinationSearchScreen() {
                     } finally {
                       setIsSubmittingRoute(false);
                     }
+                    return;
+                  }
+                  if (flowMode === "schedule") {
+                    setSubmitError(null);
+                    router.push({
+                      pathname: "/schedule-ride",
+                      params: {
+                        itinerary: serializedItinerary,
+                        ...(prefetchedEstimate
+                          ? { estimate: serializeRideEstimate(prefetchedEstimate) }
+                          : {}),
+                      },
+                    });
                     return;
                   }
                   setSubmitError(null);
@@ -744,31 +701,11 @@ export default function DestinationSearchScreen() {
                     </AppText>
                   </View>
                 ) : (
-                  // No query yet → show history/static suggestions
-                  <View style={styles.resultsListContent}>
-                    {fallbackSuggestions.map((item, index) => (
-                      <Pressable
-                        key={`fallback-${item.id}-${index}`}
-                        onPress={() =>
-                          handleSuggestionPress(formatSuggestionValue(item))
-                        }
-                        style={styles.resultRow}
-                      >
-                        <View style={styles.resultIcon}>
-                          <MaterialIcons
-                            color={theme.colors.black}
-                            name={item.icon}
-                            size={18}
-                          />
-                        </View>
-                        <View style={styles.resultCopy}>
-                          <AppText variant="bodyMedium">{item.title}</AppText>
-                          <AppText variant="bodySmall" color={theme.colors.muted}>
-                            {item.subtitle}
-                          </AppText>
-                        </View>
-                      </Pressable>
-                    ))}
+                  <View style={styles.emptyState}>
+                    <AppText variant="bodyMedium">Search Lagos addresses</AppText>
+                    <AppText variant="bodySmall" color={theme.colors.muted}>
+                      Start typing a street, estate, building, or bus stop.
+                    </AppText>
                   </View>
                 )}
               </View>
