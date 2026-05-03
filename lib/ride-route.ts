@@ -136,7 +136,7 @@ export function estimateRide(itinerary: RideItinerary): RideEstimate {
   const routeNote =
     extraStops > 0
       ? `Includes ${extraStops} extra stop${extraStops === 1 ? "" : "s"} before arrival.`
-      : "Direct ride with pickup and drop-off only.";
+      : "";
 
   return {
     priceNgn,

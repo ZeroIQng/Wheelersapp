@@ -263,7 +263,7 @@ export default function RideSelectionScreen() {
     ? `${liveEstimate.fareEstimateUsdt.toFixed(2)} USDT`
     : fallbackEstimate.priceLabel;
   const routeNote = liveEstimate
-    ? "Live backend route preview using the same planner as ride requests."
+    ? fallbackEstimate.routeNote
     : fallbackEstimate.routeNote;
   const canBookRide = true;
 
