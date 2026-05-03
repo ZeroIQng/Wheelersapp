@@ -135,6 +135,7 @@ export default function RideSelectionScreen() {
   const approxUsdtToNgnRate =
     walletUsdtBalance > 0 ? walletNgnBalance / walletUsdtBalance : 0;
   const serializedItinerary = serializeRideItinerary(itinerary);
+  const shouldUseBackendEstimate = isBackendConfigured() && isReady && Boolean(user);
 
   const SHEET_MIN_HEIGHT = 470;
   const mapHeight = height - SHEET_MIN_HEIGHT;
@@ -249,18 +250,39 @@ export default function RideSelectionScreen() {
 
   const displayEtaLabel = liveEstimate
     ? `${Math.max(1, Math.ceil(liveEstimate.plannedDurationSeconds / 60))} min trip`
-    : fallbackEstimate.etaLabel;
+    : shouldUseBackendEstimate
+      ? isLoadingEstimate
+        ? "Calculating ETA..."
+        : "ETA unavailable"
+      : fallbackEstimate.etaLabel;
   const displayDistanceLabel = liveEstimate
     ? `${liveEstimate.plannedDistanceKm.toFixed(1)} km route`
-    : fallbackEstimate.distanceLabel;
+    : shouldUseBackendEstimate
+      ? isLoadingEstimate
+        ? "Calculating km..."
+        : "KM unavailable"
+      : fallbackEstimate.distanceLabel;
   const displayFareLabel = liveEstimate
     ? `${liveEstimate.fareEstimateUsdt.toFixed(2)} USDT`
-    : fallbackEstimate.priceLabel;
+    : shouldUseBackendEstimate
+      ? isLoadingEstimate
+        ? "Calculating..."
+        : "Unavailable"
+      : fallbackEstimate.priceLabel;
   const routeNote = liveEstimate
     ? "Live backend route preview using the same planner as ride requests."
-    : fallbackEstimate.routeNote;
+    : shouldUseBackendEstimate
+      ? isLoadingEstimate
+        ? "Fetching live route distance and travel time from the backend."
+        : "Live route preview could not be loaded from the backend."
+      : fallbackEstimate.routeNote;
+  const canBookRide = shouldUseBackendEstimate ? Boolean(liveEstimate) : true;
 
   const handleBookRide = () => {
+    if (shouldUseBackendEstimate && !liveEstimate) {
+      return;
+    }
+
     if (liveEstimate) {
       if (walletUsdtBalance >= liveEstimate.fareEstimateUsdt) {
         router.push({
@@ -337,7 +359,11 @@ export default function RideSelectionScreen() {
           <FloatingView style={styles.priceBadge} distance={6}>
             <View style={styles.priceBadgeInner}>
               <AppText variant="bodySmall" color={theme.colors.muted}>
-                {isLoadingEstimate ? "Calculating live fare" : "Estimated fare"}
+                {shouldUseBackendEstimate
+                  ? isLoadingEstimate
+                    ? "Calculating live fare"
+                    : "Backend fare preview"
+                  : "Estimated fare"}
               </AppText>
               <AppText variant="monoLarge">{displayFareLabel}</AppText>
             </View>
@@ -379,18 +405,24 @@ export default function RideSelectionScreen() {
               <AppText variant="bodySmall" color={theme.colors.muted}>
                 {routeNote}
               </AppText>
-              {estimateError ? (
+              {estimateError && shouldUseBackendEstimate ? (
                 <AppText variant="bodySmall" color={theme.colors.muted}>
-                  Live route preview unavailable. Showing fallback estimate.
+                  {estimateError}
                 </AppText>
               ) : null}
             </View>
             <View style={styles.priceBlock}>
               <AppText variant="monoSmall" color={theme.colors.offWhite}>
-                NGN
+                {shouldUseBackendEstimate ? "USDT" : liveEstimate ? "USDT" : "NGN"}
               </AppText>
               <AppText variant="h2" color={theme.colors.offWhite}>
-                {estimate.priceNgn.toLocaleString("en-NG")}
+                {shouldUseBackendEstimate
+                  ? liveEstimate
+                    ? liveEstimate.fareEstimateUsdt.toFixed(2)
+                    : isLoadingEstimate
+                      ? "..."
+                      : "--"
+                  : fallbackEstimate.priceNgn.toLocaleString("en-NG")}
               </AppText>
             </View>
           </View>
@@ -411,7 +443,17 @@ export default function RideSelectionScreen() {
           ))}
         </View>
 
-        <AppButton title="Book Wheeler" onPress={handleBookRide} />
+        <AppButton
+          title={
+            shouldUseBackendEstimate && !liveEstimate
+              ? isLoadingEstimate
+                ? "Calculating route..."
+                : "Route preview unavailable"
+              : "Book Wheeler"
+          }
+          onPress={handleBookRide}
+          disabled={!canBookRide}
+        />
       </Animated.View>
     </AppScreen>
   );
