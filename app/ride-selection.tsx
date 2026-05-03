@@ -1,6 +1,7 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { usePrivy } from "@privy-io/expo";
 import { StatusBar } from "expo-status-bar";
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Dimensions,
   PanResponder,
@@ -21,6 +22,9 @@ import { BackArrow } from "@/components/back-arrow";
 import { FloatingView } from "@/components/motion";
 import { StaticMap } from "@/components/static-map";
 import { walletOverview } from "@/data/mock";
+import { getAccessTokenWithRetry } from "@/lib/access-token";
+import { getRideEstimate, isBackendConfigured, type RideEstimateResponse } from "@/lib/api";
+import { resolvePlaceQuery } from "@/lib/osm-places";
 import {
   estimateRide,
   getRideRouteRows,
@@ -111,6 +115,7 @@ function RouteOverlay({
 
 export default function RideSelectionScreen() {
   const router = useRouter();
+  const { getAccessToken, isReady, user } = usePrivy();
   const params = useLocalSearchParams<{
     itinerary?: string | string[];
   }>();
@@ -118,12 +123,17 @@ export default function RideSelectionScreen() {
     () => parseRideItineraryParam(params.itinerary),
     [params.itinerary],
   );
-  const estimate = useMemo(() => estimateRide(itinerary), [itinerary]);
+  const fallbackEstimate = useMemo(() => estimateRide(itinerary), [itinerary]);
   const routeRows = useMemo(() => getRideRouteRows(itinerary), [itinerary]);
+  const [liveEstimate, setLiveEstimate] = useState<RideEstimateResponse | null>(null);
+  const [isLoadingEstimate, setIsLoadingEstimate] = useState(false);
+  const [estimateError, setEstimateError] = useState<string | null>(null);
   const collapsedSheetOffset = 196;
   const sheetOffset = useSharedValue(0);
-  const rideFare = estimate.priceNgn;
-  const walletBalance = parseAmount(walletOverview.fiatApprox);
+  const walletUsdtBalance = parseAmount(walletOverview.balance);
+  const walletNgnBalance = parseAmount(walletOverview.fiatApprox);
+  const approxUsdtToNgnRate =
+    walletUsdtBalance > 0 ? walletNgnBalance / walletUsdtBalance : 0;
   const serializedItinerary = serializeRideItinerary(itinerary);
 
   const SHEET_MIN_HEIGHT = 470;
@@ -168,8 +178,119 @@ export default function RideSelectionScreen() {
     transform: [{ translateY: sheetOffset.value }],
   }));
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadEstimate(): Promise<void> {
+      if (!isBackendConfigured() || !isReady || !user) {
+        if (!cancelled) {
+          setLiveEstimate(null);
+          setIsLoadingEstimate(false);
+        }
+        return;
+      }
+
+      const destinationLabel = itinerary.stops[itinerary.stops.length - 1];
+      if (!destinationLabel) {
+        if (!cancelled) {
+          setLiveEstimate(null);
+          setIsLoadingEstimate(false);
+        }
+        return;
+      }
+
+      setIsLoadingEstimate(true);
+      setEstimateError(null);
+
+      try {
+        const accessToken = await getAccessTokenWithRetry(getAccessToken);
+        if (!accessToken) {
+          throw new Error("Could not get an access token for ride estimate.");
+        }
+
+        const [pickup, destination, ...stops] = await Promise.all([
+          resolvePlaceQuery(itinerary.pickup),
+          resolvePlaceQuery(destinationLabel),
+          ...itinerary.stops.slice(0, -1).map((stop) => resolvePlaceQuery(stop)),
+        ]);
+
+        const response = await getRideEstimate({
+          accessToken,
+          pickup,
+          destination,
+          stops,
+        });
+
+        if (!cancelled) {
+          setLiveEstimate(response);
+        }
+      } catch (loadError) {
+        if (!cancelled) {
+          setLiveEstimate(null);
+          setEstimateError(
+            loadError instanceof Error
+              ? loadError.message
+              : "Could not calculate the live route estimate.",
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingEstimate(false);
+        }
+      }
+    }
+
+    void loadEstimate();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [getAccessToken, isReady, itinerary, user]);
+
+  const displayEtaLabel = liveEstimate
+    ? `${Math.max(1, Math.ceil(liveEstimate.plannedDurationSeconds / 60))} min trip`
+    : fallbackEstimate.etaLabel;
+  const displayDistanceLabel = liveEstimate
+    ? `${liveEstimate.plannedDistanceKm.toFixed(1)} km route`
+    : fallbackEstimate.distanceLabel;
+  const displayFareLabel = liveEstimate
+    ? `${liveEstimate.fareEstimateUsdt.toFixed(2)} USDT`
+    : fallbackEstimate.priceLabel;
+  const routeNote = liveEstimate
+    ? "Live backend route preview using the same planner as ride requests."
+    : fallbackEstimate.routeNote;
+
   const handleBookRide = () => {
-    if (walletBalance >= rideFare) {
+    if (liveEstimate) {
+      if (walletUsdtBalance >= liveEstimate.fareEstimateUsdt) {
+        router.push({
+          pathname: "/matching",
+          params: {
+            itinerary: serializedItinerary,
+          },
+        });
+        return;
+      }
+
+      const deficitUsdt = Math.max(0, liveEstimate.fareEstimateUsdt - walletUsdtBalance);
+      const depositAmountNgn =
+        approxUsdtToNgnRate > 0
+          ? Math.ceil(deficitUsdt * approxUsdtToNgnRate)
+          : Math.ceil(liveEstimate.fareEstimateUsdt * 1600);
+
+      router.push({
+        pathname: "/rider/wallet",
+        params: {
+          depositAmount: String(depositAmountNgn),
+          redirectReason: "insufficient-funds",
+          rideName: "Wheeler",
+          itinerary: serializedItinerary,
+        },
+      });
+      return;
+    }
+
+    if (walletNgnBalance >= fallbackEstimate.priceNgn) {
       router.push({
         pathname: "/matching",
         params: {
@@ -182,7 +303,7 @@ export default function RideSelectionScreen() {
     router.push({
       pathname: "/rider/wallet",
       params: {
-        depositAmount: String(rideFare),
+        depositAmount: String(fallbackEstimate.priceNgn),
         redirectReason: "insufficient-funds",
         rideName: "Wheeler",
         itinerary: serializedItinerary,
@@ -207,7 +328,7 @@ export default function RideSelectionScreen() {
             <FloatingView distance={5}>
               <View style={styles.mapChip}>
                 <AppText variant="monoSmall">
-                  Wheeler • {estimate.etaLabel}
+                  Wheeler • {displayEtaLabel}
                 </AppText>
               </View>
             </FloatingView>
@@ -216,9 +337,9 @@ export default function RideSelectionScreen() {
           <FloatingView style={styles.priceBadge} distance={6}>
             <View style={styles.priceBadgeInner}>
               <AppText variant="bodySmall" color={theme.colors.muted}>
-                Estimated fare
+                {isLoadingEstimate ? "Calculating live fare" : "Estimated fare"}
               </AppText>
-              <AppText variant="monoLarge">{estimate.priceLabel}</AppText>
+              <AppText variant="monoLarge">{displayFareLabel}</AppText>
             </View>
           </FloatingView>
         </StaticMap>
@@ -251,13 +372,18 @@ export default function RideSelectionScreen() {
           <View style={styles.rideCardMain}>
             <View style={styles.rideCopy}>
               <View style={styles.metricRow}>
-                <MetricPill label={estimate.etaLabel} />
-                <MetricPill label={estimate.distanceLabel} muted />
+                <MetricPill label={displayEtaLabel} />
+                <MetricPill label={displayDistanceLabel} muted />
               </View>
               <AppText variant="h3">Wheeler</AppText>
               <AppText variant="bodySmall" color={theme.colors.muted}>
-                {estimate.routeNote}
+                {routeNote}
               </AppText>
+              {estimateError ? (
+                <AppText variant="bodySmall" color={theme.colors.muted}>
+                  Live route preview unavailable. Showing fallback estimate.
+                </AppText>
+              ) : null}
             </View>
             <View style={styles.priceBlock}>
               <AppText variant="monoSmall" color={theme.colors.offWhite}>

@@ -7,53 +7,8 @@ import { AppCard } from "@/components/app-card";
 import { AppScreen } from "@/components/app-screen";
 import { AppText } from "@/components/app-text";
 import { SectionHeader } from "@/components/SectionHeader";
+import { useRiderHistory } from "@/lib/rider-history";
 import { theme } from "@/theme";
-
-const rides = [
-  {
-    id: "marina",
-    title: "Marina to Lekki Phase 1",
-    fare: "$1.85",
-    time: "Today, 2:14 PM",
-    status: "Completed",
-    icon: "directions-car",
-  },
-  {
-    id: "airport",
-    title: "Airport pickup",
-    fare: "$3.40",
-    time: "Yesterday, 8:05 PM",
-    status: "Completed",
-    icon: "flight-land",
-  },
-  {
-    id: "vi",
-    title: "Victoria Island dropoff",
-    fare: "$2.25",
-    time: "Yesterday, 1:23 PM",
-    status: "Completed",
-    icon: "location-on",
-  },
-] as const;
-
-const scheduledRides = [
-  {
-    id: "ikeja-meeting",
-    title: "Ikeja meeting pickup",
-    fare: "$2.90",
-    time: "Tomorrow, 8:30 AM",
-    status: "Scheduled",
-    icon: "event",
-  },
-  {
-    id: "vi-dinner",
-    title: "Dinner at Victoria Island",
-    fare: "$3.15",
-    time: "Friday, 7:00 PM",
-    status: "Scheduled",
-    icon: "schedule",
-  },
-] as const;
 
 const rideTabs = [
   { id: "history", label: "History" },
@@ -61,10 +16,11 @@ const rideTabs = [
 ] as const;
 
 export default function RiderHistoryScreen() {
+  const { items: rides, isLoading, error } = useRiderHistory(30);
   const [activeTab, setActiveTab] = useState<(typeof rideTabs)[number]["id"]>(
     "history"
   );
-  const visibleRides = activeTab === "history" ? rides : scheduledRides;
+  const visibleRides = activeTab === "history" ? rides : [];
 
   return (
     <AppScreen
@@ -111,11 +67,38 @@ export default function RiderHistoryScreen() {
       </View>
 
       <View style={styles.list}>
+        {activeTab === "history" && isLoading && visibleRides.length === 0 ? (
+          <AppText variant="bodySmall" color={theme.colors.muted}>
+            Loading ride history...
+          </AppText>
+        ) : null}
+
+        {activeTab === "history" && error ? (
+          <AppText variant="bodySmall" color={theme.colors.muted}>
+            {error}
+          </AppText>
+        ) : null}
+
+        {activeTab === "scheduled" ? (
+          <AppText variant="bodySmall" color={theme.colors.muted}>
+            Scheduled rides are not live yet.
+          </AppText>
+        ) : null}
+
+        {activeTab === "history" &&
+        !isLoading &&
+        !error &&
+        visibleRides.length === 0 ? (
+          <AppText variant="bodySmall" color={theme.colors.muted}>
+            No completed rides yet.
+          </AppText>
+        ) : null}
+
         {visibleRides.map((ride) => (
           <AppCard key={ride.id} style={styles.card}>
             <View style={styles.iconWrap}>
               <MaterialIcons
-                name={ride.icon}
+                name={ride.icon as keyof typeof MaterialIcons.glyphMap}
                 size={20}
                 color={theme.colors.black}
               />
@@ -123,7 +106,7 @@ export default function RiderHistoryScreen() {
             <View style={styles.copy}>
               <AppText variant="bodyMedium">{ride.title}</AppText>
               <AppText variant="bodySmall" color={theme.colors.muted}>
-                {ride.time}
+                {ride.meta}
               </AppText>
             </View>
             <View style={styles.meta}>
@@ -131,7 +114,7 @@ export default function RiderHistoryScreen() {
                 {ride.fare}
               </AppText>
               <AppText variant="bodySmall" color={theme.colors.muted}>
-                {ride.status}
+                {ride.statusLabel}
               </AppText>
             </View>
           </AppCard>

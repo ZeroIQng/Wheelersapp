@@ -51,6 +51,41 @@ interface VerifyPhoneOtpResponse {
   user: BackendUser;
 }
 
+export interface RideEstimateWaypoint {
+  lat: number;
+  lng: number;
+  address: string;
+}
+
+export interface RideEstimateResponse {
+  plannedDistanceKm: number;
+  plannedDurationSeconds: number;
+  fareEstimateUsdt: number;
+}
+
+export interface RiderHistoryRide {
+  id: string;
+  status: "COMPLETED" | "CANCELLED";
+  pickupAddress: string;
+  destAddress: string;
+  fareEstimateUsdt: number | null;
+  fareFinalUsdt: number | null;
+  distanceKm: number | null;
+  durationSeconds: number | null;
+  cancelReason: string | null;
+  cancelStage: string | null;
+  matchedAt: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  cancelledAt: string | null;
+  createdAt: string;
+}
+
+interface RiderHistoryResponse {
+  items: RiderHistoryRide[];
+  nextCursor: string | null;
+}
+
 export function isBackendConfigured(): boolean {
   return Boolean(apiBaseUrl);
 }
@@ -118,6 +153,35 @@ async function postJson<TResponse>(
   return (payload ?? {}) as TResponse;
 }
 
+async function getJson<TResponse>(
+  path: string,
+  options?: { accessToken?: string; fallbackError: string },
+): Promise<TResponse> {
+  if (!apiBaseUrl) {
+    throw new Error("EXPO_PUBLIC_API_BASE_URL is not configured.");
+  }
+
+  const headers: Record<string, string> = {};
+
+  if (options?.accessToken) {
+    headers.authorization = `Bearer ${options.accessToken}`;
+  }
+
+  const response = await fetch(`${apiBaseUrl}${path}`, {
+    method: "GET",
+    headers,
+  });
+
+  const payload = (await response.json().catch(() => null)) as unknown;
+  if (!response.ok) {
+    throw new Error(
+      getErrorMessage(payload, options?.fallbackError ?? "Request failed."),
+    );
+  }
+
+  return (payload ?? {}) as TResponse;
+}
+
 export async function syncPrivyAuth(
   input: SyncPrivyAuthInput,
 ): Promise<SyncPrivyAuthResponse> {
@@ -150,4 +214,44 @@ export async function verifyPhoneOtp(
       fallbackError: "Could not verify the phone code.",
     },
   );
+}
+
+export async function getRideEstimate(input: {
+  accessToken: string;
+  pickup: RideEstimateWaypoint;
+  destination: RideEstimateWaypoint;
+  stops?: RideEstimateWaypoint[];
+}): Promise<RideEstimateResponse> {
+  return postJson<RideEstimateResponse>(
+    "/rides/estimate",
+    {
+      pickup: input.pickup,
+      destination: input.destination,
+      stops: input.stops ?? [],
+    },
+    {
+      accessToken: input.accessToken,
+      fallbackError: "Could not calculate the ride estimate.",
+    },
+  );
+}
+
+export async function getRiderRideHistory(input: {
+  accessToken: string;
+  limit?: number;
+  cursor?: string;
+}): Promise<RiderHistoryResponse> {
+  const params = new URLSearchParams();
+  if (input.limit) {
+    params.set("limit", String(input.limit));
+  }
+  if (input.cursor) {
+    params.set("cursor", input.cursor);
+  }
+
+  const path = params.size > 0 ? `/rides/history?${params.toString()}` : "/rides/history";
+  return getJson<RiderHistoryResponse>(path, {
+    accessToken: input.accessToken,
+    fallbackError: "Could not load ride history.",
+  });
 }

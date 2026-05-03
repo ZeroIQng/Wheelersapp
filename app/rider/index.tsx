@@ -19,7 +19,8 @@ import { AppText } from "@/components/app-text";
 import { StarBurst, TriangleShape } from "@/components/decorative-shapes";
 import { FloatingView, RevealView } from "@/components/motion";
 import { StaticMap } from "@/components/static-map";
-import { riderHomeHistory, walletBalance } from "@/data/mock";
+import { walletBalance } from "@/data/mock";
+import { useRiderHistory } from "@/lib/rider-history";
 import { theme } from "@/theme";
 
 const riderServices = [
@@ -254,7 +255,8 @@ function ServiceArtwork({
 
 export default function RiderHomeScreen() {
   const router = useRouter();
-  const historyPreview = riderHomeHistory.slice(0, 2);
+  const { items: historyItems, isLoading: isLoadingHistory } = useRiderHistory(3);
+  const historyPreview = historyItems.slice(0, 2);
   const expandedMapHeight = 345;
   const collapsedMapHeight = 480;
   const collapsedServiceShift = 132;
@@ -491,7 +493,7 @@ export default function RiderHomeScreen() {
                       <AppCard style={styles.historyCard}>
                         <View style={styles.historyIcon}>
                           <MaterialIcons
-                            name={ride.icon as any}
+                            name={ride.icon as keyof typeof MaterialIcons.glyphMap}
                             size={16}
                             color={theme.colors.black}
                           />
@@ -512,6 +514,11 @@ export default function RiderHomeScreen() {
                     </Pressable>
                   </RevealView>
                 ))}
+                {!isLoadingHistory && historyPreview.length === 0 ? (
+                  <AppText variant="bodySmall" color={theme.colors.muted}>
+                    No ride history yet.
+                  </AppText>
+                ) : null}
               </View>
             </View>
           </RevealView>
