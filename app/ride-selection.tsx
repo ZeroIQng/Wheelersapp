@@ -47,6 +47,22 @@ function parseAmount(value: string) {
   return match ? Number(match[0]) : 0;
 }
 
+function getLiveEstimateFareNgn(
+  estimate: RideEstimateResponse,
+  fallbackRate: number,
+): number {
+  if (typeof estimate.fareEstimateNgn === "number" && Number.isFinite(estimate.fareEstimateNgn)) {
+    return estimate.fareEstimateNgn;
+  }
+
+  const rate = fallbackRate > 0 ? fallbackRate : 1600;
+  return estimate.fareEstimateUsdt * rate;
+}
+
+function formatNgn(value: number): string {
+  return `NGN ${Math.round(value).toLocaleString("en-NG")}`;
+}
+
 function RouteOverlay({
   mapWidth,
   mapHeight,
@@ -260,7 +276,7 @@ export default function RideSelectionScreen() {
     ? `${liveEstimate.plannedDistanceKm.toFixed(1)} km route`
     : fallbackEstimate.distanceLabel;
   const displayFareLabel = liveEstimate
-    ? `${liveEstimate.fareEstimateUsdt.toFixed(2)} USDT`
+    ? formatNgn(getLiveEstimateFareNgn(liveEstimate, approxUsdtToNgnRate))
     : fallbackEstimate.priceLabel;
   const routeNote = liveEstimate
     ? fallbackEstimate.routeNote
@@ -280,10 +296,14 @@ export default function RideSelectionScreen() {
       }
 
       const deficitUsdt = Math.max(0, liveEstimate.fareEstimateUsdt - walletUsdtBalance);
-      const depositAmountNgn =
-        approxUsdtToNgnRate > 0
-          ? Math.ceil(deficitUsdt * approxUsdtToNgnRate)
-          : Math.ceil(liveEstimate.fareEstimateUsdt * 1600);
+      const liveEstimateFareNgn = getLiveEstimateFareNgn(liveEstimate, approxUsdtToNgnRate);
+      const impliedRate =
+        liveEstimate.fareEstimateUsdt > 0
+          ? liveEstimateFareNgn / liveEstimate.fareEstimateUsdt
+          : approxUsdtToNgnRate;
+      const depositAmountNgn = Math.ceil(
+        deficitUsdt * (impliedRate > 0 ? impliedRate : 1600),
+      );
 
       router.push({
         pathname: "/rider/wallet",
@@ -394,11 +414,13 @@ export default function RideSelectionScreen() {
             </View>
             <View style={styles.priceBlock}>
               <AppText variant="monoSmall" color={theme.colors.offWhite}>
-                {liveEstimate ? "USDT" : "NGN"}
+                NGN
               </AppText>
               <AppText variant="h2" color={theme.colors.offWhite}>
                 {liveEstimate
-                  ? liveEstimate.fareEstimateUsdt.toFixed(2)
+                  ? Math.round(
+                      getLiveEstimateFareNgn(liveEstimate, approxUsdtToNgnRate),
+                    ).toLocaleString("en-NG")
                   : fallbackEstimate.priceNgn.toLocaleString("en-NG")}
               </AppText>
             </View>

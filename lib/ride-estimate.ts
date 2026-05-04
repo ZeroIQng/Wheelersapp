@@ -30,6 +30,10 @@ export function parseRideEstimateParam(
       plannedDistanceKm: parsed.plannedDistanceKm,
       plannedDurationSeconds: parsed.plannedDurationSeconds,
       fareEstimateUsdt: parsed.fareEstimateUsdt,
+      fareEstimateNgn:
+        typeof parsed.fareEstimateNgn === "number" && Number.isFinite(parsed.fareEstimateNgn)
+          ? parsed.fareEstimateNgn
+          : undefined,
     };
   } catch {
     return null;

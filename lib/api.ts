@@ -61,6 +61,7 @@ export interface RideEstimateResponse {
   plannedDistanceKm: number;
   plannedDurationSeconds: number;
   fareEstimateUsdt: number;
+  fareEstimateNgn?: number;
 }
 
 export interface RiderHistoryRide {
