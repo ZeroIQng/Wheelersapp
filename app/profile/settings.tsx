@@ -24,7 +24,7 @@ const accountActionIds = new Set(["logout"]);
 const supportOptions = [
   {
     id: "help-center",
-    icon: "🛟",
+    icon: "help-outline",
     title: "Help Center",
     subtitle: "Browse answers for rides, billing, and account issues.",
     type: "navigation",
@@ -32,7 +32,7 @@ const supportOptions = [
   },
   {
     id: "customer-support",
-    icon: "💬",
+    icon: "chat-bubble-outline",
     title: "Customer Support",
     subtitle: "Start a live chat with the Wheelers support team.",
     type: "navigation",
