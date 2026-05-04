@@ -19,13 +19,13 @@ import { AppButton } from "@/components/app-button";
 import { AppScreen } from "@/components/app-screen";
 import { AppText } from "@/components/app-text";
 import { BackArrow } from "@/components/back-arrow";
+import { LiveMap } from "@/components/live-map";
 import { FloatingView } from "@/components/motion";
-import { StaticMap } from "@/components/static-map";
 import { walletOverview } from "@/data/mock";
 import { getAccessTokenWithRetry } from "@/lib/access-token";
 import { getRideEstimate, isBackendConfigured, type RideEstimateResponse } from "@/lib/api";
 import { resolvePlaceQuery } from "@/lib/osm-places";
-import { parseRideEstimateParam } from "@/lib/ride-estimate";
+import { parseRideEstimateParam, serializeRideEstimate } from "@/lib/ride-estimate";
 import {
   estimateRide,
   getRideRouteRows,
@@ -34,11 +34,7 @@ import {
 } from "@/lib/ride-route";
 import { theme } from "@/theme";
 
-const { height, width } = Dimensions.get("window");
-
-// Pickup and destination markers remain illustrative; route details below are now dynamic.
-const PICKUP_PCT = { x: 0.33, y: 0.52 };
-const DEST_PCT = { x: 0.84, y: 0.84 };
+const { height } = Dimensions.get("window");
 
 function parseAmount(value: string) {
   const normalized = value.replace(/,/g, "");
@@ -61,73 +57,6 @@ function getLiveEstimateFareNgn(
 
 function formatNgn(value: number): string {
   return `NGN ${Math.round(value).toLocaleString("en-NG")}`;
-}
-
-function RouteOverlay({
-  mapWidth,
-  mapHeight,
-}: {
-  mapWidth: number;
-  mapHeight: number;
-}) {
-  const x1 = PICKUP_PCT.x * mapWidth;
-  const y1 = PICKUP_PCT.y * mapHeight;
-  const x2 = DEST_PCT.x * mapWidth;
-  const y2 = DEST_PCT.y * mapHeight;
-
-  const dx = x2 - x1;
-  const dy = y2 - y1;
-  const lineLength = Math.sqrt(dx * dx + dy * dy);
-  const angle = Math.atan2(dy, dx) * (180 / Math.PI);
-  const dotSize = 14;
-  const border = 2;
-
-  return (
-    <View style={StyleSheet.absoluteFill} pointerEvents="none">
-      <View
-        style={{
-          position: "absolute",
-          left: x1,
-          top: y1,
-          width: lineLength,
-          height: 3,
-          backgroundColor: theme.colors.orange,
-          borderRadius: 2,
-          transformOrigin: "0 50%",
-          transform: [{ rotate: `${angle}deg` }],
-          opacity: 0.95,
-        }}
-      />
-
-      <View
-        style={{
-          position: "absolute",
-          left: x1 - dotSize / 2,
-          top: y1 - dotSize / 2,
-          width: dotSize,
-          height: dotSize,
-          borderRadius: dotSize / 2,
-          backgroundColor: theme.colors.orange,
-          borderWidth: border,
-          borderColor: theme.colors.black,
-        }}
-      />
-
-      <View
-        style={{
-          position: "absolute",
-          left: x2 - dotSize / 2,
-          top: y2 - dotSize / 2,
-          width: dotSize,
-          height: dotSize,
-          borderRadius: dotSize / 2,
-          backgroundColor: theme.colors.green,
-          borderWidth: border,
-          borderColor: theme.colors.black,
-        }}
-      />
-    </View>
-  );
 }
 
 export default function RideSelectionScreen() {
@@ -164,8 +93,12 @@ export default function RideSelectionScreen() {
   }, [initialEstimate]);
 
   const SHEET_MIN_HEIGHT = 470;
-  const mapHeight = height - SHEET_MIN_HEIGHT;
-  const mapWidth = width;
+  const routeFitPadding = {
+    top: 88,
+    right: 56,
+    bottom: SHEET_MIN_HEIGHT + 56,
+    left: 56,
+  };
 
   const expandSheet = () => {
     sheetOffset.value = withTiming(0, { duration: 220 });
@@ -278,9 +211,7 @@ export default function RideSelectionScreen() {
   const displayFareLabel = liveEstimate
     ? formatNgn(getLiveEstimateFareNgn(liveEstimate, approxUsdtToNgnRate))
     : fallbackEstimate.priceLabel;
-  const routeNote = liveEstimate
-    ? fallbackEstimate.routeNote
-    : fallbackEstimate.routeNote;
+  const routeNote = fallbackEstimate.routeNote;
   const canBookRide = true;
 
   const handleBookRide = () => {
@@ -290,6 +221,7 @@ export default function RideSelectionScreen() {
           pathname: "/matching",
           params: {
             itinerary: serializedItinerary,
+            estimate: serializeRideEstimate(liveEstimate),
           },
         });
         return;
@@ -322,6 +254,7 @@ export default function RideSelectionScreen() {
         pathname: "/matching",
         params: {
           itinerary: serializedItinerary,
+          ...(liveEstimate ? { estimate: serializeRideEstimate(liveEstimate) } : {}),
         },
       });
       return;
@@ -347,9 +280,15 @@ export default function RideSelectionScreen() {
       <StatusBar style="dark" backgroundColor={theme.colors.mapBase} />
 
       <View style={styles.mapWrap}>
-        <StaticMap height={height} scene="rideSelection">
-          <RouteOverlay mapWidth={mapWidth} mapHeight={mapHeight} />
-
+        <LiveMap
+          height={height}
+          pickup={liveEstimate?.pickup}
+          destination={liveEstimate?.destination}
+          stops={liveEstimate?.stops}
+          route={liveEstimate?.route}
+          initialCenter={liveEstimate?.pickup}
+          fitPadding={routeFitPadding}
+        >
           <View style={styles.topBar}>
             <BackArrow onPress={() => router.back()} />
             <FloatingView distance={5}>
@@ -369,7 +308,7 @@ export default function RideSelectionScreen() {
               <AppText variant="monoLarge">{displayFareLabel}</AppText>
             </View>
           </FloatingView>
-        </StaticMap>
+        </LiveMap>
       </View>
 
       <Animated.View

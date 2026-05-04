@@ -8,7 +8,7 @@ import { AppCard } from "@/components/app-card";
 import { AppScreen } from "@/components/app-screen";
 import { AppText } from "@/components/app-text";
 import { BackArrow } from "@/components/back-arrow";
-import { MapMock } from "@/components/MapMock";
+import { LiveMap } from "@/components/live-map";
 import { MetricCard } from "@/components/MetricCard";
 import { StatusPill } from "@/components/StatusPill";
 import { TripProgressBar } from "@/components/TripProgressBar";
@@ -114,16 +114,23 @@ export default function RiderActiveTripScreen() {
     >
       <StatusBar style="dark" backgroundColor={theme.colors.mapBase} />
       <View style={styles.mapWrap}>
-        <MapMock
+        <LiveMap
           height={260}
-          showCar
-          showDestination
-          showRoute
-          topBadge="LIVE"
-          variant="riderTrip"
+          pickup={currentRide?.route?.pickup}
+          destination={currentRide?.route?.destination}
+          stops={currentRide?.route?.stops}
+          route={currentRide?.route?.route}
+          driverLocation={currentRide?.driverLocation}
+          initialCenter={currentRide?.route?.pickup}
+          fitPadding={{ top: 40, right: 28, bottom: 44, left: 28 }}
         >
           <BackArrow onPress={() => router.back()} style={styles.backButton} />
-        </MapMock>
+          <View style={styles.liveBadge}>
+            <AppText variant="monoSmall" color={theme.colors.offWhite}>
+              LIVE
+            </AppText>
+          </View>
+        </LiveMap>
       </View>
 
       <View style={styles.content}>
@@ -273,6 +280,21 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: 12,
     left: theme.spacing.gutter,
+  },
+  liveBadge: {
+    position: "absolute",
+    top: 12,
+    right: theme.spacing.gutter,
+    minWidth: 48,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: 5,
+    borderRadius: theme.radius.sm,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    backgroundColor: theme.colors.black,
+    ...theme.shadows.card,
   },
   content: {
     flex: 1,

@@ -1,4 +1,8 @@
-import type { RideEstimateResponse } from "@/lib/api";
+import {
+  parseRideEstimateWaypoint,
+  parseRideRouteGeometry,
+  type RideEstimateResponse,
+} from "@/lib/api";
 
 export function serializeRideEstimate(estimate: RideEstimateResponse): string {
   return encodeURIComponent(JSON.stringify(estimate));
@@ -34,6 +38,14 @@ export function parseRideEstimateParam(
         typeof parsed.fareEstimateNgn === "number" && Number.isFinite(parsed.fareEstimateNgn)
           ? parsed.fareEstimateNgn
           : undefined,
+      pickup: parseRideEstimateWaypoint(parsed.pickup) ?? undefined,
+      destination: parseRideEstimateWaypoint(parsed.destination) ?? undefined,
+      stops: Array.isArray(parsed.stops)
+        ? parsed.stops
+            .map((stop) => parseRideEstimateWaypoint(stop))
+            .filter((stop): stop is NonNullable<RideEstimateResponse["stops"]>[number] => stop != null)
+        : undefined,
+      route: parseRideRouteGeometry(parsed.route) ?? undefined,
     };
   } catch {
     return null;

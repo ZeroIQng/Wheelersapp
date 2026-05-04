@@ -17,8 +17,8 @@ import { AppCard } from "@/components/app-card";
 import { AppScreen } from "@/components/app-screen";
 import { AppText } from "@/components/app-text";
 import { StarBurst, TriangleShape } from "@/components/decorative-shapes";
+import { LiveMap } from "@/components/live-map";
 import { FloatingView, RevealView } from "@/components/motion";
-import { StaticMap } from "@/components/static-map";
 import { walletBalance } from "@/data/mock";
 import { useRiderHistory } from "@/lib/rider-history";
 import { theme } from "@/theme";
@@ -46,6 +46,11 @@ const riderServices = [
     route: "/destination-search" as Href,
   },
 ] as const;
+
+const riderHomeCenter = {
+  lat: 6.4473,
+  lng: 3.4729,
+};
 
 function ClockBadge() {
   return (
@@ -329,7 +334,11 @@ export default function RiderHomeScreen() {
     >
       <StatusBar style="dark" backgroundColor="#D4E6D4" />
       <Animated.View style={[styles.mapWrap, mapAnimatedStyle]}>
-        <StaticMap height={collapsedMapHeight} scene="riderHome">
+        <LiveMap
+          height={collapsedMapHeight}
+          initialCenter={riderHomeCenter}
+          initialDelta={{ latitudeDelta: 0.038, longitudeDelta: 0.03 }}
+        >
           <FloatingView style={styles.triangle} distance={12} rotate={8}>
             <TriangleShape color="rgba(255,92,0,0.15)" />
           </FloatingView>
@@ -387,7 +396,7 @@ export default function RiderHomeScreen() {
               </View>
             </View>
           </View>
-        </StaticMap>
+        </LiveMap>
       </Animated.View>
 
       <Animated.View

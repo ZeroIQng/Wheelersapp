@@ -10,7 +10,7 @@ import { AppCard } from "@/components/app-card";
 import { AppScreen } from "@/components/app-screen";
 import { AppText } from "@/components/app-text";
 import { FloatingView, PulseView, RevealView } from "@/components/motion";
-import { StaticMap } from "@/components/static-map";
+import { LiveMap } from "@/components/live-map";
 import { driver } from "@/data/mock";
 import {
   estimateRide,
@@ -72,14 +72,23 @@ export default function DriverFoundScreen() {
     >
       <StatusBar style="dark" backgroundColor="#D4E6D4" />
       <RevealView style={styles.mapWrap}>
-        <StaticMap height={232} scene="driverFound">
+        <LiveMap
+          height={232}
+          pickup={currentRide?.route?.pickup}
+          destination={currentRide?.route?.destination}
+          stops={currentRide?.route?.stops}
+          route={currentRide?.route?.route}
+          driverLocation={currentRide?.driverLocation}
+          initialCenter={currentRide?.route?.pickup}
+          fitPadding={{ top: 52, right: 32, bottom: 52, left: 32 }}
+        >
           <FloatingView style={styles.backButton} distance={5}>
             <BackArrow onPress={() => router.back()} />
           </FloatingView>
           <FloatingView style={styles.etaChip} distance={6}>
             <AppText variant="monoSmall">ETA: {etaMinutes} min</AppText>
           </FloatingView>
-        </StaticMap>
+        </LiveMap>
       </RevealView>
 
       <RevealView delay={120} style={styles.content}>

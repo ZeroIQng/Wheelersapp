@@ -15,9 +15,11 @@ import Animated, {
 import { AppScreen } from "@/components/app-screen";
 import { AppText } from "@/components/app-text";
 import { BackArrow } from "@/components/back-arrow";
+import { LiveMap } from "@/components/live-map";
 import { FloatingView } from "@/components/motion";
-import { PulseCircle, StaticMap } from "@/components/static-map";
+import { PulseCircle } from "@/components/static-map";
 import { driver } from "@/data/mock";
+import { parseRideEstimateParam } from "@/lib/ride-estimate";
 import { parseRideItineraryParam, serializeRideItinerary } from "@/lib/ride-route";
 import { useRideSession } from "@/lib/ride-session";
 import { theme } from "@/theme";
@@ -71,10 +73,15 @@ export default function MatchingScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{
     itinerary?: string | string[];
+    estimate?: string | string[];
   }>();
   const itinerary = useMemo(
     () => parseRideItineraryParam(params.itinerary),
     [params.itinerary],
+  );
+  const initialEstimate = useMemo(
+    () => parseRideEstimateParam(params.estimate),
+    [params.estimate],
   );
   const serializedItinerary = useMemo(
     () => serializeRideItinerary(itinerary),
@@ -166,6 +173,26 @@ export default function MatchingScreen() {
   }, [currentRide?.status]);
 
   const issue = describeIssue(error, currentRide?.cancelReason);
+  const routeSnapshot = useMemo(() => {
+    if (currentRide?.route) {
+      return currentRide.route;
+    }
+
+    if (
+      initialEstimate?.pickup &&
+      initialEstimate.destination &&
+      initialEstimate.route
+    ) {
+      return {
+        pickup: initialEstimate.pickup,
+        destination: initialEstimate.destination,
+        stops: initialEstimate.stops ?? [],
+        route: initialEstimate.route,
+      };
+    }
+
+    return null;
+  }, [currentRide?.route, initialEstimate]);
   const activeStage = searchStages[Math.min(stageIndex, searchStages.length - 1)];
   const matchedDriver = currentRide?.driver;
   const nearbyDriversLabel = useMemo(() => {
@@ -219,7 +246,15 @@ export default function MatchingScreen() {
       <StatusBar style="dark" backgroundColor={theme.colors.mapBase} />
 
       <View style={styles.mapWrap}>
-        <StaticMap height={780} scene="driverFound">
+        <LiveMap
+          height={780}
+          pickup={routeSnapshot?.pickup}
+          destination={routeSnapshot?.destination}
+          stops={routeSnapshot?.stops}
+          route={routeSnapshot?.route}
+          initialCenter={routeSnapshot?.pickup}
+          fitPadding={{ top: 92, right: 48, bottom: 360, left: 48 }}
+        >
           {!issue ? <MapSearchPulse /> : null}
 
           <View style={styles.mapTopRow}>
@@ -258,7 +293,7 @@ export default function MatchingScreen() {
               </AppText>
             </View>
           </FloatingView>
-        </StaticMap>
+        </LiveMap>
       </View>
 
       <View style={styles.sheet}>

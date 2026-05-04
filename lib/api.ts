@@ -57,11 +57,37 @@ export interface RideEstimateWaypoint {
   address: string;
 }
 
+export interface RideMapCoordinate {
+  lat: number;
+  lng: number;
+}
+
+export interface RideRouteBounds {
+  northEast: RideMapCoordinate;
+  southWest: RideMapCoordinate;
+}
+
+export interface RideRouteGeometry {
+  coordinates: RideMapCoordinate[];
+  bounds: RideRouteBounds;
+}
+
+export interface RideRouteSnapshot {
+  pickup: RideEstimateWaypoint;
+  destination: RideEstimateWaypoint;
+  stops: RideEstimateWaypoint[];
+  route: RideRouteGeometry;
+}
+
 export interface RideEstimateResponse {
   plannedDistanceKm: number;
   plannedDurationSeconds: number;
   fareEstimateUsdt: number;
   fareEstimateNgn?: number;
+  pickup?: RideEstimateWaypoint;
+  destination?: RideEstimateWaypoint;
+  stops?: RideEstimateWaypoint[];
+  route?: RideRouteGeometry;
 }
 
 export interface RiderHistoryRide {
@@ -104,6 +130,131 @@ export interface ScheduledRide {
 interface ScheduledRideListResponse {
   items: ScheduledRide[];
   nextCursor: string | null;
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+export function parseRideEstimateWaypoint(value: unknown): RideEstimateWaypoint | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const record = value as Record<string, unknown>;
+  if (
+    !isFiniteNumber(record.lat) ||
+    !isFiniteNumber(record.lng) ||
+    typeof record.address !== "string" ||
+    record.address.trim().length === 0
+  ) {
+    return null;
+  }
+
+  return {
+    lat: record.lat,
+    lng: record.lng,
+    address: record.address,
+  };
+}
+
+export function parseRideRouteGeometry(value: unknown): RideRouteGeometry | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const record = value as Record<string, unknown>;
+  const coordinatesValue = record.coordinates;
+  if (!Array.isArray(coordinatesValue) || coordinatesValue.length < 2) {
+    return null;
+  }
+
+  const coordinates = coordinatesValue
+    .map((coordinate) => {
+      if (!coordinate || typeof coordinate !== "object") {
+        return null;
+      }
+
+      const parsed = coordinate as Record<string, unknown>;
+      if (!isFiniteNumber(parsed.lat) || !isFiniteNumber(parsed.lng)) {
+        return null;
+      }
+
+      return {
+        lat: parsed.lat,
+        lng: parsed.lng,
+      };
+    })
+    .filter((coordinate): coordinate is RideMapCoordinate => coordinate != null);
+
+  if (coordinates.length < 2) {
+    return null;
+  }
+
+  const boundsValue = record.bounds;
+  if (!boundsValue || typeof boundsValue !== "object") {
+    return null;
+  }
+
+  const bounds = boundsValue as Record<string, unknown>;
+  const northEast = bounds.northEast as Record<string, unknown> | undefined;
+  const southWest = bounds.southWest as Record<string, unknown> | undefined;
+
+  if (
+    !northEast ||
+    !southWest ||
+    !isFiniteNumber(northEast.lat) ||
+    !isFiniteNumber(northEast.lng) ||
+    !isFiniteNumber(southWest.lat) ||
+    !isFiniteNumber(southWest.lng)
+  ) {
+    return null;
+  }
+
+  return {
+    coordinates,
+    bounds: {
+      northEast: {
+        lat: northEast.lat,
+        lng: northEast.lng,
+      },
+      southWest: {
+        lat: southWest.lat,
+        lng: southWest.lng,
+      },
+    },
+  };
+}
+
+export function parseRideRouteSnapshot(value: unknown): RideRouteSnapshot | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const record = value as Record<string, unknown>;
+  const pickup = parseRideEstimateWaypoint(record.pickup);
+  const destination = parseRideEstimateWaypoint(record.destination);
+  const route = parseRideRouteGeometry(record.route);
+  const stopsValue = record.stops;
+
+  if (!pickup || !destination || !route || !Array.isArray(stopsValue)) {
+    return null;
+  }
+
+  const stops = stopsValue
+    .map((stop) => parseRideEstimateWaypoint(stop))
+    .filter((stop): stop is RideEstimateWaypoint => stop != null);
+
+  if (stops.length !== stopsValue.length) {
+    return null;
+  }
+
+  return {
+    pickup,
+    destination,
+    stops,
+    route,
+  };
 }
 
 export function isBackendConfigured(): boolean {

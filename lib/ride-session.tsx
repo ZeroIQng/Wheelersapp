@@ -11,7 +11,15 @@ import {
   type ReactNode,
 } from 'react';
 
-import { getBackendWebSocketUrl, isBackendConfigured } from '@/lib/api';
+import {
+  getBackendWebSocketUrl,
+  isBackendConfigured,
+  parseRideEstimateWaypoint,
+  parseRideRouteGeometry,
+  parseRideRouteSnapshot,
+  type RideEstimateWaypoint,
+  type RideRouteSnapshot,
+} from '@/lib/api';
 import { resolvePlaceQuery } from '@/lib/osm-places';
 import { getPrivyEthereumWalletAddress } from '@/lib/privy-user';
 import { serializeRideItinerary, type RideItinerary } from '@/lib/ride-route';
@@ -55,6 +63,7 @@ export type RiderRideState = {
   fareEstimateUsdt?: number;
   plannedDistanceKm?: number;
   plannedDurationSeconds?: number;
+  route?: RideRouteSnapshot;
   driver?: RideDriver;
   driverLocation?: RideDriverLocation;
   startedAt?: string;
@@ -169,6 +178,18 @@ function parseRouteStopAddresses(value: unknown): string[] {
     .filter((item): item is string => Boolean(item));
 }
 
+function parseWaypointList(value: unknown): RideEstimateWaypoint[] | null {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+
+  const waypoints = value
+    .map((item) => parseRideEstimateWaypoint(item))
+    .filter((item): item is RideEstimateWaypoint => item != null);
+
+  return waypoints.length === value.length ? waypoints : null;
+}
+
 async function getAccessTokenWithRetry(
   getAccessToken: () => Promise<string | null | undefined>,
 ): Promise<string | null> {
@@ -269,6 +290,7 @@ export function RideSessionProvider({ children }: { children: ReactNode }) {
           return {
             ...previous,
             status: 'matching',
+            route: parseRideRouteSnapshot(payload) ?? previous.route,
             plannedDistanceKm:
               getNumber(payload.plannedDistanceKm) ?? previous.plannedDistanceKm,
             plannedDurationSeconds:
@@ -315,6 +337,12 @@ export function RideSessionProvider({ children }: { children: ReactNode }) {
           const destination = getRecord(payload.destination);
           const destinationAddress = getString(destination?.address);
           const stopAddresses = parseRouteStopAddresses(payload.stops);
+          const pickup =
+            parseRideEstimateWaypoint(payload.pickup) ?? previous.route?.pickup;
+          const updatedDestination =
+            parseRideEstimateWaypoint(payload.destination) ?? previous.route?.destination;
+          const updatedStops = parseWaypointList(payload.stops) ?? previous.route?.stops;
+          const updatedRoute = parseRideRouteGeometry(payload.route);
 
           return {
             ...previous,
@@ -329,6 +357,15 @@ export function RideSessionProvider({ children }: { children: ReactNode }) {
             plannedDurationSeconds:
               getNumber(payload.plannedDurationSeconds) ?? previous.plannedDurationSeconds,
             fareEstimateUsdt: getNumber(payload.fareEstimateUsdt) ?? previous.fareEstimateUsdt,
+            route:
+              pickup && updatedDestination && updatedStops && updatedRoute
+                ? {
+                    pickup,
+                    destination: updatedDestination,
+                    stops: updatedStops,
+                    route: updatedRoute,
+                  }
+                : previous.route,
           };
         });
         return;
