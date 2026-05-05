@@ -13,7 +13,6 @@ import { MetricCard } from "@/components/MetricCard";
 import { StatusPill } from "@/components/StatusPill";
 import { TripProgressBar } from "@/components/TripProgressBar";
 import {
-  estimateRide,
   getAdditionalStopCount,
   getRideRouteRows,
   parseRideItineraryParam,
@@ -22,8 +21,19 @@ import {
 import { useRideSession } from "@/lib/ride-session";
 import { theme } from "@/theme";
 
-function formatUsdt(value: number | undefined, fallback: string): string {
-  return typeof value === "number" ? `${value.toFixed(2)} USDT` : fallback;
+function formatRideFare(params: {
+  ngn?: number;
+  usdt?: number;
+}): string | null {
+  if (typeof params.ngn === "number" && Number.isFinite(params.ngn)) {
+    return `NGN ${Math.round(params.ngn).toLocaleString("en-NG")}`;
+  }
+
+  if (typeof params.usdt === "number" && Number.isFinite(params.usdt)) {
+    return `${params.usdt.toFixed(2)} USDT`;
+  }
+
+  return null;
 }
 
 export default function RiderActiveTripScreen() {
@@ -37,7 +47,6 @@ export default function RiderActiveTripScreen() {
   );
   const { cancelRide, currentRide } = useRideSession();
   const itinerary = currentRide?.itinerary ?? fallbackItinerary;
-  const estimate = useMemo(() => estimateRide(itinerary), [itinerary]);
   const routeRows = useMemo(() => getRideRouteRows(itinerary), [itinerary]);
   const extraStops = getAdditionalStopCount(itinerary);
   const serializedItinerary = serializeRideItinerary(itinerary);
@@ -74,28 +83,34 @@ export default function RiderActiveTripScreen() {
           ? Math.max(1, Math.ceil(currentRide.driver.etaSeconds / 60))
           : currentRide?.plannedDurationSeconds
             ? Math.max(1, Math.ceil(currentRide.plannedDurationSeconds / 60))
-            : estimate.etaMinutes + 9,
+            : "--",
       ),
       accent: "orange" as const,
     },
     {
       id: "distance",
       label: currentRide?.status === "completed" ? "KM TRIP" : "KM LEFT",
-      value: (
-        currentRide?.driverLocation?.distanceToNextStopKm ??
-        currentRide?.plannedDistanceKm ??
-        estimate.distanceKm
-      ).toFixed(1),
+      value:
+        typeof currentRide?.driverLocation?.distanceToNextStopKm === "number"
+          ? currentRide.driverLocation.distanceToNextStopKm.toFixed(1)
+          : typeof currentRide?.plannedDistanceKm === "number"
+            ? currentRide.plannedDistanceKm.toFixed(1)
+            : "--",
     },
     {
       id: "fare",
       label: currentRide?.status === "completed" ? "FARE PAID" : "FARE",
-      value: formatUsdt(
-        currentRide?.completedFareUsdt ??
-          currentRide?.driver?.lockedFareUsdt ??
-          currentRide?.fareEstimateUsdt,
-        estimate.priceLabel,
-      ),
+      value:
+        formatRideFare({
+          ngn:
+            currentRide?.completedFareNgn ??
+            currentRide?.driver?.lockedFareNgn ??
+            currentRide?.fareEstimateNgn,
+          usdt:
+            currentRide?.completedFareUsdt ??
+            currentRide?.driver?.lockedFareUsdt ??
+            currentRide?.fareEstimateUsdt,
+        }) ?? "Fare pending",
     },
   ];
 

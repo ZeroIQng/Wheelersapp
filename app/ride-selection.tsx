@@ -21,13 +21,11 @@ import { AppText } from "@/components/app-text";
 import { BackArrow } from "@/components/back-arrow";
 import { LiveMap } from "@/components/live-map";
 import { FloatingView } from "@/components/motion";
-import { walletOverview } from "@/data/mock";
 import { getAccessTokenWithRetry } from "@/lib/access-token";
 import { getRideEstimate, isBackendConfigured, type RideEstimateResponse } from "@/lib/api";
 import { resolvePlaceQuery } from "@/lib/osm-places";
 import { parseRideEstimateParam, serializeRideEstimate } from "@/lib/ride-estimate";
 import {
-  estimateRide,
   getRideRouteRows,
   parseRideItineraryParam,
   serializeRideItinerary,
@@ -36,23 +34,14 @@ import { theme } from "@/theme";
 
 const { height } = Dimensions.get("window");
 
-function parseAmount(value: string) {
-  const normalized = value.replace(/,/g, "");
-  const match = normalized.match(/\d+(?:\.\d+)?/);
-
-  return match ? Number(match[0]) : 0;
-}
-
 function getLiveEstimateFareNgn(
   estimate: RideEstimateResponse,
-  fallbackRate: number,
-): number {
+): number | null {
   if (typeof estimate.fareEstimateNgn === "number" && Number.isFinite(estimate.fareEstimateNgn)) {
     return estimate.fareEstimateNgn;
   }
 
-  const rate = fallbackRate > 0 ? fallbackRate : 1600;
-  return estimate.fareEstimateUsdt * rate;
+  return null;
 }
 
 function formatNgn(value: number): string {
@@ -74,7 +63,6 @@ export default function RideSelectionScreen() {
     () => parseRideEstimateParam(params.estimate),
     [params.estimate],
   );
-  const fallbackEstimate = useMemo(() => estimateRide(itinerary), [itinerary]);
   const routeRows = useMemo(() => getRideRouteRows(itinerary), [itinerary]);
   const [liveEstimate, setLiveEstimate] = useState<RideEstimateResponse | null>(
     initialEstimate,
@@ -82,10 +70,6 @@ export default function RideSelectionScreen() {
   const [estimateError, setEstimateError] = useState<string | null>(null);
   const collapsedSheetOffset = 196;
   const sheetOffset = useSharedValue(0);
-  const walletUsdtBalance = parseAmount(walletOverview.balance);
-  const walletNgnBalance = parseAmount(walletOverview.fiatApprox);
-  const approxUsdtToNgnRate =
-    walletUsdtBalance > 0 ? walletNgnBalance / walletUsdtBalance : 0;
   const serializedItinerary = serializeRideItinerary(itinerary);
 
   useEffect(() => {
@@ -202,71 +186,34 @@ export default function RideSelectionScreen() {
     };
   }, [getAccessToken, isReady, itinerary, user]);
 
+  const liveEstimateFareNgn = liveEstimate ? getLiveEstimateFareNgn(liveEstimate) : null;
   const displayEtaLabel = liveEstimate
     ? `${Math.max(1, Math.ceil(liveEstimate.plannedDurationSeconds / 60))} min trip`
-    : fallbackEstimate.etaLabel;
+    : estimateError
+      ? "Route unavailable"
+      : "Calculating route";
   const displayDistanceLabel = liveEstimate
     ? `${liveEstimate.plannedDistanceKm.toFixed(1)} km route`
-    : fallbackEstimate.distanceLabel;
-  const displayFareLabel = liveEstimate
-    ? formatNgn(getLiveEstimateFareNgn(liveEstimate, approxUsdtToNgnRate))
-    : fallbackEstimate.priceLabel;
-  const routeNote = fallbackEstimate.routeNote;
-  const canBookRide = true;
+    : estimateError
+      ? "Distance unavailable"
+      : "Waiting for route";
+  const displayFareLabel =
+    liveEstimateFareNgn !== null ? formatNgn(liveEstimateFareNgn) : "Fare pending";
+  const routeNote = liveEstimate
+    ? "Live backend estimate for this route."
+    : estimateError ?? "Requesting a live route estimate from the backend.";
+  const canBookRide = Boolean(liveEstimate);
 
   const handleBookRide = () => {
-    if (liveEstimate) {
-      if (walletUsdtBalance >= liveEstimate.fareEstimateUsdt) {
-        router.push({
-          pathname: "/matching",
-          params: {
-            itinerary: serializedItinerary,
-            estimate: serializeRideEstimate(liveEstimate),
-          },
-        });
-        return;
-      }
-
-      const deficitUsdt = Math.max(0, liveEstimate.fareEstimateUsdt - walletUsdtBalance);
-      const liveEstimateFareNgn = getLiveEstimateFareNgn(liveEstimate, approxUsdtToNgnRate);
-      const impliedRate =
-        liveEstimate.fareEstimateUsdt > 0
-          ? liveEstimateFareNgn / liveEstimate.fareEstimateUsdt
-          : approxUsdtToNgnRate;
-      const depositAmountNgn = Math.ceil(
-        deficitUsdt * (impliedRate > 0 ? impliedRate : 1600),
-      );
-
-      router.push({
-        pathname: "/rider/wallet",
-        params: {
-          depositAmount: String(depositAmountNgn),
-          redirectReason: "insufficient-funds",
-          rideName: "Wheeler",
-          itinerary: serializedItinerary,
-        },
-      });
-      return;
-    }
-
-    if (walletNgnBalance >= fallbackEstimate.priceNgn) {
-      router.push({
-        pathname: "/matching",
-        params: {
-          itinerary: serializedItinerary,
-          ...(liveEstimate ? { estimate: serializeRideEstimate(liveEstimate) } : {}),
-        },
-      });
+    if (!liveEstimate) {
       return;
     }
 
     router.push({
-      pathname: "/rider/wallet",
+      pathname: "/matching",
       params: {
-        depositAmount: String(fallbackEstimate.priceNgn),
-        redirectReason: "insufficient-funds",
-        rideName: "Wheeler",
         itinerary: serializedItinerary,
+        estimate: serializeRideEstimate(liveEstimate),
       },
     });
   };
@@ -347,7 +294,7 @@ export default function RideSelectionScreen() {
               </AppText>
               {estimateError && !liveEstimate ? (
                 <AppText variant="bodySmall" color={theme.colors.muted}>
-                  Refining live route in the background.
+                  {estimateError}
                 </AppText>
               ) : null}
             </View>
@@ -356,11 +303,9 @@ export default function RideSelectionScreen() {
                 NGN
               </AppText>
               <AppText variant="h2" color={theme.colors.offWhite}>
-                {liveEstimate
-                  ? Math.round(
-                      getLiveEstimateFareNgn(liveEstimate, approxUsdtToNgnRate),
-                    ).toLocaleString("en-NG")
-                  : fallbackEstimate.priceNgn.toLocaleString("en-NG")}
+                {liveEstimateFareNgn !== null
+                  ? Math.round(liveEstimateFareNgn).toLocaleString("en-NG")
+                  : "--"}
               </AppText>
             </View>
           </View>
@@ -382,7 +327,7 @@ export default function RideSelectionScreen() {
         </View>
 
         <AppButton
-          title="Book Wheeler"
+          title={liveEstimate ? "Book Wheeler" : "Waiting for live estimate"}
           onPress={handleBookRide}
           disabled={!canBookRide}
         />

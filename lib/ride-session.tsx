@@ -43,6 +43,7 @@ type RideDriver = {
   vehicleModel?: string;
   etaSeconds?: number;
   lockedFareUsdt?: number;
+  lockedFareNgn?: number;
 };
 
 type RideDriverLocation = {
@@ -61,6 +62,7 @@ export type RiderRideState = {
   status: RideStatus;
   itinerary: RideItinerary;
   fareEstimateUsdt?: number;
+  fareEstimateNgn?: number;
   plannedDistanceKm?: number;
   plannedDurationSeconds?: number;
   route?: RideRouteSnapshot;
@@ -69,6 +71,7 @@ export type RiderRideState = {
   startedAt?: string;
   completedAt?: string;
   completedFareUsdt?: number;
+  completedFareNgn?: number;
   cancelReason?: string;
   cancelStage?: string;
 };
@@ -296,6 +299,7 @@ export function RideSessionProvider({ children }: { children: ReactNode }) {
             plannedDurationSeconds:
               getNumber(payload.plannedDurationSeconds) ?? previous.plannedDurationSeconds,
             fareEstimateUsdt: getNumber(payload.fareEstimateUsdt) ?? previous.fareEstimateUsdt,
+            fareEstimateNgn: getNumber(payload.fareEstimateNgn) ?? previous.fareEstimateNgn,
           };
         });
         return;
@@ -321,6 +325,8 @@ export function RideSessionProvider({ children }: { children: ReactNode }) {
               etaSeconds: getNumber(payload.etaSeconds) ?? previous.driver?.etaSeconds,
               lockedFareUsdt:
                 getNumber(payload.lockedFareUsdt) ?? previous.driver?.lockedFareUsdt,
+              lockedFareNgn:
+                getNumber(payload.lockedFareNgn) ?? previous.driver?.lockedFareNgn,
             },
           };
         });
@@ -357,6 +363,7 @@ export function RideSessionProvider({ children }: { children: ReactNode }) {
             plannedDurationSeconds:
               getNumber(payload.plannedDurationSeconds) ?? previous.plannedDurationSeconds,
             fareEstimateUsdt: getNumber(payload.fareEstimateUsdt) ?? previous.fareEstimateUsdt,
+            fareEstimateNgn: getNumber(payload.fareEstimateNgn) ?? previous.fareEstimateNgn,
             route:
               pickup && updatedDestination && updatedStops && updatedRoute
                 ? {
@@ -432,6 +439,7 @@ export function RideSessionProvider({ children }: { children: ReactNode }) {
             status: 'completed',
             completedAt: getString(payload.completedAt) ?? previous.completedAt,
             completedFareUsdt: getNumber(payload.fareUsdt) ?? previous.completedFareUsdt,
+            completedFareNgn: getNumber(payload.fareNgn) ?? previous.completedFareNgn,
             plannedDistanceKm:
               getNumber(payload.distanceKm) ?? previous.plannedDistanceKm,
             plannedDurationSeconds:

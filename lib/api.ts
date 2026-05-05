@@ -1,7 +1,69 @@
-const apiBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL?.trim().replace(
-  /\/+$/,
-  "",
-);
+import Constants from "expo-constants";
+
+function getExpoDevServerHost(): string | null {
+  const hostUri = Constants.expoConfig?.hostUri;
+  if (typeof hostUri === "string" && hostUri.trim().length > 0) {
+    return hostUri.split(":")[0] ?? null;
+  }
+
+  const debuggerHost = Constants.expoGoConfig?.debuggerHost;
+  if (typeof debuggerHost === "string" && debuggerHost.trim().length > 0) {
+    return debuggerHost.split(":")[0] ?? null;
+  }
+
+  return null;
+}
+
+function resolveApiBaseUrl(rawValue: string | undefined): string | null {
+  const normalized = rawValue?.trim().replace(/\/+$/, "");
+  if (!normalized) {
+    return null;
+  }
+
+  try {
+    const url = new URL(normalized);
+    const isLoopbackHost =
+      url.hostname === "127.0.0.1" ||
+      url.hostname === "localhost" ||
+      url.hostname === "::1";
+
+    if (!isLoopbackHost) {
+      return url.toString().replace(/\/+$/, "");
+    }
+
+    const expoHost = getExpoDevServerHost();
+    if (!expoHost) {
+      return url.toString().replace(/\/+$/, "");
+    }
+
+    url.hostname = expoHost;
+    return url.toString().replace(/\/+$/, "");
+  } catch {
+    return normalized;
+  }
+}
+
+const apiBaseUrl = resolveApiBaseUrl(process.env.EXPO_PUBLIC_API_BASE_URL);
+
+function buildConnectivityErrorMessage(): string {
+  const configuredUrl = process.env.EXPO_PUBLIC_API_BASE_URL?.trim();
+  const resolvedUrl = apiBaseUrl;
+
+  if (!configuredUrl) {
+    return "EXPO_PUBLIC_API_BASE_URL is not configured.";
+  }
+
+  return [
+    "Could not reach the Wheelers backend.",
+    `Configured API base URL: ${configuredUrl}.`,
+    resolvedUrl && resolvedUrl !== configuredUrl
+      ? `Resolved API base URL: ${resolvedUrl}.`
+      : null,
+    "If you are testing on a physical device, use your computer LAN IP or Expo dev host instead of 127.0.0.1/localhost.",
+  ]
+    .filter((line): line is string => Boolean(line))
+    .join(" ");
+}
 
 export type BackendRole = "RIDER" | "DRIVER" | "BOTH";
 
@@ -312,6 +374,12 @@ async function postJson<TResponse>(
     method: "POST",
     headers,
     body: JSON.stringify(body),
+  }).catch((error) => {
+    throw new Error(
+      error instanceof Error && error.message !== "Network request failed"
+        ? error.message
+        : buildConnectivityErrorMessage(),
+    );
   });
 
   const payload = (await response.json().catch(() => null)) as unknown;
@@ -341,6 +409,12 @@ async function getJson<TResponse>(
   const response = await fetch(`${apiBaseUrl}${path}`, {
     method: "GET",
     headers,
+  }).catch((error) => {
+    throw new Error(
+      error instanceof Error && error.message !== "Network request failed"
+        ? error.message
+        : buildConnectivityErrorMessage(),
+    );
   });
 
   const payload = (await response.json().catch(() => null)) as unknown;

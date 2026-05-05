@@ -18,7 +18,6 @@ import { BackArrow } from "@/components/back-arrow";
 import { LiveMap } from "@/components/live-map";
 import { FloatingView } from "@/components/motion";
 import { PulseCircle } from "@/components/static-map";
-import { driver } from "@/data/mock";
 import { parseRideEstimateParam } from "@/lib/ride-estimate";
 import { parseRideItineraryParam, serializeRideItinerary } from "@/lib/ride-route";
 import { useRideSession } from "@/lib/ride-session";
@@ -46,8 +45,19 @@ function isTerminalStatus(status: string | undefined): boolean {
   return status === "completed" || status === "cancelled";
 }
 
-function formatUsdt(value: number | undefined, fallback: string): string {
-  return typeof value === "number" ? `${value.toFixed(2)} USDT` : fallback;
+function formatRideFare(params: {
+  ngn?: number;
+  usdt?: number;
+}): string | null {
+  if (typeof params.ngn === "number" && Number.isFinite(params.ngn)) {
+    return `NGN ${Math.round(params.ngn).toLocaleString("en-NG")}`;
+  }
+
+  if (typeof params.usdt === "number" && Number.isFinite(params.usdt)) {
+    return `${params.usdt.toFixed(2)} USDT`;
+  }
+
+  return null;
 }
 
 function describeIssue(
@@ -375,8 +385,8 @@ export default function MatchingScreen() {
                 <View style={styles.driverFoundCopy}>
                   <AppText variant="h2">Driver found</AppText>
                   <AppText variant="bodySmall" color={theme.colors.muted}>
-                    {matchedDriver.driverName ?? driver.name} • {" "}
-                    {matchedDriver.vehicleModel ?? driver.vehicle}
+                    {matchedDriver.driverName ?? "Driver assigned"}{" "}
+                    {matchedDriver.vehicleModel ? `• ${matchedDriver.vehicleModel}` : ""}
                   </AppText>
                 </View>
                 <MaterialIcons
@@ -388,11 +398,20 @@ export default function MatchingScreen() {
 
               <View style={styles.driverMetaRow}>
                 <MetaPill
-                  label={`ETA ${Math.max(1, Math.ceil((matchedDriver.etaSeconds ?? 120) / 60))} min`}
+                  label={
+                    matchedDriver.etaSeconds
+                      ? `ETA ${Math.max(1, Math.ceil(matchedDriver.etaSeconds / 60))} min`
+                      : "ETA pending"
+                  }
                 />
-                <MetaPill label={matchedDriver.vehiclePlate ?? driver.plate} />
+                <MetaPill label={matchedDriver.vehiclePlate ?? "Plate pending"} />
                 <MetaPill
-                  label={formatUsdt(matchedDriver.lockedFareUsdt, driver.fare)}
+                  label={
+                    formatRideFare({
+                      ngn: matchedDriver.lockedFareNgn ?? currentRide?.fareEstimateNgn,
+                      usdt: matchedDriver.lockedFareUsdt ?? currentRide?.fareEstimateUsdt,
+                    }) ?? "Fare pending"
+                  }
                 />
               </View>
 
@@ -471,7 +490,11 @@ export default function MatchingScreen() {
               </AppText>
               {currentRide?.fareEstimateUsdt ? (
                 <AppText variant="bodySmall" color={theme.colors.muted}>
-                  Current backend fare estimate: {formatUsdt(currentRide.fareEstimateUsdt, driver.fare)}
+                  Current backend fare estimate:{" "}
+                  {formatRideFare({
+                    ngn: currentRide.fareEstimateNgn,
+                    usdt: currentRide.fareEstimateUsdt,
+                  }) ?? "Fare pending"}
                 </AppText>
               ) : null}
             </View>

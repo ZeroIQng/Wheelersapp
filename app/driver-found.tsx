@@ -11,9 +11,7 @@ import { AppScreen } from "@/components/app-screen";
 import { AppText } from "@/components/app-text";
 import { FloatingView, PulseView, RevealView } from "@/components/motion";
 import { LiveMap } from "@/components/live-map";
-import { driver } from "@/data/mock";
 import {
-  estimateRide,
   getAdditionalStopCount,
   parseRideItineraryParam,
   serializeRideItinerary,
@@ -21,8 +19,19 @@ import {
 import { useRideSession } from "@/lib/ride-session";
 import { theme } from "@/theme";
 
-function formatUsdt(value: number | undefined, fallback: string): string {
-  return typeof value === "number" ? `${value.toFixed(2)} USDT` : fallback;
+function formatRideFare(params: {
+  ngn?: number;
+  usdt?: number;
+}): string | null {
+  if (typeof params.ngn === "number" && Number.isFinite(params.ngn)) {
+    return `NGN ${Math.round(params.ngn).toLocaleString("en-NG")}`;
+  }
+
+  if (typeof params.usdt === "number" && Number.isFinite(params.usdt)) {
+    return `${params.usdt.toFixed(2)} USDT`;
+  }
+
+  return null;
 }
 
 export default function DriverFoundScreen() {
@@ -36,17 +45,24 @@ export default function DriverFoundScreen() {
   );
   const { cancelRide, currentRide } = useRideSession();
   const itinerary = currentRide?.itinerary ?? fallbackItinerary;
-  const estimate = useMemo(() => estimateRide(itinerary), [itinerary]);
   const extraStops = getAdditionalStopCount(itinerary);
   const serializedItinerary = serializeRideItinerary(itinerary);
   const liveDriver = currentRide?.driver;
   const etaMinutes = liveDriver?.etaSeconds
     ? Math.max(1, Math.ceil(liveDriver.etaSeconds / 60))
-    : driver.etaMinutes;
-  const fareLabel = formatUsdt(
-    liveDriver?.lockedFareUsdt ?? currentRide?.fareEstimateUsdt,
-    driver.fare,
-  );
+    : null;
+  const fareLabel =
+    formatRideFare({
+      ngn: liveDriver?.lockedFareNgn ?? currentRide?.fareEstimateNgn,
+      usdt: liveDriver?.lockedFareUsdt ?? currentRide?.fareEstimateUsdt,
+    }) ?? "Fare pending";
+  const driverName = liveDriver?.driverName ?? "Driver assigned";
+  const driverInitials = driverName
+    .split(" ")
+    .map((part) => part[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
 
   useEffect(() => {
     if (currentRide?.status === "active") {
@@ -86,7 +102,9 @@ export default function DriverFoundScreen() {
             <BackArrow onPress={() => router.back()} />
           </FloatingView>
           <FloatingView style={styles.etaChip} distance={6}>
-            <AppText variant="monoSmall">ETA: {etaMinutes} min</AppText>
+            <AppText variant="monoSmall">
+              ETA: {etaMinutes !== null ? `${etaMinutes} min` : "pending"}
+            </AppText>
           </FloatingView>
         </LiveMap>
       </RevealView>
@@ -105,24 +123,21 @@ export default function DriverFoundScreen() {
           <PulseView>
             <View style={styles.avatar}>
               <AppText variant="h3" color={theme.colors.white}>
-                {(liveDriver?.driverName ?? driver.name)
-                  .split(" ")
-                  .map((part) => part[0])
-                  .join("")
-                  .slice(0, 2)
-                  .toUpperCase()}
+                {driverInitials || "DR"}
               </AppText>
             </View>
           </PulseView>
           <View style={styles.driverText}>
-            <AppText variant="h3">{liveDriver?.driverName ?? driver.name}</AppText>
+            <AppText variant="h3">{driverName}</AppText>
             <AppText variant="bodySmall" color={theme.colors.muted}>
-              ⭐ {liveDriver?.driverRating?.toFixed(1) ?? driver.rating} · {" "}
-              {liveDriver?.vehicleModel ?? driver.vehicle}
+              {typeof liveDriver?.driverRating === "number"
+                ? `⭐ ${liveDriver.driverRating.toFixed(1)}`
+                : "Rating pending"}
+              {liveDriver?.vehicleModel ? ` · ${liveDriver.vehicleModel}` : " · Vehicle pending"}
             </AppText>
             <View style={styles.plate}>
               <AppText variant="monoSmall" color={theme.colors.offWhite}>
-                {liveDriver?.vehiclePlate ?? driver.plate}
+                {liveDriver?.vehiclePlate ?? "PLATE PENDING"}
               </AppText>
             </View>
           </View>
@@ -143,14 +158,18 @@ export default function DriverFoundScreen() {
 
         <View style={styles.statsRow}>
           <RevealView delay={180} style={styles.statSlot}>
-            <StatCard value={`${etaMinutes}`} label="MIN AWAY" accent />
+            <StatCard value={etaMinutes !== null ? `${etaMinutes}` : "--"} label="MIN AWAY" accent />
           </RevealView>
           <RevealView delay={240} style={styles.statSlot}>
             <StatCard value={fareLabel} label="LIVE FARE" />
           </RevealView>
           <RevealView delay={300} style={styles.statSlot}>
             <StatCard
-              value={`${currentRide?.plannedDurationSeconds ? Math.max(1, Math.ceil(currentRide.plannedDurationSeconds / 60)) : estimate.etaMinutes + 12}`}
+              value={
+                currentRide?.plannedDurationSeconds
+                  ? `${Math.max(1, Math.ceil(currentRide.plannedDurationSeconds / 60))}`
+                  : "--"
+              }
               label="MIN TRIP"
             />
           </RevealView>
