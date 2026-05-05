@@ -268,7 +268,7 @@ export default function RiderHomeScreen() {
   const [historyMeasuredHeight, setHistoryMeasuredHeight] = useState<
     number | null
   >(null);
-  const historyVisibility = useSharedValue(1);
+  const historyVisibility = useSharedValue(0);
 
   const hideHistory = () => {
     historyVisibility.value = withTiming(0, { duration: 220 });
@@ -277,6 +277,17 @@ export default function RiderHomeScreen() {
   const showHistory = () => {
     historyVisibility.value = withTiming(1, { duration: 220 });
   };
+
+  useEffect(() => {
+    if (isLoadingHistory) {
+      return;
+    }
+
+    historyVisibility.value = withTiming(
+      historyPreview.length === 0 ? 0 : 1,
+      { duration: 220 },
+    );
+  }, [historyPreview.length, historyVisibility, isLoadingHistory]);
 
   const serviceSwipeResponder = useRef(
     PanResponder.create({
@@ -473,65 +484,62 @@ export default function RiderHomeScreen() {
           </Pressable>
         </View>
 
-        <Animated.View style={historyAnimatedStyle}>
-          <RevealView delay={180}>
-            <View
-              style={styles.historyPanel}
-              onLayout={({ nativeEvent }) => {
-                if (historyMeasuredHeight == null) {
-                  setHistoryMeasuredHeight(nativeEvent.layout.height);
-                }
-              }}
-            >
-              <View style={styles.historyHeader}>
-                <AppText variant="bodySmall" color={theme.colors.muted}>
-                  Ride history
-                </AppText>
-                <Pressable onPress={() => router.push("/rider/history" as Href)}>
-                  <AppText variant="monoSmall" color={theme.colors.orange}>
-                    See all
-                  </AppText>
-                </Pressable>
-              </View>
-              <View style={styles.historySection}>
-                {historyPreview.map((ride, index) => (
-                  <RevealView key={ride.id} delay={220 + index * 70}>
-                    <Pressable
-                      onPress={() => router.push("/rider/history" as Href)}
-                    >
-                      <AppCard style={styles.historyCard}>
-                        <View style={styles.historyIcon}>
-                          <MaterialIcons
-                            name={ride.icon as keyof typeof MaterialIcons.glyphMap}
-                            size={16}
-                            color={theme.colors.black}
-                          />
-                        </View>
-                        <View style={styles.historyCopy}>
-                          <AppText variant="bodyMedium">{ride.title}</AppText>
-                          <AppText
-                            variant="bodySmall"
-                            color={theme.colors.muted}
-                          >
-                            {ride.meta}
-                          </AppText>
-                        </View>
-                        <AppText variant="monoSmall" color={theme.colors.orange}>
-                          {ride.fare}
-                        </AppText>
-                      </AppCard>
-                    </Pressable>
-                  </RevealView>
-                ))}
-                {!isLoadingHistory && historyPreview.length === 0 ? (
+        {historyPreview.length > 0 ? (
+          <Animated.View style={historyAnimatedStyle}>
+            <RevealView delay={180}>
+              <View
+                style={styles.historyPanel}
+                onLayout={({ nativeEvent }) => {
+                  if (historyMeasuredHeight == null) {
+                    setHistoryMeasuredHeight(nativeEvent.layout.height);
+                  }
+                }}
+              >
+                <View style={styles.historyHeader}>
                   <AppText variant="bodySmall" color={theme.colors.muted}>
-                    No ride history yet.
+                    Ride history
                   </AppText>
-                ) : null}
+                  <Pressable onPress={() => router.push("/rider/history" as Href)}>
+                    <AppText variant="monoSmall" color={theme.colors.orange}>
+                      See all
+                    </AppText>
+                  </Pressable>
+                </View>
+                <View style={styles.historySection}>
+                  {historyPreview.map((ride, index) => (
+                    <RevealView key={ride.id} delay={220 + index * 70}>
+                      <Pressable
+                        onPress={() => router.push("/rider/history" as Href)}
+                      >
+                        <AppCard style={styles.historyCard}>
+                          <View style={styles.historyIcon}>
+                            <MaterialIcons
+                              name={ride.icon as keyof typeof MaterialIcons.glyphMap}
+                              size={16}
+                              color={theme.colors.black}
+                            />
+                          </View>
+                          <View style={styles.historyCopy}>
+                            <AppText variant="bodyMedium">{ride.title}</AppText>
+                            <AppText
+                              variant="bodySmall"
+                              color={theme.colors.muted}
+                            >
+                              {ride.meta}
+                            </AppText>
+                          </View>
+                          <AppText variant="monoSmall" color={theme.colors.orange}>
+                            {ride.fare}
+                          </AppText>
+                        </AppCard>
+                      </Pressable>
+                    </RevealView>
+                  ))}
+                </View>
               </View>
-            </View>
-          </RevealView>
-        </Animated.View>
+            </RevealView>
+          </Animated.View>
+        ) : null}
       </View>
     </AppScreen>
   );

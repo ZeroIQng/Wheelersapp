@@ -18,7 +18,6 @@ import { AppButton } from "@/components/app-button";
 import { AppCard } from "@/components/app-card";
 import { AppScreen } from "@/components/app-screen";
 import { AppText } from "@/components/app-text";
-import { MetricCard } from "@/components/MetricCard";
 import { SectionHeader } from "@/components/SectionHeader";
 import { WalletBalanceCard } from "@/components/WalletBalanceCard";
 import { walletOverview } from "@/data/mock";
@@ -176,6 +175,13 @@ export default function WalletScreen() {
     );
   };
 
+  const handleYieldPress = () => {
+    Alert.alert(
+      "Earn yield",
+      "Yield deposits will open from this button soon.",
+    );
+  };
+
   const handleDepositContinue = () => {
     if (!depositAmount.trim()) {
       Alert.alert(
@@ -263,26 +269,15 @@ export default function WalletScreen() {
         <WalletBalanceCard
           balance={walletOverview.balance}
           fiatApprox={walletOverview.fiatApprox}
-          accountName={walletOverview.accountDetails.accountName}
-          accountNumber={walletOverview.accountDetails.accountNumber}
-          bankName={walletOverview.accountDetails.bankName}
           onDeposit={openDepositModal}
           onWithdraw={handleWithdrawPress}
         />
 
-        <View style={styles.metricsRow}>
-          <MetricCard
-            accent="orange"
-            backgroundColor={theme.colors.white}
-            label="Yield today"
-            value={walletOverview.yieldToday}
-          />
-          <MetricCard
-            backgroundColor={theme.colors.white}
-            label="Current APY"
-            value={walletOverview.apy}
-          />
-        </View>
+        <Pressable onPress={handleYieldPress} style={styles.yieldCard}>
+          <AppText variant="h3" color={theme.colors.offWhite}>
+            Earn Yield
+          </AppText>
+        </Pressable>
 
         <SectionHeader
           subtitle="Clean wallet pages instead of the old deposit form block."
@@ -533,9 +528,16 @@ const styles = StyleSheet.create({
     gap: theme.spacing.lg,
     paddingTop: theme.spacing.lg,
   },
-  metricsRow: {
-    flexDirection: "row",
-    gap: theme.spacing.sm,
+  yieldCard: {
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.orange,
+    borderRadius: theme.radii.md,
+    backgroundColor: theme.colors.orange,
+    padding: theme.spacing.md,
+    minHeight: 72,
+    alignItems: "center",
+    justifyContent: "center",
+    ...theme.shadows.card,
   },
   walletPagesList: {
     gap: theme.spacing.sm,
