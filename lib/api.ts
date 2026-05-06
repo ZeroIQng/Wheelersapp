@@ -194,6 +194,33 @@ interface ScheduledRideListResponse {
   nextCursor: string | null;
 }
 
+export interface PouchSession {
+  id?: string;
+  type?: string;
+  status?: string;
+  amount?: number;
+  currency?: string;
+  cryptoCurrency?: string;
+  cryptoNetwork?: string;
+  chain?: string;
+  walletAddress?: string;
+  walletTag?: string;
+  metadata?: unknown;
+  [key: string]: unknown;
+}
+
+export interface PouchCreateSessionResponse {
+  provider: "pouch";
+  session: PouchSession;
+  walletCreditable: boolean;
+}
+
+export interface PouchGetSessionResponse {
+  provider: "pouch";
+  session: PouchSession;
+  sessionSynced: boolean;
+}
+
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
 }
@@ -457,6 +484,49 @@ export async function verifyPhoneOtp(
     {
       accessToken: input.accessToken,
       fallbackError: "Could not verify the phone code.",
+    },
+  );
+}
+
+export async function createPouchSession(input: {
+  accessToken: string;
+  type: "ONRAMP" | "OFFRAMP";
+  amountLocal?: number;
+  amountUsd?: number;
+  countryCode: string;
+  currency: string;
+  cryptoCurrency: string;
+  cryptoNetwork: string;
+  walletAddress?: string;
+}): Promise<PouchCreateSessionResponse> {
+  return postJson<PouchCreateSessionResponse>(
+    "/payments/pouch/sessions",
+    {
+      type: input.type,
+      amountLocal: input.amountLocal,
+      amountUsd: input.amountUsd,
+      countryCode: input.countryCode,
+      currency: input.currency,
+      cryptoCurrency: input.cryptoCurrency,
+      cryptoNetwork: input.cryptoNetwork,
+      walletAddress: input.walletAddress,
+    },
+    {
+      accessToken: input.accessToken,
+      fallbackError: "Could not start the Pouch deposit session.",
+    },
+  );
+}
+
+export async function getPouchSession(input: {
+  accessToken: string;
+  sessionId: string;
+}): Promise<PouchGetSessionResponse> {
+  return getJson<PouchGetSessionResponse>(
+    `/payments/pouch/sessions/${encodeURIComponent(input.sessionId)}`,
+    {
+      accessToken: input.accessToken,
+      fallbackError: "Could not refresh the Pouch deposit session.",
     },
   );
 }
