@@ -36,7 +36,7 @@ const riderServices = [
     label: "Schedule",
     tag: "Later",
     cardColor: "#FFF4CC",
-    route: "/destination-search" as Href,
+    route: "/schedule-ride" as Href,
   },
   {
     id: "group-ride",
@@ -166,18 +166,18 @@ function GroupRideArtwork() {
     leftFloat.value = withRepeat(
       withSequence(
         withTiming(-3, { duration: 1100, easing: Easing.inOut(Easing.ease) }),
-        withTiming(0, { duration: 1100, easing: Easing.inOut(Easing.ease) })
+        withTiming(0, { duration: 1100, easing: Easing.inOut(Easing.ease) }),
       ),
       -1,
-      false
+      false,
     );
     rightFloat.value = withRepeat(
       withSequence(
         withTiming(-2, { duration: 1200, easing: Easing.inOut(Easing.ease) }),
-        withTiming(0, { duration: 1200, easing: Easing.inOut(Easing.ease) })
+        withTiming(0, { duration: 1200, easing: Easing.inOut(Easing.ease) }),
       ),
       -1,
-      false
+      false,
     );
   }, [leftFloat, rightFloat]);
 
@@ -207,17 +207,15 @@ function GroupRideArtwork() {
   );
 }
 
-function ElectricVehicle({
-  accentColor,
-}: {
-  accentColor: string;
-}) {
+function ElectricVehicle({ accentColor }: { accentColor: string }) {
   return (
     <View style={styles.evWrap}>
       <View style={[styles.evBody, { backgroundColor: accentColor }]}>
         <View style={styles.evCabin} />
         <View style={styles.evWindow} />
-        <View style={[styles.evBolt, { backgroundColor: theme.colors.white }]} />
+        <View
+          style={[styles.evBolt, { backgroundColor: theme.colors.white }]}
+        />
         <View style={[styles.evLight, styles.evHeadlight]} />
         <View style={[styles.evLight, styles.evTaillight]} />
       </View>
@@ -251,16 +249,15 @@ function ServiceArtwork({
 
   return (
     <View style={styles.vehicleArtwork}>
-      <ElectricVehicle
-        accentColor={theme.colors.orange}
-      />
+      <ElectricVehicle accentColor={theme.colors.orange} />
     </View>
   );
 }
 
 export default function RiderHomeScreen() {
   const router = useRouter();
-  const { items: historyItems, isLoading: isLoadingHistory } = useRiderHistory(3);
+  const { items: historyItems, isLoading: isLoadingHistory } =
+    useRiderHistory(3);
   const historyPreview = historyItems.slice(0, 2);
   const expandedMapHeight = 345;
   const collapsedMapHeight = 480;
@@ -283,10 +280,9 @@ export default function RiderHomeScreen() {
       return;
     }
 
-    historyVisibility.value = withTiming(
-      historyPreview.length === 0 ? 0 : 1,
-      { duration: 220 },
-    );
+    historyVisibility.value = withTiming(historyPreview.length === 0 ? 0 : 1, {
+      duration: 220,
+    });
   }, [historyPreview.length, historyVisibility, isLoadingHistory]);
 
   const serviceSwipeResponder = useRef(
@@ -314,7 +310,7 @@ export default function RiderHomeScreen() {
           showHistory();
         }
       },
-    })
+    }),
   ).current;
 
   const historyAnimatedStyle = useAnimatedStyle(() => ({
@@ -334,7 +330,9 @@ export default function RiderHomeScreen() {
   }));
 
   const serviceAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: (1 - historyVisibility.value) * collapsedServiceShift }],
+    transform: [
+      { translateY: (1 - historyVisibility.value) * collapsedServiceShift },
+    ],
   }));
 
   return (
@@ -499,7 +497,9 @@ export default function RiderHomeScreen() {
                   <AppText variant="bodySmall" color={theme.colors.muted}>
                     Ride history
                   </AppText>
-                  <Pressable onPress={() => router.push("/rider/history" as Href)}>
+                  <Pressable
+                    onPress={() => router.push("/rider/history" as Href)}
+                  >
                     <AppText variant="monoSmall" color={theme.colors.orange}>
                       See all
                     </AppText>
@@ -514,7 +514,9 @@ export default function RiderHomeScreen() {
                         <AppCard style={styles.historyCard}>
                           <View style={styles.historyIcon}>
                             <MaterialIcons
-                              name={ride.icon as keyof typeof MaterialIcons.glyphMap}
+                              name={
+                                ride.icon as keyof typeof MaterialIcons.glyphMap
+                              }
                               size={16}
                               color={theme.colors.black}
                             />
@@ -528,7 +530,10 @@ export default function RiderHomeScreen() {
                               {ride.meta}
                             </AppText>
                           </View>
-                          <AppText variant="monoSmall" color={theme.colors.orange}>
+                          <AppText
+                            variant="monoSmall"
+                            color={theme.colors.orange}
+                          >
                             {ride.fare}
                           </AppText>
                         </AppCard>
