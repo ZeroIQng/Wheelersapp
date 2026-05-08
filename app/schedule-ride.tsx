@@ -18,10 +18,10 @@ import { AppScreen } from "@/components/app-screen";
 import { AppText } from "@/components/app-text";
 import { BackArrow } from "@/components/back-arrow";
 import {
-  fetchOsmPlaceSuggestions,
-  isOsmPlacesConfigured,
+  fetchGooglePlaceSuggestions,
+  isGoogleMapsConfigured,
   type PlaceSuggestion,
-} from "@/lib/osm-places";
+} from "@/lib/google-places";
 import {
   MAX_ADDITIONAL_STOPS,
   moveRouteStop,
@@ -573,9 +573,9 @@ export default function ScheduleRideScreen() {
     return () => clearTimeout(t);
   }, [activeField, mode]);
 
-  // OSM search
+  // Google place search
   useEffect(() => {
-    if (!isOsmPlacesConfigured()) {
+    if (!isGoogleMapsConfigured()) {
       setProviderSuggestions([]);
       setIsSearching(false);
       return;
@@ -590,7 +590,7 @@ export default function ScheduleRideScreen() {
     setIsSearching(true);
     const timeout = setTimeout(async () => {
       try {
-        const suggestions = await fetchOsmPlaceSuggestions(normalized);
+        const suggestions = await fetchGooglePlaceSuggestions(normalized);
         if (!cancelled) setProviderSuggestions(suggestions);
       } catch {
         if (!cancelled) setProviderSuggestions([]);
@@ -605,7 +605,7 @@ export default function ScheduleRideScreen() {
   }, [searchQuery]);
 
   const uniqueSuggestions = useMemo(() => {
-    if (!isOsmPlacesConfigured() || !searchQuery.trim()) return [];
+    if (!isGoogleMapsConfigured() || !searchQuery.trim()) return [];
     const seen = new Set<string>();
     return providerSuggestions.filter((item) => {
       const key = `${item.id}:${item.title}:${item.subtitle}`;

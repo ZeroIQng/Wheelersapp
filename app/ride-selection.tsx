@@ -23,7 +23,7 @@ import { LiveMap } from "@/components/live-map";
 import { FloatingView } from "@/components/motion";
 import { getAccessTokenWithRetry } from "@/lib/access-token";
 import { getRideEstimate, isBackendConfigured, type RideEstimateResponse } from "@/lib/api";
-import { resolvePlaceQuery } from "@/lib/osm-places";
+import { resolvePlaceQuery } from "@/lib/google-places";
 import { parseRideEstimateParam, serializeRideEstimate } from "@/lib/ride-estimate";
 import {
   getRideRouteRows,

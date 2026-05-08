@@ -20,11 +20,11 @@ import { BackArrow } from "@/components/back-arrow";
 import { getAccessTokenWithRetry } from "@/lib/access-token";
 import { getRideEstimate, isBackendConfigured } from "@/lib/api";
 import {
-  fetchOsmPlaceSuggestions,
-  isOsmPlacesConfigured,
+  fetchGooglePlaceSuggestions,
+  isGoogleMapsConfigured,
   resolvePlaceQuery,
   type PlaceSuggestion,
-} from "@/lib/osm-places";
+} from "@/lib/google-places";
 import type { RideEstimateResponse } from "@/lib/api";
 import { serializeRideEstimate } from "@/lib/ride-estimate";
 import {
@@ -112,11 +112,9 @@ export default function DestinationSearchScreen() {
     return () => clearTimeout(timeout);
   }, [activeField, mode]);
 
-  // ─── OSM search — runs whenever searchQuery changes, regardless of mode ─────
-  // FIX: removed the isSearchActive gate that was killing OSM in form mode.
-  // We always search as long as there's a query and OSM is configured.
+  // Google place search runs whenever the current query changes.
   useEffect(() => {
-    if (!isOsmPlacesConfigured()) {
+    if (!isGoogleMapsConfigured()) {
       setProviderSuggestions([]);
       setIsSearching(false);
       return;
@@ -135,7 +133,7 @@ export default function DestinationSearchScreen() {
 
     const timeout = setTimeout(async () => {
       try {
-        const suggestions = await fetchOsmPlaceSuggestions(normalized);
+        const suggestions = await fetchGooglePlaceSuggestions(normalized);
         if (!cancelled) setProviderSuggestions(suggestions);
       } catch {
         if (!cancelled) setProviderSuggestions([]);
@@ -148,10 +146,10 @@ export default function DestinationSearchScreen() {
       cancelled = true;
       clearTimeout(timeout);
     };
-  }, [searchQuery]); // ← only depends on searchQuery now, not isSearchActive
+  }, [searchQuery]);
 
   const shouldUseProviderResults =
-    isOsmPlacesConfigured() && searchQuery.trim().length > 0;
+    isGoogleMapsConfigured() && searchQuery.trim().length > 0;
 
   const uniqueSuggestions = useMemo(() => {
     const filteredSuggestions = shouldUseProviderResults ? providerSuggestions : [];
@@ -174,7 +172,7 @@ export default function DestinationSearchScreen() {
         : field.type === "destination"
         ? destinationValue
         : routeStops[(field as { type: "stop"; index: number }).index] ?? "";
-    // Set query BEFORE switching mode so OSM fires immediately
+    // Set query before switching mode so Google autocomplete fires immediately.
     setSearchQuery(currentVal);
     setMode("search");
   };

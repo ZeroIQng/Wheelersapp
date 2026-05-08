@@ -20,7 +20,7 @@ import {
   type RideEstimateWaypoint,
   type RideRouteSnapshot,
 } from '@/lib/api';
-import { resolvePlaceQuery } from '@/lib/osm-places';
+import { resolvePlaceQuery } from '@/lib/google-places';
 import { getPrivyEthereumWalletAddress } from '@/lib/privy-user';
 import { serializeRideItinerary, type RideItinerary } from '@/lib/ride-route';
 

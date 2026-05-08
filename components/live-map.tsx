@@ -1,7 +1,8 @@
 import { PropsWithChildren, useEffect, useMemo, useRef, useState } from "react";
 import { Platform, StyleSheet, View } from "react-native";
-import MapView, { Marker, Polyline, type EdgePadding, type LatLng } from "react-native-maps";
+import { Marker, Polyline, type EdgePadding, type LatLng } from "react-native-maps";
 
+import { GoogleMapView } from "@/components/GoogleMapView";
 import type {
   RideEstimateWaypoint,
   RideMapCoordinate,
@@ -43,7 +44,7 @@ export function LiveMap({
   initialDelta = defaultInitialDelta,
   fitPadding,
 }: LiveMapProps) {
-  const mapRef = useRef<MapView | null>(null);
+  const mapRef = useRef<import("react-native-maps").default | null>(null);
   const [mapReady, setMapReady] = useState(false);
   const lastFitSignatureRef = useRef<string | null>(null);
 
@@ -134,7 +135,7 @@ export function LiveMap({
         },
       ]}
     >
-      <MapView
+      <GoogleMapView
         initialRegion={initialRegion}
         mapPadding={Platform.select({ ios: undefined, default: undefined })}
         onMapReady={() => setMapReady(true)}
@@ -182,7 +183,7 @@ export function LiveMap({
             </View>
           </Marker>
         ) : null}
-      </MapView>
+      </GoogleMapView>
 
       <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
         {children}
