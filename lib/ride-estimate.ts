@@ -3,6 +3,20 @@ import {
   parseRideRouteGeometry,
   type RideEstimateResponse,
 } from "@/lib/api";
+import { estimateRide, type RideItinerary } from "@/lib/ride-route";
+
+export function buildInstantRideEstimate(
+  itinerary: RideItinerary,
+): RideEstimateResponse {
+  const preview = estimateRide(itinerary);
+
+  return {
+    plannedDistanceKm: preview.distanceKm,
+    plannedDurationSeconds: preview.etaMinutes * 60,
+    fareEstimateUsdt: 0,
+    fareEstimateNgn: preview.priceNgn,
+  };
+}
 
 export function serializeRideEstimate(estimate: RideEstimateResponse): string {
   return encodeURIComponent(JSON.stringify(estimate));

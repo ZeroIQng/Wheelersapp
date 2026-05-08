@@ -24,8 +24,13 @@ import { FloatingView } from "@/components/motion";
 import { getAccessTokenWithRetry } from "@/lib/access-token";
 import { getRideEstimate, isBackendConfigured, type RideEstimateResponse } from "@/lib/api";
 import { resolvePlaceQuery } from "@/lib/google-places";
-import { parseRideEstimateParam, serializeRideEstimate } from "@/lib/ride-estimate";
 import {
+  buildInstantRideEstimate,
+  parseRideEstimateParam,
+  serializeRideEstimate,
+} from "@/lib/ride-estimate";
+import {
+  estimateRide,
   getRideRouteRows,
   parseRideItineraryParam,
   serializeRideItinerary,
@@ -48,6 +53,13 @@ function formatNgn(value: number): string {
   return `NGN ${Math.round(value).toLocaleString("en-NG")}`;
 }
 
+function hasResolvedLiveEstimate(
+  estimate: RideEstimateResponse | null,
+): estimate is RideEstimateResponse &
+  Required<Pick<RideEstimateResponse, "pickup" | "destination" | "route">> {
+  return Boolean(estimate?.pickup && estimate.destination && estimate.route);
+}
+
 export default function RideSelectionScreen() {
   const router = useRouter();
   const { getAccessToken, isReady, user } = usePrivy();
@@ -63,9 +75,14 @@ export default function RideSelectionScreen() {
     () => parseRideEstimateParam(params.estimate),
     [params.estimate],
   );
+  const instantPreview = useMemo(() => estimateRide(itinerary), [itinerary]);
+  const fallbackEstimate = useMemo(
+    () => buildInstantRideEstimate(itinerary),
+    [itinerary],
+  );
   const routeRows = useMemo(() => getRideRouteRows(itinerary), [itinerary]);
   const [liveEstimate, setLiveEstimate] = useState<RideEstimateResponse | null>(
-    initialEstimate,
+    initialEstimate ?? fallbackEstimate,
   );
   const [estimateError, setEstimateError] = useState<string | null>(null);
   const collapsedSheetOffset = 196;
@@ -73,8 +90,8 @@ export default function RideSelectionScreen() {
   const serializedItinerary = serializeRideItinerary(itinerary);
 
   useEffect(() => {
-    setLiveEstimate(initialEstimate);
-  }, [initialEstimate]);
+    setLiveEstimate(initialEstimate ?? fallbackEstimate);
+  }, [fallbackEstimate, initialEstimate]);
 
   const SHEET_MIN_HEIGHT = 470;
   const routeFitPadding = {
@@ -128,7 +145,7 @@ export default function RideSelectionScreen() {
     async function loadEstimate(): Promise<void> {
       if (!isBackendConfigured() || !isReady || !user) {
         if (!cancelled) {
-          setLiveEstimate(null);
+          setLiveEstimate((current) => current ?? fallbackEstimate);
         }
         return;
       }
@@ -136,7 +153,7 @@ export default function RideSelectionScreen() {
       const destinationLabel = itinerary.stops[itinerary.stops.length - 1];
       if (!destinationLabel) {
         if (!cancelled) {
-          setLiveEstimate(null);
+          setLiveEstimate((current) => current ?? fallbackEstimate);
         }
         return;
       }
@@ -167,7 +184,6 @@ export default function RideSelectionScreen() {
         }
       } catch (loadError) {
         if (!cancelled) {
-          setLiveEstimate(null);
           setEstimateError(
             loadError instanceof Error
               ? loadError.message
@@ -184,36 +200,33 @@ export default function RideSelectionScreen() {
     return () => {
       cancelled = true;
     };
-  }, [getAccessToken, isReady, itinerary, user]);
+  }, [fallbackEstimate, getAccessToken, isReady, itinerary, user]);
 
+  const resolvedEstimate = hasResolvedLiveEstimate(liveEstimate) ? liveEstimate : null;
   const liveEstimateFareNgn = liveEstimate ? getLiveEstimateFareNgn(liveEstimate) : null;
-  const displayEtaLabel = liveEstimate
-    ? `${Math.max(1, Math.ceil(liveEstimate.plannedDurationSeconds / 60))} min trip`
-    : estimateError
-      ? "Route unavailable"
-      : "Calculating route";
-  const displayDistanceLabel = liveEstimate
-    ? `${liveEstimate.plannedDistanceKm.toFixed(1)} km route`
-    : estimateError
-      ? "Distance unavailable"
-      : "Waiting for route";
+  const displayEtaLabel = resolvedEstimate
+    ? `${Math.max(1, Math.ceil(resolvedEstimate.plannedDurationSeconds / 60))} min trip`
+    : `${instantPreview.etaMinutes} min trip`;
+  const displayDistanceLabel = resolvedEstimate
+    ? `${resolvedEstimate.plannedDistanceKm.toFixed(1)} km route`
+    : instantPreview.distanceLabel;
   const displayFareLabel =
-    liveEstimateFareNgn !== null ? formatNgn(liveEstimateFareNgn) : "Fare pending";
-  const routeNote = liveEstimate
+    liveEstimateFareNgn !== null
+      ? formatNgn(liveEstimateFareNgn)
+      : formatNgn(instantPreview.priceNgn);
+  const routeNote = resolvedEstimate
     ? "Live backend estimate for this route."
-    : estimateError ?? "Requesting a live route estimate from the backend.";
-  const canBookRide = Boolean(liveEstimate);
+    : estimateError
+      ? "Live quote is delayed. Showing an instant route preview."
+      : "Instant route preview. Final live quote will refresh automatically.";
+  const canBookRide = true;
 
   const handleBookRide = () => {
-    if (!liveEstimate) {
-      return;
-    }
-
     router.push({
       pathname: "/matching",
       params: {
         itinerary: serializedItinerary,
-        estimate: serializeRideEstimate(liveEstimate),
+        estimate: serializeRideEstimate(liveEstimate ?? fallbackEstimate),
       },
     });
   };
@@ -250,7 +263,7 @@ export default function RideSelectionScreen() {
           <FloatingView style={styles.priceBadge} distance={6}>
             <View style={styles.priceBadgeInner}>
               <AppText variant="bodySmall" color={theme.colors.muted}>
-                {liveEstimate ? "Backend fare preview" : "Estimated fare"}
+                {resolvedEstimate ? "Backend fare preview" : "Estimated fare"}
               </AppText>
               <AppText variant="monoLarge">{displayFareLabel}</AppText>
             </View>
@@ -292,7 +305,7 @@ export default function RideSelectionScreen() {
               <AppText variant="bodySmall" color={theme.colors.muted}>
                 {routeNote}
               </AppText>
-              {estimateError && !liveEstimate ? (
+              {estimateError && !resolvedEstimate ? (
                 <AppText variant="bodySmall" color={theme.colors.muted}>
                   {estimateError}
                 </AppText>
@@ -327,7 +340,7 @@ export default function RideSelectionScreen() {
         </View>
 
         <AppButton
-          title={liveEstimate ? "Book Wheeler" : "Waiting for live estimate"}
+          title="Book Wheeler"
           onPress={handleBookRide}
           disabled={!canBookRide}
         />

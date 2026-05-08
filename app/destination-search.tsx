@@ -26,7 +26,10 @@ import {
   type PlaceSuggestion,
 } from "@/lib/google-places";
 import type { RideEstimateResponse } from "@/lib/api";
-import { serializeRideEstimate } from "@/lib/ride-estimate";
+import {
+  buildInstantRideEstimate,
+  serializeRideEstimate,
+} from "@/lib/ride-estimate";
 import {
   MAX_ADDITIONAL_STOPS,
   moveRouteStop,
@@ -287,6 +290,10 @@ export default function DestinationSearchScreen() {
     !destinationValue.trim() ||
     intermediateStops.some((stop) => stop.trim().length === 0);
   const serializedItinerary = serializeRideItinerary(itinerary);
+  const instantEstimate = useMemo(
+    () => buildInstantRideEstimate(itinerary),
+    [itinerary],
+  );
   const searchHeading = getSearchHeading(activeField);
   const activeSummaryLabel = getActiveSummaryLabel(activeField);
   const maxStopsReached = intermediateStops.length >= MAX_ADDITIONAL_STOPS;
@@ -570,9 +577,9 @@ export default function DestinationSearchScreen() {
                     pathname: "/ride-selection",
                     params: {
                       itinerary: serializedItinerary,
-                      ...(prefetchedEstimate
-                        ? { estimate: serializeRideEstimate(prefetchedEstimate) }
-                        : {}),
+                      estimate: serializeRideEstimate(
+                        prefetchedEstimate ?? instantEstimate,
+                      ),
                     },
                   });
                 }}
