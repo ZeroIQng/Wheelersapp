@@ -215,7 +215,7 @@ export default function RideSelectionScreen() {
       ? formatNgn(liveEstimateFareNgn)
       : formatNgn(instantPreview.priceNgn);
   const routeNote = resolvedEstimate
-    ? "Live backend estimate for this route."
+    ? "Live estimate for this route."
     : estimateError
       ? "Live quote is delayed. Showing an instant route preview."
       : "Instant route preview. Final live quote will refresh automatically.";
@@ -301,7 +301,7 @@ export default function RideSelectionScreen() {
                 <MetricPill label={displayEtaLabel} />
                 <MetricPill label={displayDistanceLabel} muted />
               </View>
-              <AppText variant="h3">Wheeler</AppText>
+              { <AppText variant="h3">Wheeler</AppText> }
               <AppText variant="bodySmall" color={theme.colors.muted}>
                 {routeNote}
               </AppText>

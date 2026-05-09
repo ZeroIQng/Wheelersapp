@@ -25,6 +25,10 @@ import {
   resolvePlaceQuery,
   type PlaceSuggestion,
 } from "@/lib/google-places";
+import {
+  readRecentPlaceSearches,
+  saveRecentPlaceSearch,
+} from "@/lib/place-search-history";
 import type { RideEstimateResponse } from "@/lib/api";
 import {
   buildInstantRideEstimate,
@@ -49,6 +53,8 @@ type ScreenMode = "form" | "search";
 type FlowMode = "booking" | "trip-edit";
 
 const DRAG_SWAP_THRESHOLD = 88;
+const SEARCH_DEBOUNCE_MS = 280;
+const FORM_HISTORY_PREVIEW_LIMIT = 4;
 
 function getSearchHeading(activeField: ActiveField) {
   if (activeField.type === "pickup") return "Search pickup";
@@ -64,6 +70,41 @@ function getActiveSummaryLabel(activeField: ActiveField) {
 
 function formatSuggestionValue(item: { title: string; subtitle: string }) {
   return item.subtitle ? `${item.title}, ${item.subtitle}` : item.title;
+}
+
+function normalizeSearchText(value: string) {
+  return value.trim().toLowerCase();
+}
+
+function isSamePlaceSuggestion(a: PlaceSuggestion, b: PlaceSuggestion) {
+  return normalizeSearchText(a.address) === normalizeSearchText(b.address);
+}
+
+function matchesSearchQuery(place: PlaceSuggestion, query: string) {
+  const normalizedQuery = normalizeSearchText(query);
+  if (!normalizedQuery) {
+    return true;
+  }
+
+  return [
+    place.title,
+    place.subtitle,
+    place.address,
+    formatSuggestionValue(place),
+  ].some((part) => normalizeSearchText(part).includes(normalizedQuery));
+}
+
+function isExactSearchMatch(place: PlaceSuggestion, query: string) {
+  const normalizedQuery = normalizeSearchText(query);
+  if (!normalizedQuery) {
+    return false;
+  }
+
+  return [
+    place.title,
+    place.address,
+    formatSuggestionValue(place),
+  ].some((part) => normalizeSearchText(part) === normalizedQuery);
 }
 
 export default function DestinationSearchScreen() {
@@ -94,7 +135,9 @@ export default function DestinationSearchScreen() {
   const [routeStops, setRouteStops] = useState(initialItinerary.stops);
   // Single shared search query — used in both form inline mode and full search mode
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
   const [providerSuggestions, setProviderSuggestions] = useState<PlaceSuggestion[]>([]);
+  const [recentPlaces, setRecentPlaces] = useState<PlaceSuggestion[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   // Which field is currently being edited inline in form mode
   const [activeRouteIndex, setActiveRouteIndex] = useState<number | null>(null);
@@ -115,6 +158,55 @@ export default function DestinationSearchScreen() {
     return () => clearTimeout(timeout);
   }, [activeField, mode]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadRecentPlaces = async () => {
+      const storedPlaces = await readRecentPlaceSearches();
+      if (!cancelled) {
+        setRecentPlaces(storedPlaces);
+      }
+    };
+
+    void loadRecentPlaces();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, SEARCH_DEBOUNCE_MS);
+
+    return () => clearTimeout(timeout);
+  }, [searchQuery]);
+
+  const trimmedSearchQuery = searchQuery.trim();
+  const matchingRecentPlaces = useMemo(
+    () => recentPlaces.filter((place) => matchesSearchQuery(place, trimmedSearchQuery)),
+    [recentPlaces, trimmedSearchQuery],
+  );
+  const hasExactRecentMatch = useMemo(
+    () =>
+      recentPlaces.some((place) =>
+        isExactSearchMatch(place, debouncedSearchQuery),
+      ),
+    [debouncedSearchQuery, recentPlaces],
+  );
+  const shouldReuseCurrentRecentMatch = useMemo(
+    () =>
+      recentPlaces.some((place) =>
+        isExactSearchMatch(place, searchQuery),
+      ),
+    [recentPlaces, searchQuery],
+  );
+  const recentPlacesPreview = useMemo(
+    () => recentPlaces.slice(0, FORM_HISTORY_PREVIEW_LIMIT),
+    [recentPlaces],
+  );
+
   // Google place search runs whenever the current query changes.
   useEffect(() => {
     if (!isGoogleMapsConfigured()) {
@@ -123,9 +215,15 @@ export default function DestinationSearchScreen() {
       return;
     }
 
-    const normalized = searchQuery.trim();
+    const normalized = debouncedSearchQuery.trim();
 
     if (!normalized) {
+      setProviderSuggestions([]);
+      setIsSearching(false);
+      return;
+    }
+
+    if (hasExactRecentMatch) {
       setProviderSuggestions([]);
       setIsSearching(false);
       return;
@@ -134,27 +232,34 @@ export default function DestinationSearchScreen() {
     let cancelled = false;
     setIsSearching(true);
 
-    const timeout = setTimeout(async () => {
+    void (async () => {
       try {
         const suggestions = await fetchGooglePlaceSuggestions(normalized);
-        if (!cancelled) setProviderSuggestions(suggestions);
+        if (!cancelled) {
+          setProviderSuggestions(suggestions);
+        }
       } catch {
-        if (!cancelled) setProviderSuggestions([]);
+        if (!cancelled) {
+          setProviderSuggestions([]);
+        }
       } finally {
-        if (!cancelled) setIsSearching(false);
+        if (!cancelled) {
+          setIsSearching(false);
+        }
       }
-    }, 220);
+    })();
 
     return () => {
       cancelled = true;
-      clearTimeout(timeout);
     };
-  }, [searchQuery]);
+  }, [debouncedSearchQuery, hasExactRecentMatch]);
 
   const shouldUseProviderResults =
-    isGoogleMapsConfigured() && searchQuery.trim().length > 0;
+    isGoogleMapsConfigured() &&
+    trimmedSearchQuery.length > 0 &&
+    !shouldReuseCurrentRecentMatch;
 
-  const uniqueSuggestions = useMemo(() => {
+  const uniqueProviderSuggestions = useMemo(() => {
     const filteredSuggestions = shouldUseProviderResults ? providerSuggestions : [];
     const seen = new Set<string>();
     return filteredSuggestions.filter((item) => {
@@ -164,6 +269,16 @@ export default function DestinationSearchScreen() {
       return true;
     });
   }, [providerSuggestions, shouldUseProviderResults]);
+  const providerResults = useMemo(
+    () =>
+      uniqueProviderSuggestions.filter(
+        (item) =>
+          !matchingRecentPlaces.some((recentPlace) =>
+            isSamePlaceSuggestion(recentPlace, item),
+          ),
+      ),
+    [matchingRecentPlaces, uniqueProviderSuggestions],
+  );
 
   // ─── Open full-screen search for pickup (not editable inline) ───────────────
   const openSearch = (field: ActiveField) => {
@@ -187,6 +302,13 @@ export default function DestinationSearchScreen() {
       return;
     }
     router.back();
+  };
+
+  const handlePlaceSelection = (place: PlaceSuggestion) => {
+    void saveRecentPlaceSearch(place)
+      .then((next) => setRecentPlaces(next))
+      .catch(() => {});
+    handleSuggestionPress(formatSuggestionValue(place));
   };
 
   // ─── Pick a suggestion ──────────────────────────────────────────────────────
@@ -301,6 +423,7 @@ export default function DestinationSearchScreen() {
 
   // Show results panel in form mode whenever a route field is focused
   const showInlineResults = activeRouteIndex != null;
+  const shouldShowIdleHistory = !showInlineResults && recentPlacesPreview.length > 0;
 
   useEffect(() => {
     if (
@@ -477,6 +600,29 @@ export default function DestinationSearchScreen() {
                 </Pressable>
               </View>
 
+              {shouldShowIdleHistory ? (
+                <View style={styles.historySection}>
+                  <View style={styles.sectionHeading}>
+                    <AppText variant="monoSmall" color={theme.colors.muted}>
+                      HISTORY
+                    </AppText>
+                    <AppText variant="bodySmall" color={theme.colors.muted}>
+                      Recent places saved on this device
+                    </AppText>
+                  </View>
+                  <View style={styles.resultsListContent}>
+                    {recentPlacesPreview.map((item, index) => (
+                      <PlaceResultRow
+                        icon="history"
+                        item={item}
+                        key={`${item.id}-${index}-recent`}
+                        onPress={() => handlePlaceSelection(item)}
+                      />
+                    ))}
+                  </View>
+                </View>
+              ) : null}
+
               {/* ── Inline results — shown when any stop/destination field is active ── */}
               {showInlineResults ? (
                 <View style={styles.resultsSection}>
@@ -487,34 +633,35 @@ export default function DestinationSearchScreen() {
                         Finding matching locations.
                       </AppText>
                     </View>
-                  ) : uniqueSuggestions.length > 0 ? (
-                    /* FIX: no maxHeight cap — scroll is handled by the parent ScrollView */
+                  ) : matchingRecentPlaces.length > 0 || providerResults.length > 0 ? (
                     <View style={styles.resultsListContent}>
-                      {uniqueSuggestions.map((item, index) => (
-                        <Pressable
-                          key={`${item.id}-${index}`}
-                          onPress={() =>
-                            handleSuggestionPress(formatSuggestionValue(item))
-                          }
-                          style={styles.resultRow}
-                        >
-                          <View style={styles.resultIcon}>
-                            <MaterialIcons
-                              color={theme.colors.black}
-                              name={item.icon}
-                              size={18}
-                            />
-                          </View>
-                          <View style={styles.resultCopy}>
-                            <AppText variant="bodyMedium">{item.title}</AppText>
-                            <AppText variant="bodySmall" color={theme.colors.muted}>
-                              {item.subtitle}
-                            </AppText>
-                          </View>
-                        </Pressable>
+                      {trimmedSearchQuery.length === 0 && matchingRecentPlaces.length > 0 ? (
+                        <View style={styles.sectionHeading}>
+                          <AppText variant="monoSmall" color={theme.colors.muted}>
+                            HISTORY
+                          </AppText>
+                          <AppText variant="bodySmall" color={theme.colors.muted}>
+                            Recent places saved on this device
+                          </AppText>
+                        </View>
+                      ) : null}
+                      {matchingRecentPlaces.map((item, index) => (
+                        <PlaceResultRow
+                          icon="history"
+                          item={item}
+                          key={`${item.id}-${index}-history`}
+                          onPress={() => handlePlaceSelection(item)}
+                        />
+                      ))}
+                      {providerResults.map((item, index) => (
+                        <PlaceResultRow
+                          item={item}
+                          key={`${item.id}-${index}-provider`}
+                          onPress={() => handlePlaceSelection(item)}
+                        />
                       ))}
                     </View>
-                  ) : searchQuery.trim().length > 0 ? (
+                  ) : trimmedSearchQuery.length > 0 ? (
                     <View style={styles.emptyState}>
                       <AppText variant="bodyMedium">No places found</AppText>
                       <AppText variant="bodySmall" color={theme.colors.muted}>
@@ -653,33 +800,35 @@ export default function DestinationSearchScreen() {
                       Finding matching locations.
                     </AppText>
                   </View>
-                ) : uniqueSuggestions.length > 0 ? (
+                ) : matchingRecentPlaces.length > 0 || providerResults.length > 0 ? (
                   <View style={styles.resultsListContent}>
-                    {uniqueSuggestions.map((item, index) => (
-                      <Pressable
-                        key={`${item.id}-${index}`}
-                        onPress={() =>
-                          handleSuggestionPress(formatSuggestionValue(item))
-                        }
-                        style={styles.resultRow}
-                      >
-                        <View style={styles.resultIcon}>
-                          <MaterialIcons
-                            color={theme.colors.black}
-                            name={item.icon}
-                            size={18}
-                          />
-                        </View>
-                        <View style={styles.resultCopy}>
-                          <AppText variant="bodyMedium">{item.title}</AppText>
-                          <AppText variant="bodySmall" color={theme.colors.muted}>
-                            {item.subtitle}
-                          </AppText>
-                        </View>
-                      </Pressable>
+                    {trimmedSearchQuery.length === 0 && matchingRecentPlaces.length > 0 ? (
+                      <View style={styles.sectionHeading}>
+                        <AppText variant="monoSmall" color={theme.colors.muted}>
+                          HISTORY
+                        </AppText>
+                        <AppText variant="bodySmall" color={theme.colors.muted}>
+                          Recent places saved on this device
+                        </AppText>
+                      </View>
+                    ) : null}
+                    {matchingRecentPlaces.map((item, index) => (
+                      <PlaceResultRow
+                        icon="history"
+                        item={item}
+                        key={`${item.id}-${index}-search-history`}
+                        onPress={() => handlePlaceSelection(item)}
+                      />
+                    ))}
+                    {providerResults.map((item, index) => (
+                      <PlaceResultRow
+                        item={item}
+                        key={`${item.id}-${index}-search-provider`}
+                        onPress={() => handlePlaceSelection(item)}
+                      />
                     ))}
                   </View>
-                ) : searchQuery.trim().length > 0 ? (
+                ) : trimmedSearchQuery.length > 0 ? (
                   <View style={styles.emptyState}>
                     <AppText variant="bodyMedium">No places found</AppText>
                     <AppText variant="bodySmall" color={theme.colors.muted}>
@@ -687,11 +836,34 @@ export default function DestinationSearchScreen() {
                     </AppText>
                   </View>
                 ) : (
-                  <View style={styles.emptyState}>
-                    <AppText variant="bodyMedium">Search Lagos addresses</AppText>
-                    <AppText variant="bodySmall" color={theme.colors.muted}>
-                      Start typing a street, estate, building, or bus stop.
-                    </AppText>
+                  <View style={styles.historySection}>
+                    <View style={styles.sectionHeading}>
+                      <AppText variant="monoSmall" color={theme.colors.muted}>
+                        HISTORY
+                      </AppText>
+                      <AppText variant="bodySmall" color={theme.colors.muted}>
+                        Recent places saved on this device
+                      </AppText>
+                    </View>
+                    {recentPlaces.length > 0 ? (
+                      <View style={styles.resultsListContent}>
+                        {recentPlaces.map((item, index) => (
+                          <PlaceResultRow
+                            icon="history"
+                            item={item}
+                            key={`${item.id}-${index}-search-empty`}
+                            onPress={() => handlePlaceSelection(item)}
+                          />
+                        ))}
+                      </View>
+                    ) : (
+                      <View style={styles.emptyState}>
+                        <AppText variant="bodyMedium">Search Lagos addresses</AppText>
+                        <AppText variant="bodySmall" color={theme.colors.muted}>
+                          Start typing a street, estate, building, or bus stop.
+                        </AppText>
+                      </View>
+                    )}
                   </View>
                 )}
               </View>
@@ -737,6 +909,34 @@ function SearchTriggerField({
         </AppText>
       </Pressable>
     </View>
+  );
+}
+
+function PlaceResultRow({
+  icon,
+  item,
+  onPress,
+}: {
+  icon?: PlaceSuggestion["icon"];
+  item: PlaceSuggestion;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable onPress={onPress} style={styles.resultRow}>
+      <View style={styles.resultIcon}>
+        <MaterialIcons
+          color={theme.colors.black}
+          name={icon ?? item.icon}
+          size={18}
+        />
+      </View>
+      <View style={styles.resultCopy}>
+        <AppText variant="bodyMedium">{item.title}</AppText>
+        <AppText variant="bodySmall" color={theme.colors.muted}>
+          {item.subtitle}
+        </AppText>
+      </View>
+    </Pressable>
   );
 }
 
@@ -1014,6 +1214,13 @@ const styles = StyleSheet.create({
   },
   resultsSection: {
     gap: theme.spacing.sm,
+  },
+  historySection: {
+    gap: theme.spacing.sm,
+  },
+  sectionHeading: {
+    gap: 2,
+    paddingHorizontal: theme.spacing.xs,
   },
   // FIX: removed maxHeight from resultsList — parent ScrollView handles scrolling
   resultsListContent: {
