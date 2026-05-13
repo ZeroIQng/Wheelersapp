@@ -35,6 +35,7 @@ import {
   parseRideItineraryParam,
   serializeRideItinerary,
 } from "@/lib/ride-route";
+import { submitScheduledRide } from "@/lib/scheduled-rides";
 import { theme } from "@/theme";
 
 const { height } = Dimensions.get("window");
@@ -60,12 +61,49 @@ function hasResolvedLiveEstimate(
   return Boolean(estimate?.pickup && estimate.destination && estimate.route);
 }
 
+function parseScheduledAtParam(
+  value: string | string[] | undefined,
+): string | null {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (typeof raw !== "string" || raw.trim().length === 0) {
+    return null;
+  }
+
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+
+  return parsed.toISOString();
+}
+
+function formatScheduledAt(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "your selected time";
+  }
+
+  const dayLabel = new Intl.DateTimeFormat("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  }).format(date);
+
+  const timeLabel = new Intl.DateTimeFormat("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
+
+  return `${dayLabel}, ${timeLabel}`;
+}
+
 export default function RideSelectionScreen() {
   const router = useRouter();
   const { getAccessToken, isReady, user } = usePrivy();
   const params = useLocalSearchParams<{
     itinerary?: string | string[];
     estimate?: string | string[];
+    scheduledAt?: string | string[];
   }>();
   const itinerary = useMemo(
     () => parseRideItineraryParam(params.itinerary),
@@ -85,9 +123,15 @@ export default function RideSelectionScreen() {
     initialEstimate ?? fallbackEstimate,
   );
   const [estimateError, setEstimateError] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const collapsedSheetOffset = 196;
   const sheetOffset = useSharedValue(0);
   const serializedItinerary = serializeRideItinerary(itinerary);
+  const scheduledAt = useMemo(
+    () => parseScheduledAtParam(params.scheduledAt),
+    [params.scheduledAt],
+  );
 
   useEffect(() => {
     setLiveEstimate(initialEstimate ?? fallbackEstimate);
@@ -214,14 +258,77 @@ export default function RideSelectionScreen() {
     liveEstimateFareNgn !== null
       ? formatNgn(liveEstimateFareNgn)
       : formatNgn(instantPreview.priceNgn);
-  const routeNote = resolvedEstimate
-    ? "Live estimate for this route."
-    : estimateError
-      ? "Live quote is delayed. Showing an instant route preview."
-      : "Instant route preview. Final live quote will refresh automatically.";
-  const canBookRide = true;
+  const scheduleSummary = scheduledAt ? formatScheduledAt(scheduledAt) : null;
+  const routeNote = scheduledAt
+    ? `This route will be scheduled for ${scheduleSummary ?? "your selected time"}.`
+    : resolvedEstimate
+      ? "Live estimate for this route."
+      : estimateError
+        ? "Live quote is delayed. Showing an instant route preview."
+        : "Instant route preview. Final live quote will refresh automatically.";
+  const canBookRide = !isSubmitting;
 
-  const handleBookRide = () => {
+  const handleBookRide = async () => {
+    setSubmitError(null);
+
+    if (scheduledAt) {
+      setIsSubmitting(true);
+
+      try {
+        if (!isBackendConfigured() || !isReady || !user) {
+          throw new Error("Wheelers backend is not configured for scheduled rides.");
+        }
+
+        const destinationLabel = itinerary.stops[itinerary.stops.length - 1];
+        if (!destinationLabel) {
+          throw new Error("Select a destination before scheduling this ride.");
+        }
+
+        const accessToken = await getAccessTokenWithRetry(getAccessToken);
+        if (!accessToken) {
+          throw new Error("Could not get an access token to schedule this ride.");
+        }
+
+        const pickup =
+          liveEstimate?.pickup ?? (await resolvePlaceQuery(itinerary.pickup));
+        const destination =
+          liveEstimate?.destination ?? (await resolvePlaceQuery(destinationLabel));
+        const stops =
+          liveEstimate?.stops ??
+          (await Promise.all(
+            itinerary.stops
+              .slice(0, -1)
+              .map((stop) => resolvePlaceQuery(stop)),
+          ));
+
+        await submitScheduledRide({
+          getAccessToken: async () => accessToken,
+          scheduledFor: scheduledAt,
+          pickup,
+          destination,
+          stops,
+        });
+
+        router.replace({
+          pathname: "/rider/history",
+          params: {
+            tab: "scheduled",
+            toast: `Ride scheduled for ${scheduleSummary ?? "your selected time"}.`,
+          },
+        });
+      } catch (error) {
+        setSubmitError(
+          error instanceof Error
+            ? error.message
+            : "Could not schedule this ride.",
+        );
+      } finally {
+        setIsSubmitting(false);
+      }
+
+      return;
+    }
+
     router.push({
       pathname: "/matching",
       params: {
@@ -282,11 +389,13 @@ export default function RideSelectionScreen() {
         <View style={styles.sheetHeader}>
           <View>
             <AppText variant="monoSmall" color={theme.colors.orange}>
-              RIDE OPTION
+              {scheduledAt ? "SCHEDULED RIDE" : "RIDE OPTION"}
             </AppText>
             <AppText variant="h1">Wheeler</AppText>
             <AppText variant="bodySmall" color={theme.colors.muted}>
-              Fast bike ride with multi-stop routing
+              {scheduledAt
+                ? "Reserve this bike ride ahead of time."
+                : "Fast bike ride with multi-stop routing"}
             </AppText>
           </View>
           <View style={styles.rideIcon}>
@@ -339,8 +448,20 @@ export default function RideSelectionScreen() {
           ))}
         </View>
 
+        {submitError ? (
+          <AppText variant="bodySmall" color={theme.colors.danger}>
+            {submitError}
+          </AppText>
+        ) : null}
+
         <AppButton
-          title="Book Wheeler"
+          title={
+            scheduledAt
+              ? isSubmitting
+                ? "Scheduling Wheeler..."
+                : "Schedule Wheeler"
+              : "Book Wheeler"
+          }
           onPress={handleBookRide}
           disabled={!canBookRide}
         />
