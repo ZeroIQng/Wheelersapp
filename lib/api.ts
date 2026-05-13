@@ -185,6 +185,7 @@ export interface ScheduledRide {
   plannedDistanceKm: number | null;
   plannedDurationSeconds: number | null;
   fareEstimateUsdt: number | null;
+  fareEstimateNgn?: number | null;
   requestedRideId: string | null;
   createdAt: string;
 }
