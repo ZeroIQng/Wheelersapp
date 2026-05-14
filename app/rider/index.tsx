@@ -43,7 +43,7 @@ const riderServices = [
     label: "Group Ride",
     tag: "Split",
     cardColor: "#E8FFF7",
-    route: "/destination-search" as Href,
+    route: "/group-ride" as Href,
   },
 ] as const;
 
