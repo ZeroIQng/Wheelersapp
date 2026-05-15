@@ -1,8 +1,9 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
+  Alert,
   Modal,
   Pressable,
   ScrollView,
@@ -169,7 +170,6 @@ function GuideSheet({
                   entering={FadeInDown.delay(100 + i * 70).duration(380)}
                 >
                   <View style={sheet.guideBlock}>
-                    {/* Icon + title row */}
                     <View style={sheet.guideTitleRow}>
                       <View style={sheet.guideIconBox}>
                         <MaterialIcons name={g.icon} size={16} color={theme.colors.orange} />
@@ -178,7 +178,6 @@ function GuideSheet({
                         {g.title}
                       </AppText>
                     </View>
-                    {/* Body text — the readable guideline */}
                     <AppText variant="body" color={theme.colors.muted} style={sheet.guideBody}>
                       {g.body}
                     </AppText>
@@ -187,39 +186,8 @@ function GuideSheet({
               ))}
             </View>
 
-            {/* Step reminder — compact blocks */}
-            <Animated.View entering={FadeInDown.delay(460).duration(360)}>
-              <View style={sheet.stepsLabel}>
-                <View style={sheet.stepsLabelLine} />
-                <AppText variant="monoSmall" color={theme.colors.muted}>
-                  THE 3 STEPS
-                </AppText>
-                <View style={sheet.stepsLabelLine} />
-              </View>
-            </Animated.View>
-
-            <View style={sheet.stepsRow}>
-              {STEPS.map((step, i) => (
-                <Animated.View
-                  key={step.id}
-                  entering={FadeInDown.delay(490 + i * 55).duration(360)}
-                  style={sheet.stepPill}
-                >
-                  <View style={[sheet.stepPillInner, { backgroundColor: step.bg, borderColor: step.iconBorder }]}>
-                    <MaterialIcons name={step.icon} size={14} color={theme.colors.black} />
-                    <AppText variant="monoSmall" color={theme.colors.black} style={sheet.stepPillLabel}>
-                      {step.number}
-                    </AppText>
-                  </View>
-                  <AppText variant="bodySmall" color={theme.colors.black} style={sheet.stepPillText}>
-                    {step.label}
-                  </AppText>
-                </Animated.View>
-              ))}
-            </View>
-
             {/* CTA */}
-            <Animated.View entering={FadeInDown.delay(660).duration(360)} style={sheet.ctaWrap}>
+            <Animated.View entering={FadeInDown.delay(460).duration(360)} style={sheet.ctaWrap}>
               <AppButton
                 title="I understand — Let's go"
                 variant="primary"
@@ -532,6 +500,26 @@ const sheet = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     marginLeft: theme.spacing.md,
+  },
+  timerBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.sm,
+    borderRadius: theme.radius.md,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.orange,
+    backgroundColor: theme.colors.orangeLight,
+    ...theme.shadows.subtle,
+  },
+  timerBadgeDone: {
+    borderColor: theme.colors.green,
+    backgroundColor: theme.colors.successLight,
+  },
+  timerText: {
+    flex: 1,
+    letterSpacing: 0.2,
   },
   introNote: {
     flexDirection: "row",
