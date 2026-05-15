@@ -1,8 +1,9 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
+  Alert,
   Modal,
   Pressable,
   ScrollView,
@@ -101,6 +102,8 @@ const GUIDELINES = [
 
 // ─── Guide bottom sheet ────────────────────────────────────────────────────────
 
+const READ_SECONDS = 120;
+
 function GuideSheet({
   visible,
   onClose,
@@ -111,6 +114,43 @@ function GuideSheet({
   onContinue: () => void;
 }) {
   const insets = useSafeAreaInsets();
+  const doneRef = useRef(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Silent background timer — starts when sheet opens, resets on close
+  useEffect(() => {
+    if (!visible) {
+      doneRef.current = false;
+      if (timerRef.current) clearTimeout(timerRef.current);
+      return;
+    }
+    doneRef.current = false;
+    timerRef.current = setTimeout(() => {
+      doneRef.current = true;
+    }, READ_SECONDS * 1000);
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, [visible]);
+
+  function handleContinuePress() {
+    if (!doneRef.current) {
+      Alert.alert(
+        "Finish reading first",
+        "Please take a few minutes to read through the guidelines before continuing.",
+        [{ text: "OK" }],
+      );
+      return;
+    }
+    Alert.alert(
+      "Ready to go?",
+      "By continuing you agree to the Wheelers group ride guidelines.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "I understand", onPress: onContinue },
+      ],
+    );
+  }
 
   return (
     <Modal
@@ -190,7 +230,7 @@ function GuideSheet({
               <AppButton
                 title="I understand — Let's go"
                 variant="primary"
-                onPress={onContinue}
+                onPress={handleContinuePress}
               />
             </Animated.View>
           </ScrollView>
