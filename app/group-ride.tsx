@@ -1,9 +1,8 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import {
-  Alert,
   Modal,
   Pressable,
   ScrollView,
@@ -500,26 +499,6 @@ const sheet = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     marginLeft: theme.spacing.md,
-  },
-  timerBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing.sm,
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: theme.spacing.sm,
-    borderRadius: theme.radius.md,
-    borderWidth: theme.borders.thick,
-    borderColor: theme.colors.orange,
-    backgroundColor: theme.colors.orangeLight,
-    ...theme.shadows.subtle,
-  },
-  timerBadgeDone: {
-    borderColor: theme.colors.green,
-    backgroundColor: theme.colors.successLight,
-  },
-  timerText: {
-    flex: 1,
-    letterSpacing: 0.2,
   },
   introNote: {
     flexDirection: "row",
