@@ -551,46 +551,6 @@ const sheet = StyleSheet.create({
     lineHeight: 21,
     paddingLeft: 30 + theme.spacing.sm, // aligns under title, past the icon
   },
-  // Step reminder at bottom of sheet
-  stepsLabel: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing.sm,
-  },
-  stepsLabelLine: {
-    flex: 1,
-    height: 1.5,
-    backgroundColor: theme.colors.borderLight,
-  },
-  stepsRow: {
-    flexDirection: "row",
-    gap: theme.spacing.sm,
-  },
-  stepPill: {
-    flex: 1,
-    gap: theme.spacing.xs,
-    alignItems: "center",
-  },
-  stepPillInner: {
-    width: "100%",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: theme.spacing.xs,
-    borderWidth: theme.borders.regular,
-    borderRadius: theme.radius.sm,
-    paddingVertical: theme.spacing.sm,
-    paddingHorizontal: theme.spacing.xs,
-  },
-  stepPillLabel: {
-    fontSize: 9,
-    letterSpacing: 0.3,
-  },
-  stepPillText: {
-    textAlign: "center",
-    lineHeight: 14,
-    fontSize: 10,
-  },
   ctaWrap: {
     marginTop: theme.spacing.xs,
   },
