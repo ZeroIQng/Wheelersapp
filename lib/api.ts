@@ -195,30 +195,60 @@ interface ScheduledRideListResponse {
   nextCursor: string | null;
 }
 
-export interface PouchSession {
-  id?: string;
-  type?: string;
-  status?: string;
-  amount?: number;
-  currency?: string;
-  cryptoCurrency?: string;
-  cryptoNetwork?: string;
-  chain?: string;
-  walletAddress?: string;
-  walletTag?: string;
-  metadata?: unknown;
-  [key: string]: unknown;
+export interface PouchInstructionFees {
+  networkFee?: number;
+  serviceFee?: number;
+  totalFees?: number;
 }
 
-export interface PouchCreateSessionResponse {
+export interface PouchPaymentInstruction {
+  accountNumber?: string;
+  accountName?: string;
+  bankName?: string;
+  amountUsd?: number;
+  amountLocal?: number;
+  localCurrency?: string;
+  fxRate?: number;
+  cryptoAmount?: number;
+  cryptoCurrency?: string;
+  cryptoNetwork?: string;
+  fees?: PouchInstructionFees;
+  reference?: string;
+  expiresAt?: string;
+}
+
+export interface PouchSettlementInfo {
+  transactionHash?: string;
+  senderAddress?: string;
+  walletAddress?: string;
+  cryptoAmount?: number;
+  cryptoCurrency?: string;
+  cryptoNetwork?: string;
+  expiresAt?: string;
+}
+
+export interface PouchOnrampResponse {
   provider: "pouch";
-  session: PouchSession;
+  type: "ONRAMP";
+  providerRef?: string;
+  destinationWalletAddress?: string;
+  paymentInstruction?: PouchPaymentInstruction;
   walletCreditable: boolean;
 }
 
-export interface PouchGetSessionResponse {
+export interface PouchRampStatusPayload {
+  providerRef?: string;
+  status?: string;
+  type?: "ONRAMP" | "OFFRAMP" | string;
+  transactionHash?: string;
+  settlementInfo?: PouchSettlementInfo;
+  details?: Record<string, unknown>;
+  failureReason?: string;
+}
+
+export interface PouchRampStatusResponse {
   provider: "pouch";
-  session: PouchSession;
+  status: PouchRampStatusPayload;
   sessionSynced: boolean;
 }
 
@@ -489,45 +519,51 @@ export async function verifyPhoneOtp(
   );
 }
 
-export async function createPouchSession(input: {
+export async function createPouchOnramp(input: {
   accessToken: string;
-  type: "ONRAMP" | "OFFRAMP";
-  amountLocal?: number;
-  amountUsd?: number;
-  countryCode: string;
-  currency: string;
-  cryptoCurrency: string;
-  cryptoNetwork: string;
-  walletAddress?: string;
-}): Promise<PouchCreateSessionResponse> {
-  return postJson<PouchCreateSessionResponse>(
-    "/payments/pouch/sessions",
+  amount: number;
+  countryCode?: string;
+  currency?: string;
+  cryptoCurrency?: string;
+  cryptoNetwork?: string;
+  userKyc?: Record<string, unknown>;
+}): Promise<PouchOnrampResponse> {
+  return postJson<PouchOnrampResponse>(
+    "/payments/pouch/onramp",
     {
-      type: input.type,
-      amountLocal: input.amountLocal,
-      amountUsd: input.amountUsd,
-      countryCode: input.countryCode,
-      currency: input.currency,
-      cryptoCurrency: input.cryptoCurrency,
-      cryptoNetwork: input.cryptoNetwork,
-      walletAddress: input.walletAddress,
+      amount: input.amount,
+      countryCode: input.countryCode ?? "NG",
+      currency: input.currency ?? "NGN",
+      cryptoCurrency: input.cryptoCurrency ?? "USDC",
+      cryptoNetwork: input.cryptoNetwork ?? "XLM",
+      userKyc: input.userKyc,
     },
     {
       accessToken: input.accessToken,
-      fallbackError: "Could not start the Pouch deposit session.",
+      fallbackError: "Could not start the Pouch deposit.",
     },
   );
 }
 
-export async function getPouchSession(input: {
+export async function getPouchRampStatus(input: {
   accessToken: string;
-  sessionId: string;
-}): Promise<PouchGetSessionResponse> {
-  return getJson<PouchGetSessionResponse>(
-    `/payments/pouch/sessions/${encodeURIComponent(input.sessionId)}`,
+  providerRef: string;
+  type?: "ONRAMP" | "OFFRAMP";
+}): Promise<PouchRampStatusResponse> {
+  const params = new URLSearchParams();
+  if (input.type) {
+    params.set("type", input.type);
+  }
+
+  const path = `/payments/pouch/status/${encodeURIComponent(input.providerRef)}${
+    params.size > 0 ? `?${params.toString()}` : ""
+  }`;
+
+  return getJson<PouchRampStatusResponse>(
+    path,
     {
       accessToken: input.accessToken,
-      fallbackError: "Could not refresh the Pouch deposit session.",
+      fallbackError: "Could not refresh the Pouch deposit status.",
     },
   );
 }
