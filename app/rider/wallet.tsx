@@ -1,6 +1,6 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
-import * as Clipboard from "expo-clipboard";
 import { usePrivy } from "@privy-io/expo";
+import * as Clipboard from "expo-clipboard";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useRef, useState } from "react";
@@ -29,7 +29,7 @@ import {
   type PouchPaymentInstruction,
   type PouchRampStatusPayload,
 } from "@/lib/api";
-import { walletOverview } from "@/data/mock";
+import { useWalletOverview } from "@/lib/wallet-overview";
 import { theme } from "@/theme";
 
 const walletPages = [
@@ -116,7 +116,9 @@ async function waitForPouchSettlement(input: {
   return latestStatus;
 }
 
-function formatInstructionAmount(instruction: PouchPaymentInstruction | null): string | null {
+function formatInstructionAmount(
+  instruction: PouchPaymentInstruction | null,
+): string | null {
   if (!instruction?.amountLocal || !instruction.localCurrency) {
     return null;
   }
@@ -124,7 +126,9 @@ function formatInstructionAmount(instruction: PouchPaymentInstruction | null): s
   return `${instruction.localCurrency} ${instruction.amountLocal.toLocaleString("en-NG")}`;
 }
 
-function formatInstructionExpiry(instruction: PouchPaymentInstruction | null): string | null {
+function formatInstructionExpiry(
+  instruction: PouchPaymentInstruction | null,
+): string | null {
   if (!instruction?.expiresAt) {
     return null;
   }
@@ -142,10 +146,51 @@ function formatInstructionExpiry(instruction: PouchPaymentInstruction | null): s
   });
 }
 
+function getInstructionTimeLeftMs(
+  instruction: PouchPaymentInstruction | null,
+): number | null {
+  if (!instruction?.expiresAt) {
+    return null;
+  }
+
+  const expiry = new Date(instruction.expiresAt).getTime();
+  if (Number.isNaN(expiry)) {
+    return null;
+  }
+
+  return Math.max(0, expiry - Date.now());
+}
+
+function formatTimeLeft(ms: number | null): string | null {
+  if (ms == null) {
+    return null;
+  }
+
+  const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
+function formatWalletCurrencyAmount(currency: string, amount: number): string {
+  const rounded = Math.round(amount * 100) / 100;
+  const hasDecimals = Math.abs(rounded % 1) > 0;
+
+  return `${currency} ${rounded.toLocaleString("en-NG", {
+    minimumFractionDigits: hasDecimals ? 2 : 0,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
 export default function WalletScreen() {
   const router = useRouter();
   const { getAccessToken, isReady } = usePrivy();
   const insets = useSafeAreaInsets();
+  const {
+    overview,
+    refresh: refreshWalletOverview,
+  } = useWalletOverview();
   const params = useLocalSearchParams<{
     depositAmount?: string | string[];
     redirectReason?: string | string[];
@@ -157,10 +202,15 @@ export default function WalletScreen() {
   const [isPaymentWidgetVisible, setPaymentWidgetVisible] = useState(false);
   const [isLaunchingPouchDeposit, setLaunchingPouchDeposit] = useState(false);
   const [isRefreshingPouchStatus, setRefreshingPouchStatus] = useState(false);
-  const [activePouchProviderRef, setActivePouchProviderRef] = useState<string | null>(null);
+  const [activePouchProviderRef, setActivePouchProviderRef] = useState<
+    string | null
+  >(null);
   const [activePaymentInstruction, setActivePaymentInstruction] =
     useState<PouchPaymentInstruction | null>(null);
-  const [activePouchStatus, setActivePouchStatus] = useState<string | null>(null);
+  const [activePouchStatus, setActivePouchStatus] = useState<string | null>(
+    null,
+  );
+  const [timeLeftMs, setTimeLeftMs] = useState<number | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const toastOpacity = useRef(new Animated.Value(0)).current;
   const handledRedirectRef = useRef<string | null>(null);
@@ -197,6 +247,41 @@ export default function WalletScreen() {
     return () => clearTimeout(timeout);
   }, [toastMessage, toastOpacity]);
 
+  const resetPaymentWidget = () => {
+    setPaymentWidgetVisible(false);
+    setActivePouchProviderRef(null);
+    setActivePaymentInstruction(null);
+    setActivePouchStatus(null);
+    setTimeLeftMs(null);
+  };
+
+  useEffect(() => {
+    if (!isPaymentWidgetVisible || !activePaymentInstruction?.expiresAt) {
+      setTimeLeftMs(null);
+      return;
+    }
+
+    const update = () => {
+      setTimeLeftMs(getInstructionTimeLeftMs(activePaymentInstruction));
+    };
+
+    update();
+    const interval = setInterval(update, 1000);
+
+    return () => clearInterval(interval);
+  }, [activePaymentInstruction, isPaymentWidgetVisible]);
+
+  useEffect(() => {
+    if (!isPaymentWidgetVisible || timeLeftMs == null || timeLeftMs > 0) {
+      return;
+    }
+
+    resetPaymentWidget();
+    setToastMessage(
+      "Payment window expired. Start a new deposit for a fresh account number.",
+    );
+  }, [isPaymentWidgetVisible, timeLeftMs]);
+
   useEffect(() => {
     const rawDepositAmount = Array.isArray(params.depositAmount)
       ? params.depositAmount[0]
@@ -227,7 +312,13 @@ export default function WalletScreen() {
     setToastMessage(
       `Insufficient funds${rideName ? ` for ${rideName}` : ""}. Add NGN ${formattedAmount} to continue.`,
     );
-  }, [params.depositAmount, params.redirectReason, params.rideName, redirectReason, toastOpacity]);
+  }, [
+    params.depositAmount,
+    params.redirectReason,
+    params.rideName,
+    redirectReason,
+    toastOpacity,
+  ]);
 
   const handleDepositAmountChange = (value: string) => {
     const digitsOnly = value.replace(/\D/g, "");
@@ -256,7 +347,7 @@ export default function WalletScreen() {
       return;
     }
 
-    setPaymentWidgetVisible(false);
+    resetPaymentWidget();
   };
 
   const maybeContinueDeferredRide = () => {
@@ -338,7 +429,11 @@ export default function WalletScreen() {
       setActivePouchStatus(status);
 
       if (isPouchSessionSettled(status)) {
-        setToastMessage("Pouch deposit completed. Your wallet credit is being processed.");
+        await refreshWalletOverview();
+        resetPaymentWidget();
+        setToastMessage(
+          "Pouch deposit completed. Your wallet credit is being processed.",
+        );
         maybeContinueDeferredRide();
         return;
       }
@@ -397,11 +492,12 @@ export default function WalletScreen() {
     try {
       const response = await createPouchOnramp({
         accessToken,
-        amount: amountLocal,
+        amountLocal,
       });
 
       const providerRef =
-        typeof response.providerRef === "string" && response.providerRef.trim().length > 0
+        typeof response.providerRef === "string" &&
+        response.providerRef.trim().length > 0
           ? response.providerRef
           : null;
 
@@ -416,7 +512,9 @@ export default function WalletScreen() {
       setPaymentWidgetVisible(true);
       setDepositAmount("");
 
-      const instructionAmount = formatInstructionAmount(response.paymentInstruction ?? null);
+      const instructionAmount = formatInstructionAmount(
+        response.paymentInstruction ?? null,
+      );
       const instructionAccount = response.paymentInstruction?.accountNumber;
 
       setToastMessage(
@@ -427,7 +525,9 @@ export default function WalletScreen() {
     } catch (error) {
       Alert.alert(
         "Deposit failed",
-        error instanceof Error ? error.message : "Could not start the Pouch deposit.",
+        error instanceof Error
+          ? error.message
+          : "Could not start the Pouch deposit.",
       );
     } finally {
       setLaunchingPouchDeposit(false);
@@ -436,10 +536,7 @@ export default function WalletScreen() {
 
   const handleWalletPagePress = (pageId: string) => {
     if (pageId === "transactions") {
-      Alert.alert(
-        "Transactions",
-        "Transaction history will open from this shortcut soon.",
-      );
+      router.push("/rider/transactions");
       return;
     }
 
@@ -451,18 +548,19 @@ export default function WalletScreen() {
     Alert.alert("Withdrawals pending", "Withdraw pages are not active yet.");
   };
 
-  const displayedAccountName = activePouchProviderRef
-    ? activePaymentInstruction?.accountName
-    : walletOverview.accountDetails.accountName;
-  const displayedAccountNumber = activePouchProviderRef
-    ? activePaymentInstruction?.accountNumber
-    : walletOverview.accountDetails.accountNumber;
-  const displayedBankName = activePouchProviderRef
-    ? activePaymentInstruction?.bankName
-    : walletOverview.accountDetails.bankName;
-  const displayedInstructionAmount = formatInstructionAmount(activePaymentInstruction);
-  const displayedInstructionExpiry = formatInstructionExpiry(activePaymentInstruction);
+  const displayedInstructionAmount = formatInstructionAmount(
+    activePaymentInstruction,
+  );
+  const displayedInstructionExpiry = formatInstructionExpiry(
+    activePaymentInstruction,
+  );
   const displayedPouchStatus = formatPouchStatus(activePouchStatus);
+  const displayedTimeLeft = formatTimeLeft(timeLeftMs);
+  const displayCurrency = overview?.displayCurrency ?? "NGN";
+  const displayedWalletBalance = formatWalletCurrencyAmount(
+    displayCurrency,
+    overview?.balanceNgn ?? 0,
+  );
 
   return (
     <>
@@ -481,54 +579,10 @@ export default function WalletScreen() {
         />
 
         <WalletBalanceCard
-          balance={walletOverview.balance}
-          fiatApprox={walletOverview.fiatApprox}
-          accountName={displayedAccountName}
-          accountNumber={displayedAccountNumber}
-          bankName={displayedBankName}
+          balance={displayedWalletBalance}
           onDeposit={openDepositModal}
           onWithdraw={handleWithdrawPress}
         />
-        {activePouchProviderRef ? (
-          <AppCard style={styles.activeDepositCard}>
-            <View style={styles.activeDepositHeader}>
-              <View style={styles.pageCopy}>
-                <AppText variant="label">Deposit ready to pay</AppText>
-                <AppText variant="bodySmall" color={theme.colors.muted}>
-                  Bank transfer instructions are waiting for you.
-                </AppText>
-              </View>
-              <View style={styles.statusPill}>
-                <AppText variant="bodySmall">{displayedPouchStatus}</AppText>
-              </View>
-            </View>
-            <View style={styles.widgetButtonRow}>
-              <Pressable
-                onPress={() => setPaymentWidgetVisible(true)}
-                style={styles.primaryWidgetButton}
-              >
-                <MaterialIcons color={theme.colors.offWhite} name="account-balance" size={18} />
-                <AppText variant="label" color={theme.colors.offWhite}>
-                  Open payment widget
-                </AppText>
-              </Pressable>
-              <Pressable
-                disabled={isRefreshingPouchStatus}
-                onPress={handleRefreshDepositStatus}
-                style={styles.refreshChip}
-              >
-                <MaterialIcons
-                  color={theme.colors.black}
-                  name="sync"
-                  size={16}
-                />
-                <AppText variant="bodySmall">
-                  {isRefreshingPouchStatus ? "Checking" : "Refresh"}
-                </AppText>
-              </Pressable>
-            </View>
-          </AppCard>
-        ) : null}
 
         <Pressable onPress={handleYieldPress} style={styles.yieldCard}>
           <AppText variant="h3" color={theme.colors.offWhite}>
@@ -537,7 +591,7 @@ export default function WalletScreen() {
         </Pressable>
 
         <SectionHeader
-          subtitle="Clean wallet pages instead of the old deposit form block."
+          // subtitle="Clean wallet pages instead of the old deposit form block."
           title="Wallet pages"
           titleVariant="h3"
         />
@@ -583,7 +637,8 @@ export default function WalletScreen() {
               <View>
                 <AppText variant="h3">Deposit in Naira</AppText>
                 <AppText variant="bodySmall" color={theme.colors.muted}>
-                  Enter the amount you want to fund, then we will generate your bank transfer instruction.
+                  Enter the amount you want to fund, then we will generate your
+                  bank transfer instruction.
                 </AppText>
               </View>
             </View>
@@ -638,8 +693,15 @@ export default function WalletScreen() {
                   Transfer the exact amount to the bank account below.
                 </AppText>
               </View>
-              <Pressable onPress={closePaymentWidget} style={styles.closeButton}>
-                <MaterialIcons color={theme.colors.black} name="close" size={18} />
+              <Pressable
+                onPress={closePaymentWidget}
+                style={styles.closeButton}
+              >
+                <MaterialIcons
+                  color={theme.colors.black}
+                  name="close"
+                  size={18}
+                />
               </Pressable>
             </View>
 
@@ -647,20 +709,37 @@ export default function WalletScreen() {
               <AppText variant="bodySmall" color={theme.colors.muted}>
                 Amount to Pay
               </AppText>
-              <AppText variant="display">{displayedInstructionAmount ?? "Pending"}</AppText>
+              <AppText variant="display">
+                {displayedInstructionAmount ?? "Pending"}
+              </AppText>
               <View style={styles.widgetMetaRow}>
                 <View style={styles.statusPill}>
                   <AppText variant="bodySmall">{displayedPouchStatus}</AppText>
                 </View>
-                {displayedInstructionExpiry ? (
-                  <AppText variant="bodySmall" color={theme.colors.muted}>
-                    Expires {displayedInstructionExpiry}
-                  </AppText>
+                {displayedTimeLeft ? (
+                  <View style={styles.timerPill}>
+                    <MaterialIcons
+                      color={theme.colors.black}
+                      name="schedule"
+                      size={14}
+                    />
+                    <AppText variant="bodySmall">
+                      Time left {displayedTimeLeft}
+                    </AppText>
+                  </View>
                 ) : null}
               </View>
+              {displayedInstructionExpiry ? (
+                <AppText variant="bodySmall" color={theme.colors.muted}>
+                  Expires {displayedInstructionExpiry}
+                </AppText>
+              ) : null}
             </View>
 
-            <AppCard backgroundColor={theme.colors.white} style={styles.paymentDetailsCard}>
+            <AppCard
+              backgroundColor={theme.colors.white}
+              style={styles.paymentDetailsCard}
+            >
               <InstructionRow
                 label="Bank Name"
                 value={activePaymentInstruction?.bankName ?? "Pending"}
@@ -674,7 +753,10 @@ export default function WalletScreen() {
                 value={activePaymentInstruction?.accountNumber ?? "Pending"}
                 actionLabel="Copy"
                 onActionPress={() =>
-                  handleCopyValue("Account number", activePaymentInstruction?.accountNumber)
+                  handleCopyValue(
+                    "Account number",
+                    activePaymentInstruction?.accountNumber,
+                  )
                 }
               />
             </AppCard>
@@ -683,7 +765,11 @@ export default function WalletScreen() {
               <AppButton
                 disabled={isRefreshingPouchStatus}
                 onPress={handleRefreshDepositStatus}
-                title={isRefreshingPouchStatus ? "Checking payment" : "I have paid, refresh status"}
+                title={
+                  isRefreshingPouchStatus
+                    ? "Checking payment"
+                    : "I have paid, refresh status"
+                }
               />
               <AppButton
                 onPress={closePaymentWidget}
@@ -745,13 +831,24 @@ function InstructionRow(props: {
         <AppText variant="bodySmall" color={theme.colors.muted}>
           {props.label}
         </AppText>
-        <AppText variant={props.label === "Account Number" ? "monoLarge" : "bodyMedium"}>
+        <AppText
+          variant={
+            props.label === "Account Number" ? "monoLarge" : "bodyMedium"
+          }
+        >
           {props.value}
         </AppText>
       </View>
       {props.actionLabel && props.onActionPress ? (
-        <Pressable onPress={props.onActionPress} style={styles.inlineCopyButton}>
-          <MaterialIcons color={theme.colors.black} name="content-copy" size={14} />
+        <Pressable
+          onPress={props.onActionPress}
+          style={styles.inlineCopyButton}
+        >
+          <MaterialIcons
+            color={theme.colors.black}
+            name="content-copy"
+            size={14}
+          />
           <AppText variant="bodySmall">{props.actionLabel}</AppText>
         </Pressable>
       ) : null}
@@ -761,7 +858,7 @@ function InstructionRow(props: {
 
 const styles = StyleSheet.create({
   container: {
-    gap: theme.spacing.lg,
+    gap: theme.spacing.md,
     paddingTop: theme.spacing.lg,
   },
   yieldCard: {
@@ -769,7 +866,7 @@ const styles = StyleSheet.create({
     borderColor: theme.colors.orange,
     borderRadius: theme.radii.md,
     backgroundColor: theme.colors.orange,
-    padding: theme.spacing.md,
+    padding: theme.spacing.sm,
     minHeight: 72,
     alignItems: "center",
     justifyContent: "center",
@@ -803,20 +900,6 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 2,
   },
-  activeDepositCard: {
-    borderWidth: theme.borders.thick,
-    borderColor: theme.colors.black,
-    borderRadius: theme.radii.md,
-    backgroundColor: theme.colors.white,
-    padding: theme.spacing.md,
-    gap: theme.spacing.sm,
-    ...theme.shadows.card,
-  },
-  activeDepositHeader: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: theme.spacing.md,
-  },
   statusPill: {
     alignSelf: "flex-start",
     borderWidth: theme.borders.regular,
@@ -825,22 +908,6 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.orangeLight,
     paddingHorizontal: theme.spacing.sm,
     paddingVertical: theme.spacing.xs,
-  },
-  widgetButtonRow: {
-    flexDirection: "row",
-    gap: theme.spacing.sm,
-  },
-  primaryWidgetButton: {
-    flex: 1,
-    minHeight: 44,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: theme.spacing.xs,
-    borderWidth: theme.borders.regular,
-    borderColor: theme.colors.black,
-    borderRadius: theme.radii.sm,
-    backgroundColor: theme.colors.black,
   },
   refreshChip: {
     flexDirection: "row",
@@ -851,6 +918,17 @@ const styles = StyleSheet.create({
     borderColor: theme.colors.black,
     borderRadius: theme.radii.pill,
     backgroundColor: theme.colors.orangeLight,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.xs,
+  },
+  timerPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing.xs,
+    borderWidth: theme.borders.regular,
+    borderColor: theme.colors.black,
+    borderRadius: theme.radii.pill,
+    backgroundColor: "rgba(255,255,255,0.72)",
     paddingHorizontal: theme.spacing.sm,
     paddingVertical: theme.spacing.xs,
   },

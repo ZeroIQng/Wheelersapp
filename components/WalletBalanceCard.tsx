@@ -1,18 +1,12 @@
-import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
-import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import Svg, { Circle, Path } from 'react-native-svg';
-import * as Clipboard from 'expo-clipboard';
 
 import { AppText } from '@/components/app-text';
 import { theme } from '@/theme';
 
 type WalletBalanceCardProps = {
   balance: string;
-  fiatApprox: string;
-  accountName?: string;
-  accountNumber?: string;
-  bankName?: string;
+  subtitle?: string;
   onDeposit?: () => void;
   onWithdraw?: () => void;
   activeAction?: 'deposit' | 'withdraw';
@@ -20,28 +14,13 @@ type WalletBalanceCardProps = {
 
 export function WalletBalanceCard({
   balance,
-  fiatApprox,
-  accountName,
-  accountNumber,
-  bankName,
+  subtitle,
   onDeposit,
   onWithdraw,
   activeAction = 'deposit',
 }: WalletBalanceCardProps) {
-  const [isCopied, setIsCopied] = useState(false);
-
-  const handleCopyAccountNumber = async () => {
-    if (!accountNumber) {
-      return;
-    }
-
-    await Clipboard.setStringAsync(accountNumber);
-    setIsCopied(true);
-
-    setTimeout(() => {
-      setIsCopied(false);
-    }, 1600);
-  };
+  const [balanceUnit, ...balanceValueParts] = balance.split(' ');
+  const balanceValue = balanceValueParts.join(' ').trim() || balance;
 
   return (
     <View style={styles.card}>
@@ -54,39 +33,33 @@ export function WalletBalanceCard({
           fill="rgba(255,255,255,0.18)"
         />
       </Svg>
-      <AppText variant="bodySmall" color={theme.colors.muted}>
-        Total balance
-      </AppText>
-      <AppText variant="display" color={theme.colors.black} style={styles.balance}>
-        {balance}
-      </AppText>
-      <View style={styles.approxChip}>
-        <AppText variant="bodySmall" color={theme.colors.muted}>
-          {fiatApprox}
-        </AppText>
-      </View>
-      {accountNumber ? (
-        <Pressable onPress={handleCopyAccountNumber} style={styles.accountCard}>
-          <View style={styles.accountHeader}>
-            <AppText variant="bodySmall" color={theme.colors.muted}>
-              Account number
-            </AppText>
-            <View style={styles.copyChip}>
-              <MaterialIcons
-                color={isCopied ? theme.colors.green : theme.colors.black}
-                name={isCopied ? 'check' : 'content-copy'}
-                size={14}
-              />
+      <View style={styles.heroWrap}>
+        <View style={styles.balanceHaloOuter}>
+          <View style={styles.balanceHaloMiddle}>
+            <View style={styles.balanceCircle}>
+              <AppText
+                variant="monoSmall"
+                color={theme.colors.offWhite}
+                style={styles.balanceUnit}
+              >
+                {balanceUnit}
+              </AppText>
+              <AppText
+                variant="h2"
+                color={theme.colors.offWhite}
+                style={styles.balanceValue}
+              >
+                {balanceValue}
+              </AppText>
             </View>
           </View>
-          <View style={styles.accountCopy}>
-            <AppText variant="mono">{accountNumber}</AppText>
-            <AppText variant="bodySmall" color={theme.colors.muted}>
-              {[bankName, accountName].filter(Boolean).join(' • ')}
-            </AppText>
-          </View>
-        </Pressable>
-      ) : null}
+        </View>
+        {subtitle ? (
+          <AppText variant="bodySmall" color={theme.colors.muted} style={styles.subtitle}>
+            {subtitle}
+          </AppText>
+        ) : null}
+      </View>
       <View style={styles.actions}>
         <Pressable
           onPress={onDeposit}
@@ -137,49 +110,57 @@ const styles = StyleSheet.create({
     bottom: 8,
     left: 10,
   },
-  balance: {
-    marginTop: theme.spacing.xxs,
-    marginBottom: theme.spacing.xs,
-  },
-  approxChip: {
-    alignSelf: 'flex-start',
-    borderWidth: theme.borders.regular,
-    borderColor: '#F4B28D',
-    borderRadius: theme.radii.pill,
-    backgroundColor: 'rgba(255,255,255,0.72)',
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: theme.spacing.xs,
-  },
-  accountCard: {
-    marginTop: theme.spacing.sm,
-    borderWidth: theme.borders.regular,
-    borderColor: '#F4B28D',
-    borderRadius: theme.radii.sm,
-    backgroundColor: 'rgba(255,255,255,0.72)',
-    padding: theme.spacing.sm,
-    gap: theme.spacing.xs,
-  },
-  accountHeader: {
-    flexDirection: 'row',
+  heroWrap: {
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
     gap: theme.spacing.sm,
   },
-  accountCopy: {
-    gap: 2,
-  },
-  copyChip: {
+  balanceHaloOuter: {
+    width: 186,
+    height: 186,
+    borderRadius: 93,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.18)',
     borderWidth: theme.borders.regular,
-    borderColor: '#F4B28D',
-    borderRadius: theme.radii.pill,
-    backgroundColor: theme.colors.white,
+    borderColor: 'rgba(0,0,0,0.08)',
+  },
+  balanceHaloMiddle: {
+    width: 154,
+    height: 154,
+    borderRadius: 77,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.34)',
+    borderWidth: theme.borders.regular,
+    borderColor: 'rgba(0,0,0,0.12)',
+  },
+  balanceCircle: {
+    width: 126,
+    height: 126,
+    borderRadius: 63,
+    backgroundColor: theme.colors.orange,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    alignItems: 'center',
+    justifyContent: 'center',
     paddingHorizontal: theme.spacing.sm,
-    paddingVertical: theme.spacing.xs,
+    ...theme.shadows.card,
+  },
+  balanceUnit: {
+    opacity: 0.9,
+    marginBottom: 2,
+  },
+  balanceValue: {
+    textAlign: 'center',
+  },
+  subtitle: {
+    textAlign: 'center',
   },
   actions: {
     flexDirection: 'row',
     gap: theme.spacing.sm,
-    marginTop: theme.spacing.md,
+    marginTop: theme.spacing.sm,
   },
   actionButton: {
     flex: 1,

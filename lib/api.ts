@@ -252,6 +252,41 @@ export interface PouchRampStatusResponse {
   sessionSynced: boolean;
 }
 
+export interface WalletOverviewResponse {
+  walletId: string;
+  walletAddress: string;
+  chain: string;
+  balanceUsdt: number;
+  lockedUsdt: number;
+  stakedUsdt: number;
+  balanceNgn: number;
+  lockedNgn: number;
+  stakedNgn: number;
+  displayCurrency: string;
+  displayExchangeRate: number;
+  updatedAt: string;
+}
+
+export interface WalletTransaction {
+  id: string;
+  type: string;
+  direction: "CREDIT" | "DEBIT";
+  amountUsdt: number;
+  amountNgn: number;
+  balanceAfterUsdt: number;
+  balanceAfterNgn: number;
+  referenceId: string;
+  metadata: Record<string, unknown> | null;
+  createdAt: string;
+  displayCurrency: string;
+  displayExchangeRate: number;
+}
+
+export interface WalletTransactionsResponse {
+  items: WalletTransaction[];
+  nextCursor: string | null;
+}
+
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
 }
@@ -521,7 +556,7 @@ export async function verifyPhoneOtp(
 
 export async function createPouchOnramp(input: {
   accessToken: string;
-  amount: number;
+  amountLocal: number;
   countryCode?: string;
   currency?: string;
   cryptoCurrency?: string;
@@ -531,7 +566,7 @@ export async function createPouchOnramp(input: {
   return postJson<PouchOnrampResponse>(
     "/payments/pouch/onramp",
     {
-      amount: input.amount,
+      amountLocal: input.amountLocal,
       countryCode: input.countryCode ?? "NG",
       currency: input.currency ?? "NGN",
       cryptoCurrency: input.cryptoCurrency ?? "USDC",
@@ -566,6 +601,37 @@ export async function getPouchRampStatus(input: {
       fallbackError: "Could not refresh the Pouch deposit status.",
     },
   );
+}
+
+export async function getWalletOverview(input: {
+  accessToken: string;
+}): Promise<WalletOverviewResponse> {
+  return getJson<WalletOverviewResponse>("/wallet/overview", {
+    accessToken: input.accessToken,
+    fallbackError: "Could not load wallet overview.",
+  });
+}
+
+export async function getWalletTransactions(input: {
+  accessToken: string;
+  limit?: number;
+  cursor?: string;
+}): Promise<WalletTransactionsResponse> {
+  const params = new URLSearchParams();
+  if (input.limit) {
+    params.set("limit", String(input.limit));
+  }
+  if (input.cursor) {
+    params.set("cursor", input.cursor);
+  }
+
+  const path =
+    params.size > 0 ? `/wallet/transactions?${params.toString()}` : "/wallet/transactions";
+
+  return getJson<WalletTransactionsResponse>(path, {
+    accessToken: input.accessToken,
+    fallbackError: "Could not load wallet transactions.",
+  });
 }
 
 export async function getRideEstimate(input: {
