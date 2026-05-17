@@ -529,13 +529,6 @@ export default function WalletScreen() {
                   Enter the amount you want to fund, then continue into Pouch checkout.
                 </AppText>
               </View>
-              <Pressable onPress={closeDepositModal} style={styles.closeButton}>
-                <MaterialIcons
-                  color={theme.colors.black}
-                  name="close"
-                  size={18}
-                />
-              </Pressable>
             </View>
 
             <View style={styles.fieldGroup}>
@@ -565,7 +558,7 @@ export default function WalletScreen() {
                 <AppButton
                   disabled={isLaunchingPouchDeposit}
                   onPress={handleDepositContinue}
-                  title={isLaunchingPouchDeposit ? "Opening Pouch..." : "Continue with Pouch"}
+                  title={isLaunchingPouchDeposit ? "Opening" : "Continue"}
                 />
               </View>
             </View>
