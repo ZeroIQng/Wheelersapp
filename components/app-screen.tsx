@@ -1,7 +1,8 @@
-import { PropsWithChildren } from 'react';
+import { PropsWithChildren, type ReactElement } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
+  type RefreshControlProps,
   ScrollView,
   StyleProp,
   StyleSheet,
@@ -17,6 +18,7 @@ type AppScreenProps = PropsWithChildren<{
   scroll?: boolean;
   contentStyle?: StyleProp<ViewStyle>;
   safeAreaEdges?: Edge[];
+  refreshControl?: ReactElement<RefreshControlProps>;
 }>;
 
 export function AppScreen({
@@ -25,6 +27,7 @@ export function AppScreen({
   scroll,
   contentStyle,
   safeAreaEdges,
+  refreshControl,
 }: AppScreenProps) {
   const containerStyle = [styles.content, contentStyle];
 
@@ -40,6 +43,7 @@ export function AppScreen({
             bounces={false}
             contentContainerStyle={containerStyle}
             keyboardShouldPersistTaps="handled"
+            refreshControl={refreshControl}
             showsVerticalScrollIndicator={false}>
             {children}
           </ScrollView>

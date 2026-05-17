@@ -19,8 +19,8 @@ import { AppText } from "@/components/app-text";
 import { StarBurst, TriangleShape } from "@/components/decorative-shapes";
 import { LiveMap } from "@/components/live-map";
 import { FloatingView, RevealView } from "@/components/motion";
-import { walletBalance } from "@/data/mock";
 import { useRiderHistory } from "@/lib/rider-history";
+import { useWalletOverview } from "@/lib/wallet-overview";
 import { theme } from "@/theme";
 
 const riderServices = [
@@ -254,10 +254,17 @@ function ServiceArtwork({
   );
 }
 
+function formatHomeBalance(amountNgn: number | undefined): string {
+  const value = typeof amountNgn === "number" && Number.isFinite(amountNgn) ? amountNgn : 0;
+  const rounded = Math.round(value);
+  return rounded.toLocaleString("en-NG");
+}
+
 export default function RiderHomeScreen() {
   const router = useRouter();
   const { items: historyItems, isLoading: isLoadingHistory } =
     useRiderHistory(3);
+  const { overview } = useWalletOverview();
   const historyPreview = historyItems.slice(0, 2);
   const expandedMapHeight = 345;
   const collapsedMapHeight = 480;
@@ -266,6 +273,7 @@ export default function RiderHomeScreen() {
     number | null
   >(null);
   const historyVisibility = useSharedValue(0);
+  const historyExistsRef = useRef(false);
 
   const hideHistory = () => {
     historyVisibility.value = withTiming(0, { duration: 220 });
@@ -280,6 +288,7 @@ export default function RiderHomeScreen() {
       return;
     }
 
+    historyExistsRef.current = historyPreview.length > 0;
     historyVisibility.value = withTiming(historyPreview.length === 0 ? 0 : 1, {
       duration: 220,
     });
@@ -291,7 +300,7 @@ export default function RiderHomeScreen() {
         Math.abs(gestureState.dy) > 12 &&
         Math.abs(gestureState.dy) > Math.abs(gestureState.dx),
       onPanResponderRelease: (_, gestureState) => {
-        if (gestureState.dy > 35) {
+        if (gestureState.dy > 35 && !historyExistsRef.current) {
           hideHistory();
           return;
         }
@@ -301,7 +310,7 @@ export default function RiderHomeScreen() {
         }
       },
       onPanResponderTerminate: (_, gestureState) => {
-        if (gestureState.dy > 35) {
+        if (gestureState.dy > 35 && !historyExistsRef.current) {
           hideHistory();
           return;
         }
@@ -374,14 +383,14 @@ export default function RiderHomeScreen() {
                     color={theme.colors.white}
                     style={styles.balanceValue}
                   >
-                    {walletBalance}
+                    {formatHomeBalance(overview?.balanceNgn)}
                   </AppText>
                   <AppText
                     variant="bodySmall"
                     color={theme.colors.white}
                     style={styles.balanceUnit}
                   >
-                    USDT
+                    NGN
                   </AppText>
                 </Pressable>
               </FloatingView>

@@ -1,11 +1,11 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
-import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { Pressable, StyleSheet, View } from "react-native";
+import { RefreshControl, StyleSheet, View } from "react-native";
 
 import { AppCard } from "@/components/app-card";
 import { AppScreen } from "@/components/app-screen";
 import { AppText } from "@/components/app-text";
+import { BackArrow } from "@/components/back-arrow";
 import { SectionHeader } from "@/components/SectionHeader";
 import { useWalletTransactions } from "@/lib/wallet-transactions";
 import { type WalletTransaction } from "@/lib/api";
@@ -105,30 +105,32 @@ function getTransactionMeta(transaction: WalletTransaction): string {
 }
 
 export default function RiderTransactionsScreen() {
-  const router = useRouter();
   const { items, isLoading, error, refresh } = useWalletTransactions(40);
+  const refreshing = isLoading && items.length > 0;
+  const displayError =
+    error && !/no wallet found/i.test(error) ? error : null;
 
   return (
     <AppScreen
       backgroundColor={theme.colors.offWhite}
       scroll
       contentStyle={styles.container}
+      refreshControl={
+        <RefreshControl
+          onRefresh={() => void refresh()}
+          refreshing={refreshing}
+          tintColor={theme.colors.orange}
+          colors={[theme.colors.orange]}
+        />
+      }
     >
       <StatusBar style="dark" backgroundColor={theme.colors.offWhite} />
-      <Pressable onPress={() => router.back()} style={styles.backButton}>
-        <MaterialIcons color={theme.colors.black} name="arrow-back" size={18} />
-        <AppText variant="monoSmall">Back to wallet</AppText>
-      </Pressable>
+      <BackArrow style={styles.backButton} />
       <SectionHeader
         subtitle="Deposits, ride payments, and every wallet movement tied to your account."
         title="Transactions"
         titleVariant="h1"
       />
-
-      <Pressable onPress={() => void refresh()} style={styles.refreshPill}>
-        <MaterialIcons color={theme.colors.black} name="refresh" size={16} />
-        <AppText variant="bodySmall">Refresh ledger</AppText>
-      </Pressable>
 
       <View style={styles.list}>
         {isLoading && items.length === 0 ? (
@@ -137,15 +139,9 @@ export default function RiderTransactionsScreen() {
           </AppText>
         ) : null}
 
-        {error ? (
+        {displayError ? (
           <AppText variant="bodySmall" color={theme.colors.muted}>
-            {error}
-          </AppText>
-        ) : null}
-
-        {!isLoading && !error && items.length === 0 ? (
-          <AppText variant="bodySmall" color={theme.colors.muted}>
-            No wallet transactions yet.
+            {displayError}
           </AppText>
         ) : null}
 
@@ -195,29 +191,9 @@ const styles = StyleSheet.create({
   },
   backButton: {
     alignSelf: "flex-start",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing.xs,
-    borderWidth: theme.borders.regular,
-    borderColor: theme.colors.black,
-    borderRadius: theme.radii.pill,
-    backgroundColor: theme.colors.white,
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: theme.spacing.xs,
-  },
-  refreshPill: {
-    alignSelf: "flex-start",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing.xs,
-    borderWidth: theme.borders.regular,
-    borderColor: theme.colors.black,
-    borderRadius: theme.radii.pill,
-    backgroundColor: theme.colors.white,
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: theme.spacing.xs,
   },
   list: {
+    minHeight: 240,
     gap: theme.spacing.md,
   },
   card: {
