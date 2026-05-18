@@ -287,6 +287,76 @@ export interface WalletTransactionsResponse {
   nextCursor: string | null;
 }
 
+export interface WalletWithdrawal {
+  id: string;
+  status: string;
+  requestedAmountNgn: number;
+  quotedAmountNgn: number | null;
+  reservedAmountUsdt: number;
+  quotedAmountUsd: number | null;
+  quotedCryptoAmount: number | null;
+  displayCurrency: string;
+  displayExchangeRate: number;
+  payoutCurrency: string;
+  cryptoCurrency: string;
+  cryptoNetwork: string;
+  bankAccount: {
+    accountNumber: string;
+    accountName: string;
+    networkId: string;
+  };
+  providerReference: string | null;
+  paymentId: string | null;
+  failureReason: string | null;
+  expiresAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  settledAt: string | null;
+  failedAt: string | null;
+  releasedAt: string | null;
+}
+
+export interface CreateWalletWithdrawalResponse {
+  withdrawal: WalletWithdrawal | null;
+  provider: "pouch";
+  type: "OFFRAMP";
+  cryptoInstruction?: {
+    walletAddress?: string;
+    cryptoNetwork?: string;
+    cryptoCurrency?: string;
+    cryptoAmount?: number;
+    amountUsd?: number;
+    amountLocal?: number;
+    localCurrency?: string;
+    reference?: string;
+    expiresAt?: string;
+  };
+}
+
+export interface WithdrawalBankNetwork {
+  id: string;
+  name: string;
+  code: string | null;
+  country: string | null;
+  accountNumberType: string | null;
+  type: string | null;
+}
+
+export interface WithdrawalBankNetworksResponse {
+  country: string;
+  items: WithdrawalBankNetwork[];
+}
+
+export interface VerifyWithdrawalBankAccountResponse {
+  bankAccount: {
+    accountNumber: string;
+    accountName: string | null;
+    bankName: string | null;
+    networkId: string;
+  };
+  verificationSessionId: string | null;
+}
+
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
 }
@@ -632,6 +702,82 @@ export async function getWalletTransactions(input: {
     accessToken: input.accessToken,
     fallbackError: "Could not load wallet transactions.",
   });
+}
+
+export async function createWalletWithdrawal(input: {
+  accessToken: string;
+  amountNgn: number;
+  bankAccount: {
+    accountNumber: string;
+    accountName: string;
+    networkId: string;
+  };
+}): Promise<CreateWalletWithdrawalResponse> {
+  return postJson<CreateWalletWithdrawalResponse>(
+    "/wallet/withdrawals",
+    {
+      amountNgn: input.amountNgn,
+      bankAccount: input.bankAccount,
+    },
+    {
+      accessToken: input.accessToken,
+      fallbackError: "Could not create wallet withdrawal.",
+    },
+  );
+}
+
+export async function getWithdrawalBankNetworks(input: {
+  accessToken: string;
+  country?: string;
+  query?: string;
+  limit?: number;
+}): Promise<WithdrawalBankNetworksResponse> {
+  const params = new URLSearchParams();
+  if (input.country) {
+    params.set("country", input.country);
+  }
+  if (input.query) {
+    params.set("query", input.query);
+  }
+  if (input.limit) {
+    params.set("limit", String(input.limit));
+  }
+
+  const path =
+    params.size > 0
+      ? `/wallet/withdrawals/bank-networks?${params.toString()}`
+      : "/wallet/withdrawals/bank-networks";
+
+  return getJson<WithdrawalBankNetworksResponse>(path, {
+    accessToken: input.accessToken,
+    fallbackError: "Could not load withdrawal bank networks.",
+  });
+}
+
+export async function verifyWithdrawalBankAccount(input: {
+  accessToken: string;
+  accountNumber: string;
+  networkId: string;
+  countryCode?: string;
+  currency?: string;
+  cryptoCurrency?: string;
+  cryptoNetwork?: string;
+}): Promise<VerifyWithdrawalBankAccountResponse> {
+  return postJson<VerifyWithdrawalBankAccountResponse>(
+    "/wallet/withdrawals/verify-bank-account",
+    {
+      accountNumber: input.accountNumber,
+      networkId: input.networkId,
+      countryCode: input.countryCode ?? "NG",
+      currency: input.currency ?? "NGN",
+      cryptoCurrency: input.cryptoCurrency ?? "USDC",
+      cryptoNetwork: input.cryptoNetwork ?? "XLM",
+    },
+    {
+      accessToken: input.accessToken,
+      fallbackError: "Could not verify the bank account.",
+    },
+  );
 }
 
 export async function getRideEstimate(input: {

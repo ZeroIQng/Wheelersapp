@@ -9,6 +9,7 @@ import {
   Animated,
   Modal,
   Pressable,
+  ScrollView,
   StyleSheet,
   TextInput,
   View,
@@ -23,11 +24,15 @@ import { SectionHeader } from "@/components/SectionHeader";
 import { WalletBalanceCard } from "@/components/WalletBalanceCard";
 import { getAccessTokenWithRetry } from "@/lib/access-token";
 import {
+  createWalletWithdrawal,
   createPouchOnramp,
+  getWithdrawalBankNetworks,
   getPouchRampStatus,
   isBackendConfigured,
   type PouchPaymentInstruction,
   type PouchRampStatusPayload,
+  type WithdrawalBankNetwork,
+  verifyWithdrawalBankAccount,
 } from "@/lib/api";
 import { useWalletOverview } from "@/lib/wallet-overview";
 import { theme } from "@/theme";
@@ -199,9 +204,29 @@ export default function WalletScreen() {
   }>();
   const [depositAmount, setDepositAmount] = useState("");
   const [isDepositModalVisible, setDepositModalVisible] = useState(false);
+  const [isWithdrawModalVisible, setWithdrawModalVisible] = useState(false);
+  const [isWithdrawConfirmVisible, setWithdrawConfirmVisible] = useState(false);
+  const [isBankPickerVisible, setBankPickerVisible] = useState(false);
   const [isPaymentWidgetVisible, setPaymentWidgetVisible] = useState(false);
   const [isLaunchingPouchDeposit, setLaunchingPouchDeposit] = useState(false);
+  const [isCreatingWithdrawal, setCreatingWithdrawal] = useState(false);
+  const [isLoadingBankNetworks, setLoadingBankNetworks] = useState(false);
+  const [isVerifyingBankAccount, setVerifyingBankAccount] = useState(false);
   const [isRefreshingPouchStatus, setRefreshingPouchStatus] = useState(false);
+  const [withdrawAmount, setWithdrawAmount] = useState("");
+  const [bankSearchQuery, setBankSearchQuery] = useState("");
+  const [withdrawBankNetworks, setWithdrawBankNetworks] = useState<
+    WithdrawalBankNetwork[]
+  >([]);
+  const [selectedWithdrawBank, setSelectedWithdrawBank] =
+    useState<WithdrawalBankNetwork | null>(null);
+  const [withdrawAccountNumber, setWithdrawAccountNumber] = useState("");
+  const [verifiedWithdrawAccount, setVerifiedWithdrawAccount] = useState<{
+    accountNumber: string;
+    accountName: string;
+    bankName: string;
+    networkId: string;
+  } | null>(null);
   const [activePouchProviderRef, setActivePouchProviderRef] = useState<
     string | null
   >(null);
@@ -214,6 +239,7 @@ export default function WalletScreen() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const toastOpacity = useRef(new Animated.Value(0)).current;
   const handledRedirectRef = useRef<string | null>(null);
+  const lastBankLookupKeyRef = useRef<string | null>(null);
   const redirectReason = Array.isArray(params.redirectReason)
     ? params.redirectReason[0]
     : params.redirectReason;
@@ -342,6 +368,57 @@ export default function WalletScreen() {
     setDepositModalVisible(false);
   };
 
+  const handleWithdrawAmountChange = (value: string) => {
+    setVerifiedWithdrawAccount(null);
+    const digitsOnly = value.replace(/\D/g, "");
+
+    if (!digitsOnly) {
+      setWithdrawAmount("");
+      return;
+    }
+
+    setWithdrawAmount(Number(digitsOnly).toLocaleString("en-NG"));
+  };
+
+  const openWithdrawModal = () => {
+    setWithdrawConfirmVisible(false);
+    setBankPickerVisible(false);
+    setWithdrawModalVisible(true);
+  };
+
+  const closeWithdrawModal = () => {
+    if (isCreatingWithdrawal || isVerifyingBankAccount) {
+      return;
+    }
+
+    setWithdrawModalVisible(false);
+    setBankPickerVisible(false);
+  };
+
+  const closeWithdrawConfirmModal = () => {
+    if (isCreatingWithdrawal) {
+      return;
+    }
+
+    setWithdrawConfirmVisible(false);
+  };
+
+  const closeBankPickerModal = () => {
+    setBankPickerVisible(false);
+    setWithdrawModalVisible(true);
+  };
+
+  const resetWithdrawalFlow = () => {
+    setWithdrawModalVisible(false);
+    setWithdrawConfirmVisible(false);
+    setBankPickerVisible(false);
+    setWithdrawAmount("");
+    setWithdrawAccountNumber("");
+    setSelectedWithdrawBank(null);
+    setVerifiedWithdrawAccount(null);
+    setBankSearchQuery("");
+  };
+
   const closePaymentWidget = () => {
     if (isRefreshingPouchStatus) {
       return;
@@ -368,11 +445,69 @@ export default function WalletScreen() {
   };
 
   const handleWithdrawPress = () => {
-    Alert.alert(
-      "Withdrawals pending",
-      "Withdraw will stay pending for now. Deposit flow comes first.",
-    );
+    openWithdrawModal();
   };
+
+  const loadWithdrawalBankNetworks = async (query?: string) => {
+    const normalizedQuery = query?.trim().toLowerCase() ?? "";
+    const lookupKey = `NG:${normalizedQuery}`;
+
+    if (!isBackendConfigured()) {
+      return;
+    }
+
+    if (!isReady) {
+      return;
+    }
+
+    if (isLoadingBankNetworks || lastBankLookupKeyRef.current === lookupKey) {
+      return;
+    }
+
+    const accessToken = await getAccessTokenWithRetry(getAccessToken);
+    if (!accessToken) {
+      return;
+    }
+
+    lastBankLookupKeyRef.current = lookupKey;
+    setLoadingBankNetworks(true);
+
+    try {
+      const response = await getWithdrawalBankNetworks({
+        accessToken,
+        country: "NG",
+        query: normalizedQuery || undefined,
+        limit: normalizedQuery ? 100 : 40,
+      });
+      setWithdrawBankNetworks(response.items);
+    } catch (error) {
+      lastBankLookupKeyRef.current = null;
+      Alert.alert(
+        "Banks unavailable",
+        error instanceof Error
+          ? error.message
+          : "Could not load the supported withdrawal banks.",
+      );
+    } finally {
+      setLoadingBankNetworks(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!isReady || !isBankPickerVisible) {
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      void loadWithdrawalBankNetworks(bankSearchQuery);
+    }, 180);
+
+    return () => clearTimeout(timeout);
+  }, [
+    bankSearchQuery,
+    isBankPickerVisible,
+    isReady,
+  ]);
 
   const handleYieldPress = () => {
     Alert.alert(
@@ -534,6 +669,165 @@ export default function WalletScreen() {
     }
   };
 
+  const handleWithdrawContinue = async () => {
+    const amountNgn = parseNgnAmount(withdrawAmount);
+    const bankAccountNumber = withdrawAccountNumber.replace(/\D/g, "");
+    const bankNetworkId = selectedWithdrawBank?.id ?? "";
+
+    if (!amountNgn) {
+      Alert.alert(
+        "Amount required",
+        "Enter the amount you want to withdraw in Naira.",
+      );
+      return;
+    }
+
+    if (!bankNetworkId || !bankAccountNumber) {
+      Alert.alert(
+        "Bank details required",
+        "Choose a bank and enter your account number to continue.",
+      );
+      return;
+    }
+
+    if (bankAccountNumber.length < 10) {
+      Alert.alert(
+        "Account number required",
+        "Enter a valid account number before continuing.",
+      );
+      return;
+    }
+
+    if (!isBackendConfigured()) {
+      Alert.alert(
+        "Backend unavailable",
+        "Set EXPO_PUBLIC_API_BASE_URL before verifying the bank account.",
+      );
+      return;
+    }
+
+    if (!isReady) {
+      Alert.alert(
+        "Account still loading",
+        "Wait a moment for your session to finish loading, then try again.",
+      );
+      return;
+    }
+
+    const accessToken = await getAccessTokenWithRetry(getAccessToken);
+    if (!accessToken) {
+      Alert.alert(
+        "Authentication required",
+        "Could not get an access token for the withdrawal.",
+      );
+      return;
+    }
+
+    setVerifyingBankAccount(true);
+
+    try {
+      const response = await verifyWithdrawalBankAccount({
+        accessToken,
+        accountNumber: bankAccountNumber,
+        networkId: bankNetworkId,
+      });
+
+      if (!response.bankAccount.accountName || !response.bankAccount.bankName) {
+        throw new Error("Pouch could not verify the bank account name.");
+      }
+
+      setVerifiedWithdrawAccount({
+        accountNumber: response.bankAccount.accountNumber,
+        accountName: response.bankAccount.accountName,
+        bankName: response.bankAccount.bankName,
+        networkId: response.bankAccount.networkId,
+      });
+      setWithdrawModalVisible(false);
+      setWithdrawConfirmVisible(true);
+    } catch (error) {
+      Alert.alert(
+        "Verification failed",
+        error instanceof Error
+          ? error.message
+          : "Could not verify the bank account.",
+      );
+    } finally {
+      setVerifyingBankAccount(false);
+    }
+  };
+
+  const handleConfirmWithdrawal = async () => {
+    const amountNgn = parseNgnAmount(withdrawAmount);
+
+    if (!amountNgn || !verifiedWithdrawAccount) {
+      Alert.alert(
+        "Withdrawal details missing",
+        "Verify the bank account again before proceeding.",
+      );
+      return;
+    }
+
+    if (!isBackendConfigured()) {
+      Alert.alert(
+        "Backend unavailable",
+        "Set EXPO_PUBLIC_API_BASE_URL before starting a withdrawal.",
+      );
+      return;
+    }
+
+    if (!isReady) {
+      Alert.alert(
+        "Account still loading",
+        "Wait a moment for your session to finish loading, then try again.",
+      );
+      return;
+    }
+
+    const accessToken = await getAccessTokenWithRetry(getAccessToken);
+    if (!accessToken) {
+      Alert.alert(
+        "Authentication required",
+        "Could not get an access token for the withdrawal.",
+      );
+      return;
+    }
+
+    setCreatingWithdrawal(true);
+
+    try {
+      const response = await createWalletWithdrawal({
+        accessToken,
+        amountNgn,
+        bankAccount: {
+          accountNumber: verifiedWithdrawAccount.accountNumber,
+          accountName: verifiedWithdrawAccount.accountName,
+          networkId: verifiedWithdrawAccount.networkId,
+        },
+      });
+
+      await refreshWalletOverview();
+      resetWithdrawalFlow();
+
+      const payoutAmount =
+        response.withdrawal?.quotedAmountNgn ?? response.withdrawal?.requestedAmountNgn;
+
+      setToastMessage(
+        payoutAmount
+          ? `Withdrawal request created for NGN ${payoutAmount.toLocaleString("en-NG")}.`
+          : "Withdrawal request created and is now processing.",
+      );
+    } catch (error) {
+      Alert.alert(
+        "Withdrawal failed",
+        error instanceof Error
+          ? error.message
+          : "Could not create the wallet withdrawal.",
+      );
+    } finally {
+      setCreatingWithdrawal(false);
+    }
+  };
+
   const handleWalletPagePress = (pageId: string) => {
     if (pageId === "transactions") {
       router.push("/rider/transactions");
@@ -561,6 +855,21 @@ export default function WalletScreen() {
     displayCurrency,
     overview?.balanceNgn ?? 0,
   );
+  const filteredWithdrawalBanks = withdrawBankNetworks.filter((bank) => {
+    const query = bankSearchQuery.trim().toLowerCase();
+    if (!query) {
+      return true;
+    }
+
+    return (
+      bank.name.toLowerCase().includes(query) ||
+      (bank.code?.toLowerCase().includes(query) ?? false)
+    );
+  });
+  const selectedWithdrawBankLabel = selectedWithdrawBank
+    ? selectedWithdrawBank.name
+    : "Select bank";
+  const displayedWithdrawAmount = parseNgnAmount(withdrawAmount);
 
   return (
     <>
@@ -573,7 +882,7 @@ export default function WalletScreen() {
         <SectionHeader
           actionLabel="Rider home"
           onActionPress={() => router.replace("/rider")}
-          subtitle="Fund your wallet in Naira through Pouch onramp."
+          // subtitle="Fund your wallet in Naira through Pouch onramp."
           title="Wallet"
           titleVariant="h1"
         />
@@ -670,9 +979,276 @@ export default function WalletScreen() {
                 <AppButton
                   disabled={isLaunchingPouchDeposit}
                   onPress={handleDepositContinue}
-                  title={isLaunchingPouchDeposit ? "Paying" : "Continue"}
+                  title="Continue"
                 />
               </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        animationType="fade"
+        onRequestClose={closeWithdrawModal}
+        transparent
+        visible={isWithdrawModalVisible}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <View>
+                <AppText variant="h3">Withdraw in Naira</AppText>
+                <AppText variant="bodySmall" color={theme.colors.muted}>
+                  Enter your bank details and the amount you want paid out.
+                </AppText>
+              </View>
+            </View>
+
+            <View style={styles.fieldGroup}>
+              <AppText variant="bodySmall" color={theme.colors.muted}>
+                Amount in NGN
+              </AppText>
+              <TextInput
+                keyboardType="number-pad"
+                onChangeText={handleWithdrawAmountChange}
+                placeholder="5,000"
+                placeholderTextColor="#B5ACA4"
+                style={styles.input}
+                value={withdrawAmount}
+              />
+            </View>
+
+            <View style={styles.fieldGroup}>
+              <AppText variant="bodySmall" color={theme.colors.muted}>
+                Bank
+              </AppText>
+              <Pressable
+                onPress={() => {
+                  setWithdrawModalVisible(false);
+                  setBankPickerVisible(true);
+                }}
+                style={styles.selectorInput}
+              >
+                <AppText
+                  variant="bodyMedium"
+                  color={
+                    selectedWithdrawBank
+                      ? theme.colors.black
+                      : theme.colors.muted
+                  }
+                >
+                  {selectedWithdrawBankLabel}
+                </AppText>
+                <MaterialIcons
+                  color={theme.colors.black}
+                  name="keyboard-arrow-down"
+                  size={20}
+                />
+              </Pressable>
+            </View>
+
+            <View style={styles.fieldGroup}>
+              <AppText variant="bodySmall" color={theme.colors.muted}>
+                Account number
+              </AppText>
+              <TextInput
+                keyboardType="number-pad"
+                onChangeText={(value) => {
+                  setVerifiedWithdrawAccount(null);
+                  setWithdrawAccountNumber(value.replace(/\D/g, ""));
+                }}
+                placeholder="0123456789"
+                placeholderTextColor="#B5ACA4"
+                style={styles.input}
+                value={withdrawAccountNumber}
+              />
+            </View>
+
+            <View style={styles.modalButtonRow}>
+              <View style={styles.modalButtonSlot}>
+                <AppButton
+                  onPress={closeWithdrawModal}
+                  style={styles.cancelButton}
+                  title="Cancel"
+                  variant="ghost"
+                />
+              </View>
+              <View style={styles.modalButtonSlot}>
+                <AppButton
+                  disabled={isVerifyingBankAccount}
+                  onPress={handleWithdrawContinue}
+                  title="Continue"
+                />
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        animationType="slide"
+        onRequestClose={closeBankPickerModal}
+        transparent
+        visible={isBankPickerVisible}
+      >
+        <View style={styles.paymentWidgetBackdrop}>
+          <View style={styles.bankPickerSheet}>
+            <View style={styles.paymentWidgetHeader}>
+              <View style={styles.pageCopy}>
+                <AppText variant="h3">Choose bank</AppText>
+                <AppText variant="bodySmall" color={theme.colors.muted}>
+                  Choose from the list or search for your bank.
+                </AppText>
+              </View>
+              <Pressable
+                onPress={closeBankPickerModal}
+                style={styles.closeButton}
+              >
+                <MaterialIcons
+                  color={theme.colors.black}
+                  name="close"
+                  size={18}
+                />
+              </Pressable>
+            </View>
+
+            <TextInput
+              autoCapitalize="words"
+              onChangeText={setBankSearchQuery}
+              placeholder="Search bank"
+              placeholderTextColor="#B5ACA4"
+              style={styles.input}
+              value={bankSearchQuery}
+            />
+
+            {isLoadingBankNetworks && withdrawBankNetworks.length === 0 ? (
+              <View style={styles.bankLoadingState}>
+                <AppText variant="bodySmall" color={theme.colors.muted}>
+                  Loading banks...
+                </AppText>
+              </View>
+            ) : (
+              <>
+                {isLoadingBankNetworks ? (
+                  <View style={styles.bankInlineLoadingState}>
+                    <AppText variant="bodySmall" color={theme.colors.muted}>
+                      Updating banks...
+                    </AppText>
+                  </View>
+                ) : null}
+                <ScrollView
+                  contentContainerStyle={styles.bankResultsList}
+                  showsVerticalScrollIndicator={false}
+                >
+                  {filteredWithdrawalBanks.map((bank) => (
+                    <Pressable
+                      key={bank.id}
+                      onPress={() => {
+                        setSelectedWithdrawBank(bank);
+                        setVerifiedWithdrawAccount(null);
+                        setBankPickerVisible(false);
+                        setWithdrawModalVisible(true);
+                      }}
+                      style={styles.bankResultCard}
+                    >
+                      <View style={styles.pageCopy}>
+                        <AppText variant="label">{bank.name}</AppText>
+                        {bank.code ? (
+                          <AppText variant="bodySmall" color={theme.colors.muted}>
+                            {bank.code}
+                          </AppText>
+                        ) : null}
+                      </View>
+                      <MaterialIcons
+                        color={theme.colors.orange}
+                        name="north-east"
+                        size={16}
+                      />
+                    </Pressable>
+                  ))}
+                  {!filteredWithdrawalBanks.length ? (
+                    <AppText variant="bodySmall" color={theme.colors.muted}>
+                      No banks matched your search.
+                    </AppText>
+                  ) : null}
+                </ScrollView>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        animationType="slide"
+        onRequestClose={closeWithdrawConfirmModal}
+        transparent
+        visible={isWithdrawConfirmVisible}
+      >
+        <View style={styles.paymentWidgetBackdrop}>
+          <View style={styles.paymentWidgetSheet}>
+            <View style={styles.paymentWidgetHeader}>
+              <View style={styles.pageCopy}>
+                <AppText variant="h3">Confirm Withdrawal</AppText>
+                <AppText variant="bodySmall" color={theme.colors.muted}>
+                  Review the verified account details before you proceed.
+                </AppText>
+              </View>
+              <Pressable
+                onPress={closeWithdrawConfirmModal}
+                style={styles.closeButton}
+              >
+                <MaterialIcons
+                  color={theme.colors.black}
+                  name="close"
+                  size={18}
+                />
+              </Pressable>
+            </View>
+
+            <View style={styles.widgetHero}>
+              <AppText variant="bodySmall" color={theme.colors.muted}>
+                Withdrawal amount
+              </AppText>
+              <AppText variant="display">
+                {displayedWithdrawAmount
+                  ? `NGN ${displayedWithdrawAmount.toLocaleString("en-NG")}`
+                  : "Pending"}
+              </AppText>
+            </View>
+
+            <AppCard
+              backgroundColor={theme.colors.white}
+              style={styles.paymentDetailsCard}
+            >
+              <InstructionRow
+                label="Bank Name"
+                value={verifiedWithdrawAccount?.bankName ?? "Pending"}
+              />
+              <InstructionRow
+                label="Account Number"
+                value={verifiedWithdrawAccount?.accountNumber ?? "Pending"}
+              />
+              <InstructionRow
+                label="Account Name"
+                value={verifiedWithdrawAccount?.accountName ?? "Pending"}
+              />
+            </AppCard>
+
+            <View style={styles.widgetButtonStack}>
+              <AppButton
+                disabled={isCreatingWithdrawal}
+                onPress={handleConfirmWithdrawal}
+                title="Proceed"
+              />
+              <AppButton
+                onPress={() => {
+                  setWithdrawConfirmVisible(false);
+                  setWithdrawModalVisible(true);
+                }}
+                style={styles.cancelButton}
+                title="Back"
+                variant="ghost"
+              />
             </View>
           </View>
         </View>
@@ -948,6 +1524,18 @@ const styles = StyleSheet.create({
     paddingBottom: theme.spacing.xl,
     gap: theme.spacing.md,
   },
+  bankPickerSheet: {
+    maxHeight: "78%",
+    borderTopLeftRadius: theme.radii.lg,
+    borderTopRightRadius: theme.radii.lg,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    backgroundColor: theme.colors.offWhite,
+    paddingHorizontal: theme.layout.screenPadding,
+    paddingTop: theme.spacing.lg,
+    paddingBottom: theme.spacing.xl,
+    gap: theme.spacing.md,
+  },
   paymentWidgetHeader: {
     flexDirection: "row",
     alignItems: "flex-start",
@@ -972,6 +1560,32 @@ const styles = StyleSheet.create({
   },
   paymentDetailsCard: {
     gap: theme.spacing.sm,
+  },
+  bankLoadingState: {
+    minHeight: 160,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: theme.spacing.sm,
+  },
+  bankInlineLoadingState: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing.sm,
+    paddingVertical: theme.spacing.sm,
+  },
+  bankResultsList: {
+    gap: theme.spacing.sm,
+    paddingBottom: theme.spacing.sm,
+  },
+  bankResultCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing.md,
+    borderWidth: theme.borders.regular,
+    borderColor: theme.colors.black,
+    borderRadius: theme.radii.md,
+    backgroundColor: theme.colors.white,
+    padding: theme.spacing.md,
   },
   instructionRow: {
     flexDirection: "row",
@@ -1031,6 +1645,18 @@ const styles = StyleSheet.create({
   },
   fieldGroup: {
     gap: theme.spacing.xs,
+  },
+  selectorInput: {
+    minHeight: 50,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    borderRadius: theme.radii.sm,
+    backgroundColor: theme.colors.white,
+    paddingHorizontal: theme.spacing.md,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: theme.spacing.sm,
   },
   input: {
     minHeight: 50,
