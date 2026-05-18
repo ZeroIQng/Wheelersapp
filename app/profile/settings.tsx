@@ -1,7 +1,7 @@
 import { usePrivy } from "@privy-io/expo";
 import { Href, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Alert, StyleSheet, View } from "react-native";
 
 import { AppCard } from "@/components/app-card";
@@ -9,6 +9,8 @@ import { AppScreen } from "@/components/app-screen";
 import { AppText } from "@/components/app-text";
 import { SettingsRow } from "@/components/SettingsRow";
 import { SettingOption, settingsOptions, userProfile } from "@/data/mock";
+import { getAccessTokenWithRetry } from "@/lib/access-token";
+import { getCurrentProfile, isBackendConfigured } from "@/lib/api";
 import { clearStoredAuthState } from "@/lib/auth-state";
 import { isPrivyConfigured } from "@/lib/privy";
 import { getPrivyEmail, getPrivyName } from "@/lib/privy-user";
@@ -137,8 +139,62 @@ function LocalSettingsScreen() {
 
 function PrivySettingsScreen() {
   const router = useRouter();
-  const { logout, user } = usePrivy();
+  const { getAccessToken, logout, user, isReady } = usePrivy();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [profile, setProfile] = useState<SettingsProfile>(
+    buildProfile({
+      name: user ? getPrivyName(user) : undefined,
+      email: user ? getPrivyEmail(user) : undefined,
+    }),
+  );
+
+  useEffect(() => {
+    if (!isReady || !user || !isBackendConfigured()) {
+      setProfile(
+        buildProfile({
+          name: user ? getPrivyName(user) : undefined,
+          email: user ? getPrivyEmail(user) : undefined,
+        }),
+      );
+      return;
+    }
+
+    let cancelled = false;
+
+    void (async () => {
+      const accessToken = await getAccessTokenWithRetry(getAccessToken);
+      if (!accessToken) {
+        return;
+      }
+
+      try {
+        const response = await getCurrentProfile({ accessToken });
+        if (cancelled) {
+          return;
+        }
+
+        setProfile(
+          buildProfile({
+            name: response.user.name ?? getPrivyName(user),
+            email: response.user.email ?? getPrivyEmail(user),
+          }),
+        );
+      } catch {
+        if (!cancelled) {
+          setProfile(
+            buildProfile({
+              name: getPrivyName(user),
+              email: getPrivyEmail(user),
+            }),
+          );
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [getAccessToken, isReady, user]);
 
   async function handleLogout() {
     if (isLoggingOut) {
@@ -159,10 +215,7 @@ function PrivySettingsScreen() {
     <SettingsScreenBody
       isLoggingOut={isLoggingOut}
       onLogout={handleLogout}
-      profile={buildProfile({
-        name: user ? getPrivyName(user) : undefined,
-        email: user ? getPrivyEmail(user) : undefined,
-      })}
+      profile={profile}
     />
   );
 }
@@ -191,17 +244,11 @@ function SettingsScreenBody({
       return;
     }
     if (id === "edit-profile") {
-      Alert.alert(
-        "Edit profile",
-        "Profile editing will appear here in a later pass.",
-      );
+      router.push("/profile/edit-profile");
       return;
     }
     if (id === "security") {
-      Alert.alert(
-        "Security & PIN",
-        "Security tools and PIN controls will appear here in a later pass.",
-      );
+      router.push("/profile/security-pin");
       return;
     }
     if (id === "logout") {

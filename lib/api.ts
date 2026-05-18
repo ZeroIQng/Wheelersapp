@@ -71,6 +71,7 @@ export interface BackendUser {
   id: string;
   privyDid: string;
   walletAddress: string | null;
+  username: string | null;
   email: string | null;
   role: BackendRole;
   name: string | null;
@@ -89,6 +90,10 @@ interface SyncPrivyAuthInput {
 
 interface SyncPrivyAuthResponse {
   created: boolean;
+  user: BackendUser;
+}
+
+interface CurrentProfileResponse {
   user: BackendUser;
 }
 
@@ -620,6 +625,33 @@ export async function verifyPhoneOtp(
     {
       accessToken: input.accessToken,
       fallbackError: "Could not verify the phone code.",
+    },
+  );
+}
+
+export async function getCurrentProfile(input: {
+  accessToken: string;
+}): Promise<CurrentProfileResponse> {
+  return getJson<CurrentProfileResponse>("/auth/me", {
+    accessToken: input.accessToken,
+    fallbackError: "Could not load your profile.",
+  });
+}
+
+export async function updateCurrentProfile(input: {
+  accessToken: string;
+  username?: string;
+  fullName?: string;
+}): Promise<CurrentProfileResponse> {
+  return postJson<CurrentProfileResponse>(
+    "/auth/profile",
+    {
+      username: input.username,
+      fullName: input.fullName,
+    },
+    {
+      accessToken: input.accessToken,
+      fallbackError: "Could not update your profile.",
     },
   );
 }
