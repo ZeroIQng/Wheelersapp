@@ -274,6 +274,11 @@ export default function WalletScreen() {
     return () => clearTimeout(timeout);
   }, [toastMessage, toastOpacity]);
 
+  const showToast = (message: string) => {
+    toastOpacity.setValue(0);
+    setToastMessage(message);
+  };
+
   const resetPaymentWidget = () => {
     setPaymentWidgetVisible(false);
     setActivePouchProviderRef(null);
@@ -304,7 +309,7 @@ export default function WalletScreen() {
     }
 
     resetPaymentWidget();
-    setToastMessage(
+    showToast(
       "Payment window expired. Start a new deposit for a fresh account number.",
     );
   }, [isPaymentWidgetVisible, timeLeftMs]);
@@ -336,7 +341,7 @@ export default function WalletScreen() {
     toastOpacity.setValue(0);
     setDepositAmount(formattedAmount);
     setDepositModalVisible(true);
-    setToastMessage(
+    showToast(
       `Insufficient funds${rideName ? ` for ${rideName}` : ""}. Add NGN ${formattedAmount} to continue.`,
     );
   }, [
@@ -486,8 +491,7 @@ export default function WalletScreen() {
       setWithdrawBankNetworks(response.items);
     } catch (error) {
       lastBankLookupKeyRef.current = null;
-      Alert.alert(
-        "Banks unavailable",
+      showToast(
         error instanceof Error
           ? error.message
           : "Could not load the supported withdrawal banks.",
@@ -504,7 +508,7 @@ export default function WalletScreen() {
 
     const timeout = setTimeout(() => {
       void loadWithdrawalBankNetworks(bankSearchQuery);
-    }, 180);
+    }, 90);
 
     return () => clearTimeout(timeout);
   }, [
@@ -540,27 +544,18 @@ export default function WalletScreen() {
 
   const handleRefreshDepositStatus = async () => {
     if (!activePouchProviderRef) {
-      Alert.alert(
-        "No active deposit",
-        "Start a Pouch deposit first to refresh its status.",
-      );
+      showToast("Start a Pouch deposit first to refresh its status.");
       return;
     }
 
     if (!isReady) {
-      Alert.alert(
-        "Account still loading",
-        "Wait a moment for your session to finish loading, then try again.",
-      );
+      showToast("Wait a moment for your account to finish loading.");
       return;
     }
 
     const accessToken = await getAccessTokenWithRetry(getAccessToken);
     if (!accessToken) {
-      Alert.alert(
-        "Authentication required",
-        "Could not get an access token for the Pouch deposit status check.",
-      );
+      showToast("Could not verify your session right now.");
       return;
     }
 
@@ -579,14 +574,14 @@ export default function WalletScreen() {
       if (isPouchSessionSettled(status)) {
         await refreshWalletOverview();
         resetPaymentWidget();
-        setToastMessage(
+        showToast(
           "Pouch deposit completed. Your wallet credit is being processed.",
         );
         maybeContinueDeferredRide();
         return;
       }
 
-      setToastMessage(`Pouch deposit status: ${formatPouchStatus(status)}.`);
+      showToast(`Pouch deposit status: ${formatPouchStatus(status)}.`);
     } catch (error) {
       Alert.alert(
         "Status refresh failed",
@@ -611,27 +606,18 @@ export default function WalletScreen() {
     }
 
     if (!isBackendConfigured()) {
-      Alert.alert(
-        "Backend unavailable",
-        "Set EXPO_PUBLIC_API_BASE_URL before starting a Pouch deposit.",
-      );
+      showToast("Backend unavailable right now.");
       return;
     }
 
     if (!isReady) {
-      Alert.alert(
-        "Account still loading",
-        "Wait a moment for your session to finish loading, then try again.",
-      );
+      showToast("Wait a moment for your account to finish loading.");
       return;
     }
 
     const accessToken = await getAccessTokenWithRetry(getAccessToken);
     if (!accessToken) {
-      Alert.alert(
-        "Authentication required",
-        "Could not get an access token for the Pouch deposit.",
-      );
+      showToast("Could not verify your session right now.");
       return;
     }
 
@@ -665,7 +651,7 @@ export default function WalletScreen() {
       );
       const instructionAccount = response.paymentInstruction?.accountNumber;
 
-      setToastMessage(
+      showToast(
         instructionAccount
           ? `Transfer ${instructionAmount ?? "the requested amount"} to ${instructionAccount}.`
           : "Pouch deposit created. Use the returned bank transfer instruction to complete payment.",
@@ -722,27 +708,18 @@ export default function WalletScreen() {
     }
 
     if (!isBackendConfigured()) {
-      Alert.alert(
-        "Backend unavailable",
-        "Set EXPO_PUBLIC_API_BASE_URL before verifying the bank account.",
-      );
+      showToast("Backend unavailable right now.");
       return;
     }
 
     if (!isReady) {
-      Alert.alert(
-        "Account still loading",
-        "Wait a moment for your session to finish loading, then try again.",
-      );
+      showToast("Wait a moment for your account to finish loading.");
       return;
     }
 
     const accessToken = await getAccessTokenWithRetry(getAccessToken);
     if (!accessToken) {
-      Alert.alert(
-        "Authentication required",
-        "Could not get an access token for the withdrawal.",
-      );
+      showToast("Could not verify your session right now.");
       return;
     }
 
@@ -801,27 +778,18 @@ export default function WalletScreen() {
     }
 
     if (!isBackendConfigured()) {
-      Alert.alert(
-        "Backend unavailable",
-        "Set EXPO_PUBLIC_API_BASE_URL before starting a withdrawal.",
-      );
+      showToast("Backend unavailable right now.");
       return;
     }
 
     if (!isReady) {
-      Alert.alert(
-        "Account still loading",
-        "Wait a moment for your session to finish loading, then try again.",
-      );
+      showToast("Wait a moment for your account to finish loading.");
       return;
     }
 
     const accessToken = await getAccessTokenWithRetry(getAccessToken);
     if (!accessToken) {
-      Alert.alert(
-        "Authentication required",
-        "Could not get an access token for the withdrawal.",
-      );
+      showToast("Could not verify your session right now.");
       return;
     }
 
@@ -844,7 +812,7 @@ export default function WalletScreen() {
       const payoutAmount =
         response.withdrawal?.quotedAmountNgn ?? response.withdrawal?.requestedAmountNgn;
 
-      setToastMessage(
+      showToast(
         payoutAmount
           ? `Withdrawal request created for NGN ${payoutAmount.toLocaleString("en-NG")}.`
           : "Withdrawal request created and is now processing.",
@@ -1059,6 +1027,7 @@ export default function WalletScreen() {
                 onPress={() => {
                   setWithdrawModalVisible(false);
                   setBankPickerVisible(true);
+                  void loadWithdrawalBankNetworks(bankSearchQuery);
                 }}
                 style={styles.selectorInput}
               >
@@ -1119,7 +1088,7 @@ export default function WalletScreen() {
       </Modal>
 
       <Modal
-        animationType="slide"
+        animationType="fade"
         onRequestClose={closeBankPickerModal}
         transparent
         visible={isBankPickerVisible}
@@ -1195,7 +1164,7 @@ export default function WalletScreen() {
       </Modal>
 
       <Modal
-        animationType="slide"
+        animationType="fade"
         onRequestClose={closeWithdrawConfirmModal}
         transparent
         visible={isWithdrawConfirmVisible}
