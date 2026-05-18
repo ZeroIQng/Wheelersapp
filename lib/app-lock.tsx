@@ -3,6 +3,7 @@ import * as Crypto from "expo-crypto";
 import { usePathname, useRouter } from "expo-router";
 import {
   AppState,
+  Alert,
   type AppStateStatus,
   Pressable,
   StyleSheet,
@@ -293,7 +294,8 @@ export function AppLockOverlay({
               try {
                 const matched = await unlock(pin);
                 if (!matched) {
-                  setError("PIN is incorrect.");
+                  setError(null);
+                  Alert.alert("Wrong PIN", "The PIN you entered is incorrect.");
                 } else {
                   setPin("");
                   setError(null);
