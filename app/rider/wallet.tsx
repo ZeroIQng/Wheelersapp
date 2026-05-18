@@ -240,6 +240,7 @@ export default function WalletScreen() {
   const toastOpacity = useRef(new Animated.Value(0)).current;
   const handledRedirectRef = useRef<string | null>(null);
   const lastBankLookupKeyRef = useRef<string | null>(null);
+  const hasPrefetchedBanksRef = useRef(false);
   const redirectReason = Array.isArray(params.redirectReason)
     ? params.redirectReason[0]
     : params.redirectReason;
@@ -384,6 +385,7 @@ export default function WalletScreen() {
     setWithdrawConfirmVisible(false);
     setBankPickerVisible(false);
     setWithdrawModalVisible(true);
+    void loadWithdrawalBankNetworks("");
   };
 
   const closeWithdrawModal = () => {
@@ -448,6 +450,8 @@ export default function WalletScreen() {
     openWithdrawModal();
   };
 
+  const availableWithdrawalBalanceNgn = overview?.balanceNgn ?? 0;
+
   const loadWithdrawalBankNetworks = async (query?: string) => {
     const normalizedQuery = query?.trim().toLowerCase() ?? "";
     const lookupKey = `NG:${normalizedQuery}`;
@@ -508,6 +512,15 @@ export default function WalletScreen() {
     isBankPickerVisible,
     isReady,
   ]);
+
+  useEffect(() => {
+    if (!isReady || !isBackendConfigured() || hasPrefetchedBanksRef.current) {
+      return;
+    }
+
+    hasPrefetchedBanksRef.current = true;
+    void loadWithdrawalBankNetworks("");
+  }, [isReady]);
 
   const handleYieldPress = () => {
     Alert.alert(
@@ -682,6 +695,16 @@ export default function WalletScreen() {
       return;
     }
 
+    if (amountNgn > availableWithdrawalBalanceNgn) {
+      Alert.alert(
+        "Insufficient balance",
+        `You have insufficient balance for this withdrawal. Available balance is NGN ${Math.round(
+          availableWithdrawalBalanceNgn,
+        ).toLocaleString("en-NG")}.`,
+      );
+      return;
+    }
+
     if (!bankNetworkId || !bankAccountNumber) {
       Alert.alert(
         "Bank details required",
@@ -763,6 +786,16 @@ export default function WalletScreen() {
       Alert.alert(
         "Withdrawal details missing",
         "Verify the bank account again before proceeding.",
+      );
+      return;
+    }
+
+    if (amountNgn > availableWithdrawalBalanceNgn) {
+      Alert.alert(
+        "Insufficient balance",
+        `You have insufficient balance for this withdrawal. Available balance is NGN ${Math.round(
+          availableWithdrawalBalanceNgn,
+        ).toLocaleString("en-NG")}.`,
       );
       return;
     }
@@ -1121,59 +1154,42 @@ export default function WalletScreen() {
               value={bankSearchQuery}
             />
 
-            {isLoadingBankNetworks && withdrawBankNetworks.length === 0 ? (
-              <View style={styles.bankLoadingState}>
-                <AppText variant="bodySmall" color={theme.colors.muted}>
-                  Loading banks...
-                </AppText>
-              </View>
-            ) : (
-              <>
-                {isLoadingBankNetworks ? (
-                  <View style={styles.bankInlineLoadingState}>
-                    <AppText variant="bodySmall" color={theme.colors.muted}>
-                      Updating banks...
-                    </AppText>
-                  </View>
-                ) : null}
-                <ScrollView
-                  contentContainerStyle={styles.bankResultsList}
-                  showsVerticalScrollIndicator={false}
+            <ScrollView
+              contentContainerStyle={styles.bankResultsList}
+              showsVerticalScrollIndicator={false}
+            >
+              {filteredWithdrawalBanks.map((bank) => (
+                <Pressable
+                  key={bank.id}
+                  onPress={() => {
+                    setSelectedWithdrawBank(bank);
+                    setVerifiedWithdrawAccount(null);
+                    setBankPickerVisible(false);
+                    setWithdrawModalVisible(true);
+                  }}
+                  style={styles.bankResultCard}
                 >
-                  {filteredWithdrawalBanks.map((bank) => (
-                    <Pressable
-                      key={bank.id}
-                      onPress={() => {
-                        setSelectedWithdrawBank(bank);
-                        setVerifiedWithdrawAccount(null);
-                        setBankPickerVisible(false);
-                        setWithdrawModalVisible(true);
-                      }}
-                      style={styles.bankResultCard}
-                    >
-                      <View style={styles.pageCopy}>
-                        <AppText variant="label">{bank.name}</AppText>
-                        {bank.code ? (
-                          <AppText variant="bodySmall" color={theme.colors.muted}>
-                            {bank.code}
-                          </AppText>
-                        ) : null}
-                      </View>
-                      <MaterialIcons
-                        color={theme.colors.orange}
-                        name="north-east"
-                        size={16}
-                      />
-                    </Pressable>
-                  ))}
-                  {!filteredWithdrawalBanks.length ? (
-                    <AppText variant="bodySmall" color={theme.colors.muted}>
-                      No banks matched your search.
-                    </AppText>
-                  ) : null}
-                </ScrollView>
-              </>
-            )}
+                  <View style={styles.pageCopy}>
+                    <AppText variant="label">{bank.name}</AppText>
+                    {bank.code ? (
+                      <AppText variant="bodySmall" color={theme.colors.muted}>
+                        {bank.code}
+                      </AppText>
+                    ) : null}
+                  </View>
+                  <MaterialIcons
+                    color={theme.colors.orange}
+                    name="north-east"
+                    size={16}
+                  />
+                </Pressable>
+              ))}
+              {!filteredWithdrawalBanks.length && !isLoadingBankNetworks ? (
+                <AppText variant="bodySmall" color={theme.colors.muted}>
+                  No banks matched your search.
+                </AppText>
+              ) : null}
+            </ScrollView>
           </View>
         </View>
       </Modal>
