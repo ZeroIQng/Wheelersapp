@@ -188,6 +188,7 @@ export default function SecurityPinScreen() {
               onPress={() => void handleForgotPin()}
               title="Reset PIN"
               variant="danger"
+              style={styles.resetPinButton}
             />
           </AppCard>
         </>
@@ -255,5 +256,10 @@ const styles = StyleSheet.create({
     textAlign: "center",
     letterSpacing: 12,
     ...theme.typography.h3,
+  },
+  resetPinButton: {
+    backgroundColor: theme.colors.dangerLight,
+    shadowOpacity: 0,
+    elevation: 0,
   },
 });
