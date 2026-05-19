@@ -1,17 +1,36 @@
-import { useLoginWithOAuth, usePrivy } from "@privy-io/expo";
-import { Href, useRouter } from "expo-router";
-import { useState } from "react";
+import { useLoginWithOAuth, usePrivy, type User } from "@privy-io/expo";
+import { useRouter } from "expo-router";
+import { StatusBar } from "expo-status-bar";
+import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
+import Animated, {
+  Easing,
+  FadeIn,
+  FadeInDown,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withTiming,
+  ZoomIn,
+} from "react-native-reanimated";
 
 import { AppButton } from "@/components/app-button";
 import { AppCard } from "@/components/app-card";
 import { AppScreen } from "@/components/app-screen";
 import { AppText } from "@/components/app-text";
-import { RingStack, StarBurst } from "@/components/decorative-shapes";
+import { BlobShape, DiamondPair, RingStack, StarBurst } from "@/components/decorative-shapes";
 import { FlowHeader } from "@/components/flow-header";
 import { FloatingView, PulseView, RevealView } from "@/components/motion";
 import { RoleMotionBadge } from "@/components/role-motion-badge";
+import { isBackendConfigured, syncPrivyAuth, type BackendRole } from "@/lib/api";
+import { getAuthenticatedRoute, persistAuthenticatedRole } from "@/lib/auth-state";
+// import { clearStoredAuthState } from "@/lib/auth-state";
 import { isPrivyConfigured, privyOAuthRedirectPath } from "@/lib/privy";
+import {
+  getPrivyEmail,
+  getPrivyEthereumWalletAddress,
+  getPrivyName,
+} from "@/lib/privy-user";
 import {
   isThirdwebConfigured,
   thirdwebAppMetadata,
@@ -26,6 +45,45 @@ import {
 import { theme } from "@/theme";
 
 type Role = "ride" | "drive";
+type AccessTokenGetter = () => Promise<string | null | undefined>;
+
+function hasGoogleAccount(user: User): boolean {
+  return user.linked_accounts.some((account) => account.type === "google_oauth");
+}
+
+async function resolveAuthenticatedRoute({
+  authenticatedUser,
+  getAccessToken,
+  requestedRole,
+}: {
+  authenticatedUser: User;
+  getAccessToken: AccessTokenGetter;
+  requestedRole?: BackendRole;
+}) {
+  const accessToken = await getAccessToken();
+  if (!accessToken) {
+    throw new Error("Could not get a Privy access token.");
+  }
+
+  const response = await syncPrivyAuth({
+    accessToken,
+    authMethod: "google",
+    role: requestedRole,
+    email: getPrivyEmail(authenticatedUser),
+    name: getPrivyName(authenticatedUser),
+    walletAddress: getPrivyEthereumWalletAddress(authenticatedUser),
+  });
+
+  const resolvedRole = response.user.role === "DRIVER" ? "DRIVER" : "RIDER";
+  const nextState = await persistAuthenticatedRole(resolvedRole, {
+    phoneVerified:
+      resolvedRole === "RIDER" &&
+      typeof response.user.phone === "string" &&
+      response.user.phone.length > 0,
+  });
+
+  return getAuthenticatedRoute(nextState);
+}
 
 const walletConnectTheme = {
   type: "light" as const,
@@ -65,10 +123,60 @@ const walletConnectTheme = {
 
 export default function RoleSelectionScreen() {
   const router = useRouter();
+  const { getAccessToken, isReady, user } = usePrivy();
   const [selectedRole, setSelectedRole] = useState<Role>("ride");
   const [rideMotionKey, setRideMotionKey] = useState(0);
   const [driveMotionKey, setDriveMotionKey] = useState(1);
-  const authNextRoute = "/phone-auth" as Href;
+  const [restoreAttempt, setRestoreAttempt] = useState(0);
+  const [restoreError, setRestoreError] = useState<string | null>(null);
+  const [isRestoringSession, setIsRestoringSession] = useState(false);
+
+  useEffect(() => {
+    if (!isPrivyConfigured || !isReady || !user) {
+      return;
+    }
+
+    let cancelled = false;
+
+    if (!isBackendConfigured()) {
+      setRestoreError("Set EXPO_PUBLIC_API_BASE_URL before continuing.");
+      setIsRestoringSession(false);
+      return;
+    }
+
+    setRestoreError(null);
+    setIsRestoringSession(true);
+
+    void (async () => {
+      try {
+        const destination = await resolveAuthenticatedRoute({
+          authenticatedUser: user,
+          getAccessToken,
+        });
+
+        if (cancelled) {
+          return;
+        }
+
+        router.replace(destination);
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
+        setRestoreError(
+          error instanceof Error
+            ? error.message
+            : "Could not restore your account.",
+        );
+        setIsRestoringSession(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [getAccessToken, isReady, restoreAttempt, router, user]);
 
   function handleRolePress(role: Role) {
     setSelectedRole(role);
@@ -77,6 +185,20 @@ export default function RoleSelectionScreen() {
       return;
     }
     setDriveMotionKey((current) => current + 1);
+  }
+
+  if (isPrivyConfigured && (!isReady || user)) {
+    return (
+      <SessionRestoreSplash
+        isRestoring={isRestoringSession || !isReady}
+        onContinue={
+          !isRestoringSession && isReady && user
+            ? () => setRestoreAttempt((current) => current + 1)
+            : undefined
+        }
+        statusMessage={restoreError ?? undefined}
+      />
+    );
   }
 
   return (
@@ -120,11 +242,11 @@ export default function RoleSelectionScreen() {
 
       <RevealView delay={220} style={styles.actions}>
         {isPrivyConfigured ? (
-          <GoogleContinueButton nextRoute={authNextRoute} />
+          <GoogleContinueButton role={selectedRole} />
         ) : (
           <AppButton
             title="Connect with Google ↗"
-            onPress={() => router.push(authNextRoute)}
+            onPress={() => router.push("/phone-auth")}
           />
         )}
         {selectedRole === "ride" ? <WalletConnectAction /> : null}
@@ -133,49 +255,222 @@ export default function RoleSelectionScreen() {
   );
 }
 
-function GoogleContinueButton({ nextRoute }: { nextRoute: Href }) {
+function SessionRestoreSplash({
+  isRestoring,
+  onContinue,
+  statusMessage,
+}: {
+  isRestoring: boolean;
+  onContinue?: () => void;
+  statusMessage?: string;
+}) {
+  const floatY = useSharedValue(0);
+  const spin = useSharedValue(0);
+
+  useEffect(() => {
+    floatY.value = withRepeat(
+      withTiming(-10, {
+        duration: 1500,
+        easing: Easing.inOut(Easing.ease),
+      }),
+      -1,
+      true,
+    );
+    spin.value = withRepeat(
+      withTiming(1, {
+        duration: 9000,
+        easing: Easing.linear,
+      }),
+      -1,
+      false,
+    );
+  }, [floatY, spin]);
+
+  const logoStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: floatY.value }],
+  }));
+
+  const starStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${spin.value * 360}deg` }],
+  }));
+
+  return (
+    <AppScreen backgroundColor={theme.colors.orange} contentStyle={styles.splashContainer}>
+      <StatusBar style="light" backgroundColor={theme.colors.orange} />
+      <Pressable onPress={onContinue} style={styles.splashPressable}>
+        <BlobShape color="rgba(255,255,255,0.18)" style={styles.splashBlobTop} />
+        <Animated.View style={[styles.splashStarRight, starStyle]}>
+          <StarBurst color="rgba(255,255,255,0.22)" width={54} height={54} />
+        </Animated.View>
+        <DiamondPair color="rgba(255,255,255,0.18)" style={styles.splashDiamondLeft} />
+        <View style={styles.splashCenter}>
+          <Animated.View entering={ZoomIn.duration(500)} style={[styles.splashLogoWrap, logoStyle]}>
+            <View style={styles.splashLogoOuter}>
+              <View style={styles.splashLogoInner}>
+                <AppText variant="h2" color={theme.colors.white} style={styles.splashMarkText}>
+                  W
+                </AppText>
+              </View>
+            </View>
+          </Animated.View>
+          <Animated.View entering={FadeInDown.delay(100).duration(500)} style={styles.splashTitleBlock}>
+            <View style={styles.splashWordmark}>
+              <AppText variant="h1" color={theme.colors.white} style={styles.splashTitleLine}>
+                WHEEL
+              </AppText>
+              <AppText variant="h1" color={theme.colors.white} style={styles.splashTitleLine}>
+                ERS
+              </AppText>
+            </View>
+            <AppText variant="bodySmall" color="rgba(255,255,255,0.74)" style={styles.splashTagline}>
+              ride. earn. own.
+            </AppText>
+          </Animated.View>
+        </View>
+        <Animated.View entering={FadeIn.delay(250).duration(450)} style={styles.splashBottom}>
+          <View style={styles.splashLoaderTrack}>
+            <Animated.View style={styles.splashLoaderBar} />
+          </View>
+          <AppText
+            variant="monoSmall"
+            color="rgba(255,255,255,0.7)"
+            style={styles.splashHint}
+          >
+            {isRestoring
+              ? "opening your app..."
+              : (statusMessage ?? "tap anywhere to continue")}
+          </AppText>
+        </Animated.View>
+      </Pressable>
+    </AppScreen>
+  );
+}
+
+function GoogleContinueButton({
+  role,
+}: {
+  role: Role;
+}) {
   const router = useRouter();
-  const { user, isReady } = usePrivy();
+  const { user, isReady, getAccessToken } = usePrivy();
+  // const { logout } = usePrivy();
   const { login, state } = useLoginWithOAuth();
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const hasGoogleLinkedAccount = Boolean(user && hasGoogleAccount(user));
+  const [isSyncing, setIsSyncing] = useState(false);
+  // const [isResetting, setIsResetting] = useState(false);
   const isLoading = state.status === "loading";
   const errorMessage =
-    state.status === "error"
+    syncError ??
+    (state.status === "error"
       ? (state.error?.message ?? "Could not continue with Google.")
-      : null;
+      : null);
 
   async function handlePress() {
-    if (isLoading) return;
-    if (user) {
-      router.push(nextRoute);
+    if (isLoading || isSyncing) return;
+
+    setSyncError(null);
+
+    if (!isBackendConfigured()) {
+      setSyncError("Set EXPO_PUBLIC_API_BASE_URL before continuing.");
       return;
     }
+
     if (!isReady) {
-      router.push(nextRoute);
+      setSyncError("Privy is still initializing. Try again in a moment.");
       return;
     }
-    const authenticatedUser = await login({
-      provider: "google",
-      redirectUri: privyOAuthRedirectPath,
-    });
-    if (authenticatedUser) {
-      router.push(nextRoute);
+
+    const selectedBackendRole: BackendRole =
+      role === "drive" ? "DRIVER" : "RIDER";
+    let authenticatedUser = user ?? undefined;
+    let requestedRole: BackendRole | undefined = selectedBackendRole;
+    if (!authenticatedUser || !hasGoogleAccount(authenticatedUser)) {
+      authenticatedUser = await login({
+        provider: "google",
+        redirectUri: privyOAuthRedirectPath,
+      });
+    } else {
+      requestedRole = undefined;
+    }
+
+    if (!authenticatedUser) {
+      return;
+    }
+
+    setIsSyncing(true);
+
+    try {
+      const destination = await resolveAuthenticatedRoute({
+        authenticatedUser,
+        getAccessToken,
+        requestedRole,
+      });
+      router.replace(destination);
+    } catch (error) {
+      setSyncError(
+        error instanceof Error
+          ? error.message
+          : "Could not sync your account with Wheelers.",
+      );
+    } finally {
+      setIsSyncing(false);
     }
   }
+
+  // async function handleResetSession() {
+  //   if (isSyncing || isLoading || isResetting) {
+  //     return;
+  //   }
+// 
+  //   setSyncError(null);
+  //   setIsResetting(true);
+// 
+  //   try {
+  //     await logout();
+  //     await clearStoredAuthState();
+  //   } catch (error) {
+  //     setSyncError(
+  //       error instanceof Error
+  //         ? error.message
+  //         : "Could not clear the previous session."
+  //     );
+  //   } finally {
+  //     setIsResetting(false);
+  //   }
+  // }
 
   return (
     <View style={styles.googleActionBlock}>
       <AppButton
         title={
-          user
-            ? "Continue"
+          hasGoogleLinkedAccount
+            ? isSyncing
+              ? "Setting up account…"
+              : "Continue"
             : isLoading
               ? "Opening Google…"
-              : "Connect with Google"
+              : isSyncing
+                ? "Setting up account…"
+                : "Connect with Google"
         }
+        // disabled={isResetting}
         onPress={() => {
           void handlePress();
         }}
       />
+      {/*
+      {user ? (
+        <AppButton
+          title={isResetting ? "Clearing session…" : "Reset session"}
+          variant="ghost"
+          disabled={isSyncing || isLoading || isResetting}
+          onPress={() => {
+            void handleResetSession();
+          }}
+        />
+      ) : null}
+      */}
       {errorMessage ? (
         <AppText variant="bodySmall" color={theme.colors.danger}>
           {errorMessage}
@@ -281,6 +576,101 @@ function RoleCard({
 
 const styles = StyleSheet.create({
   container: { gap: theme.spacing.xl, paddingTop: theme.spacing.lg },
+  splashContainer: {
+    paddingHorizontal: 0,
+    paddingBottom: 0,
+  },
+  splashPressable: {
+    flex: 1,
+    justifyContent: "space-between",
+    alignItems: "center",
+    width: "100%",
+    paddingVertical: theme.spacing.xxxl,
+  },
+  splashCenter: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    width: "100%",
+  },
+  splashLogoWrap: {
+    marginBottom: theme.spacing.md,
+  },
+  splashLogoOuter: {
+    width: 82,
+    height: 82,
+    borderRadius: theme.radius.pill,
+    backgroundColor: "rgba(255,255,255,0.18)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  splashLogoInner: {
+    width: 58,
+    height: 58,
+    borderRadius: theme.radius.pill,
+    backgroundColor: "rgba(255,255,255,0.14)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  splashMarkText: {
+    fontSize: 25,
+    lineHeight: 25,
+    letterSpacing: -0.4,
+  },
+  splashTitleBlock: {
+    alignItems: "center",
+    gap: theme.spacing.xs,
+  },
+  splashWordmark: {
+    alignItems: "center",
+    gap: 0,
+  },
+  splashTitleLine: {
+    textAlign: "center",
+    fontSize: 28,
+    lineHeight: 27,
+    letterSpacing: -0.8,
+  },
+  splashTagline: {
+    letterSpacing: 0.4,
+    lineHeight: 16,
+  },
+  splashBottom: {
+    width: "100%",
+    alignItems: "center",
+    gap: theme.spacing.sm,
+  },
+  splashBlobTop: {
+    position: "absolute",
+    top: -18,
+    left: -20,
+  },
+  splashStarRight: {
+    position: "absolute",
+    right: 20,
+    bottom: 108,
+  },
+  splashDiamondLeft: {
+    position: "absolute",
+    top: 68,
+    left: 28,
+  },
+  splashLoaderTrack: {
+    width: 112,
+    height: 8,
+    borderRadius: theme.radius.pill,
+    backgroundColor: "rgba(255,255,255,0.24)",
+    overflow: "hidden",
+  },
+  splashLoaderBar: {
+    width: "72%",
+    height: "100%",
+    borderRadius: theme.radius.pill,
+    backgroundColor: theme.colors.white,
+  },
+  splashHint: {
+    letterSpacing: 1.2,
+  },
   headerWrap: { marginTop: theme.spacing.sm },
   rings: { position: "absolute", top: -20, right: -32 },
   star: { position: "absolute", bottom: 42, left: 16 },

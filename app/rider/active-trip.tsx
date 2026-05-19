@@ -1,51 +1,175 @@
-import { Href, useRouter } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { StatusBar } from "expo-status-bar";
+import { useMemo } from "react";
+import { Pressable, StyleSheet, View } from "react-native";
 
-import { AppButton } from '@/components/app-button';
-import { AppCard } from '@/components/app-card';
-import { AppScreen } from '@/components/app-screen';
-import { AppText } from '@/components/app-text';
-import { BackArrow } from '@/components/back-arrow';
-import { MapMock } from '@/components/MapMock';
-import { MetricCard } from '@/components/MetricCard';
-import { StatusPill } from '@/components/StatusPill';
-import { TripProgressBar } from '@/components/TripProgressBar';
-import { riderTripDetails } from '@/data/mock';
-import { theme } from '@/theme';
+import { AppButton } from "@/components/app-button";
+import { AppCard } from "@/components/app-card";
+import { AppScreen } from "@/components/app-screen";
+import { AppText } from "@/components/app-text";
+import { BackArrow } from "@/components/back-arrow";
+import { LiveMap } from "@/components/live-map";
+import { MetricCard } from "@/components/MetricCard";
+import { StatusPill } from "@/components/StatusPill";
+import { TripProgressBar } from "@/components/TripProgressBar";
+import {
+  getAdditionalStopCount,
+  getRideRouteRows,
+  parseRideItineraryParam,
+  serializeRideItinerary,
+} from "@/lib/ride-route";
+import { useRideSession } from "@/lib/ride-session";
+import { theme } from "@/theme";
+
+function formatRideFare(params: {
+  ngn?: number;
+  usdt?: number;
+}): string | null {
+  if (typeof params.ngn === "number" && Number.isFinite(params.ngn)) {
+    return `NGN ${Math.round(params.ngn).toLocaleString("en-NG")}`;
+  }
+
+  if (typeof params.usdt === "number" && Number.isFinite(params.usdt)) {
+    return `${params.usdt.toFixed(2)} USDT`;
+  }
+
+  return null;
+}
 
 export default function RiderActiveTripScreen() {
   const router = useRouter();
-  const ratingRoute = '/rider/trip-rating' as Href;
-  const emergencyRoute = '/safety/emergency' as Href;
+  const params = useLocalSearchParams<{
+    itinerary?: string | string[];
+  }>();
+  const fallbackItinerary = useMemo(
+    () => parseRideItineraryParam(params.itinerary),
+    [params.itinerary],
+  );
+  const { cancelRide, currentRide } = useRideSession();
+  const itinerary = currentRide?.itinerary ?? fallbackItinerary;
+  const routeRows = useMemo(() => getRideRouteRows(itinerary), [itinerary]);
+  const extraStops = getAdditionalStopCount(itinerary);
+  const serializedItinerary = serializeRideItinerary(itinerary);
+  const nextStop =
+    currentRide?.driverLocation?.nextStopAddress ??
+    routeRows[1]?.value ??
+    itinerary.stops[0];
+  const statusLabel =
+    currentRide?.status === "active"
+      ? "TRIP IN PROGRESS"
+      : currentRide?.status === "completed"
+        ? "TRIP COMPLETED"
+        : currentRide?.status === "matched"
+          ? "DRIVER EN ROUTE"
+          : currentRide?.status === "matching"
+            ? "MATCHING DRIVER"
+            : "TRIP UPDATE";
+  const statusText =
+    currentRide?.status === "active"
+      ? "Live trip in progress"
+      : currentRide?.status === "completed"
+        ? "Ride completed"
+        : currentRide?.status === "matched"
+          ? "Driver heading to your pickup"
+          : currentRide?.status === "matching"
+            ? "Waiting for a driver to accept"
+            : "Trip status unavailable";
+  const metrics = [
+    {
+      id: "eta",
+      label: currentRide?.status === "completed" ? "MIN TRIP" : "MIN LEFT",
+      value: String(
+        currentRide?.driver?.etaSeconds
+          ? Math.max(1, Math.ceil(currentRide.driver.etaSeconds / 60))
+          : currentRide?.plannedDurationSeconds
+            ? Math.max(1, Math.ceil(currentRide.plannedDurationSeconds / 60))
+            : "--",
+      ),
+      accent: "orange" as const,
+    },
+    {
+      id: "distance",
+      label: currentRide?.status === "completed" ? "KM TRIP" : "KM LEFT",
+      value:
+        typeof currentRide?.driverLocation?.distanceToNextStopKm === "number"
+          ? currentRide.driverLocation.distanceToNextStopKm.toFixed(1)
+          : typeof currentRide?.plannedDistanceKm === "number"
+            ? currentRide.plannedDistanceKm.toFixed(1)
+            : "--",
+    },
+    {
+      id: "fare",
+      label: currentRide?.status === "completed" ? "FARE PAID" : "FARE",
+      value:
+        formatRideFare({
+          ngn:
+            currentRide?.completedFareNgn ??
+            currentRide?.driver?.lockedFareNgn ??
+            currentRide?.fareEstimateNgn,
+          usdt:
+            currentRide?.completedFareUsdt ??
+            currentRide?.driver?.lockedFareUsdt ??
+            currentRide?.fareEstimateUsdt,
+        }) ?? "Fare pending",
+    },
+  ];
+
+  async function handleCancelRide() {
+    try {
+      await cancelRide("rider_cancelled");
+    } finally {
+      router.replace("/rider");
+    }
+  }
 
   return (
-    <AppScreen backgroundColor={theme.colors.offWhite} contentStyle={styles.container}>
+    <AppScreen
+      backgroundColor={theme.colors.offWhite}
+      contentStyle={styles.container}
+    >
       <StatusBar style="dark" backgroundColor={theme.colors.mapBase} />
       <View style={styles.mapWrap}>
-        <MapMock
+        <LiveMap
           height={260}
-          showCar
-          showDestination
-          showRoute
-          topBadge="LIVE"
-          variant="riderTrip">
-          <BackArrow style={styles.backButton} />
-        </MapMock>
+          pickup={currentRide?.route?.pickup}
+          destination={currentRide?.route?.destination}
+          stops={currentRide?.route?.stops}
+          route={currentRide?.route?.route}
+          driverLocation={currentRide?.driverLocation}
+          initialCenter={currentRide?.route?.pickup}
+          fitPadding={{ top: 40, right: 28, bottom: 44, left: 28 }}
+        >
+          <BackArrow onPress={() => router.back()} style={styles.backButton} />
+          <View style={styles.liveBadge}>
+            <AppText variant="monoSmall" color={theme.colors.offWhite}>
+              LIVE
+            </AppText>
+          </View>
+        </LiveMap>
       </View>
 
       <View style={styles.content}>
         <View style={styles.statusRow}>
-          <StatusPill label={riderTripDetails.status} variant="dark" />
+          <StatusPill label={statusLabel} variant="dark" />
           <AppText variant="monoSmall" color={theme.colors.muted}>
-            ● {riderTripDetails.substatus}
+            ● {statusText}
           </AppText>
         </View>
 
-        <TripProgressBar progress={riderTripDetails.progress} />
+        <TripProgressBar
+          progress={
+            currentRide?.status === "completed"
+              ? 1
+              : currentRide?.status === "active"
+                ? 0.62
+                : currentRide?.status === "matched"
+                  ? 0.28
+                  : 0.14
+          }
+        />
 
         <View style={styles.metricsRow}>
-          {riderTripDetails.metrics.map((metric) => (
+          {metrics.map((metric) => (
             <MetricCard
               accent={metric.accent}
               key={metric.id}
@@ -56,30 +180,102 @@ export default function RiderActiveTripScreen() {
           ))}
         </View>
 
+        <AppCard style={styles.bannerCard}>
+          <View style={styles.bannerTopRow}>
+            <View style={styles.bannerCopy}>
+              <AppText variant="monoSmall" color={theme.colors.muted}>
+                {currentRide?.status === "matched" ? "DRIVER NEXT STOP" : "HEADING TO"}
+              </AppText>
+              <AppText variant="bodyMedium">{nextStop}</AppText>
+            </View>
+            <AppButton
+              title="Add or change"
+              variant="ghost"
+              disabled={currentRide?.status === "completed"}
+              onPress={() =>
+                router.push({
+                  pathname: "/destination-search",
+                  params: {
+                    flowMode: "trip-edit",
+                    itinerary: serializedItinerary,
+                  },
+                })
+              }
+              style={styles.editButton}
+            />
+          </View>
+          <AppText variant="bodySmall" color={theme.colors.muted}>
+            {extraStops > 0
+              ? `${extraStops} extra stop${extraStops === 1 ? "" : "s"} still in this trip.`
+              : "No extra stops added to this trip."}
+          </AppText>
+        </AppCard>
+
         <AppCard style={styles.routeCard}>
-          <StopRow color={theme.colors.green} label={riderTripDetails.pickup} />
-          <StopRow color={theme.colors.orange} label={riderTripDetails.destination} />
+          {routeRows.map((row) => (
+            <StopRow key={row.id} kind={row.kind} label={row.value} />
+          ))}
         </AppCard>
 
         <View style={styles.actions}>
-          <Pressable onPress={() => router.push(emergencyRoute)} style={styles.sosButton}>
+          <Pressable
+            onPress={() => router.push("/safety/emergency")}
+            style={styles.sosButton}
+          >
             <AppText variant="label" color={theme.colors.offWhite}>
               SOS
             </AppText>
           </Pressable>
-          <AppButton title="Share trip ↗" variant="ghost" style={styles.shareButton} />
+          <AppButton
+            title="Share trip ↗"
+            variant="ghost"
+            style={styles.shareButton}
+          />
         </View>
 
-        <AppButton title="Arrived at destination ↗" onPress={() => router.push(ratingRoute)} />
+        <AppButton
+          title={
+            currentRide?.status === "completed"
+              ? "Rate trip ↗"
+              : currentRide?.status === "active"
+                ? "Waiting for completion"
+                : "Driver en route"
+          }
+          disabled={currentRide?.status !== "completed"}
+          onPress={() => router.push("/rider/trip-rating")}
+        />
+
+        {currentRide?.status !== "completed" ? (
+          <AppButton
+            title="Cancel ride"
+            variant="danger"
+            onPress={handleCancelRide}
+          />
+        ) : null}
       </View>
     </AppScreen>
   );
 }
 
-function StopRow({ color, label }: { color: string; label: string }) {
+function StopRow({
+  kind,
+  label,
+}: {
+  kind: "pickup" | "stop" | "destination";
+  label: string;
+}) {
   return (
     <View style={styles.stopRow}>
-      <View style={[styles.stopDot, { backgroundColor: color }]} />
+      <View
+        style={[
+          styles.stopDot,
+          kind === "pickup"
+            ? styles.stopDotPickup
+            : kind === "destination"
+              ? styles.stopDotDestination
+              : styles.stopDotStop,
+        ]}
+      />
       <AppText variant="bodyMedium">{label}</AppText>
     </View>
   );
@@ -96,9 +292,24 @@ const styles = StyleSheet.create({
     borderBottomColor: theme.colors.black,
   },
   backButton: {
-    position: 'absolute',
+    position: "absolute",
     top: 12,
     left: theme.spacing.gutter,
+  },
+  liveBadge: {
+    position: "absolute",
+    top: 12,
+    right: theme.spacing.gutter,
+    minWidth: 48,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: 5,
+    borderRadius: theme.radius.sm,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    backgroundColor: theme.colors.black,
+    ...theme.shadows.card,
   },
   content: {
     flex: 1,
@@ -107,48 +318,75 @@ const styles = StyleSheet.create({
     gap: theme.spacing.md,
   },
   statusRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
   },
   metricsRow: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: theme.spacing.sm,
   },
   metric: {
     minHeight: 86,
   },
+  bannerCard: {
+    gap: theme.spacing.sm,
+  },
+  bannerTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing.sm,
+  },
+  bannerCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  editButton: {
+    width: 140,
+  },
   routeCard: {
     gap: theme.spacing.sm,
   },
   stopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: theme.spacing.sm,
   },
   stopDot: {
     width: 10,
     height: 10,
-    borderRadius: theme.radii.pill,
     borderWidth: theme.borders.regular,
     borderColor: theme.colors.black,
   },
+  stopDotPickup: {
+    borderRadius: theme.radius.pill,
+    backgroundColor: theme.colors.green,
+  },
+  stopDotStop: {
+    borderRadius: 3,
+    backgroundColor: "#FFD1B5",
+  },
+  stopDotDestination: {
+    borderRadius: 3,
+    backgroundColor: theme.colors.orange,
+  },
   actions: {
-    flexDirection: 'row',
+    flexDirection: "row",
+    alignItems: "center",
     gap: theme.spacing.sm,
   },
   sosButton: {
-    flex: 1,
+    width: 78,
     minHeight: 52,
-    borderRadius: theme.radii.sm,
+    borderRadius: theme.radius.sm,
     borderWidth: theme.borders.thick,
-    borderColor: theme.colors.black,
-    backgroundColor: '#FF3333',
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderColor: theme.colors.danger,
+    backgroundColor: theme.colors.danger,
+    alignItems: "center",
+    justifyContent: "center",
     ...theme.shadows.card,
   },
   shareButton: {
-    flex: 2,
+    flex: 1,
   },
 });

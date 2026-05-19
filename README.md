@@ -83,9 +83,11 @@ theme.ts
 
 3. Open the app in Expo Go, iOS Simulator, or Android Emulator from the Expo CLI.
 
+4. Set `EXPO_PUBLIC_GOOGLE_MAPS_API_KEY` or `GOOGLE_MAPS_API_KEY` before running native builds so Google Maps and Google Places are available across the app.
+
 ## Notes
 
-- The map screens use a static native mock layout for now.
+- Shared map surfaces render through Google Maps, and place search/geocoding uses Google Places and Geocoding.
 - `data/mock.ts` now drives Batch 1 and Batch 2 rider and driver flows, including wallet, payout, request, and earnings states.
 - `constants/theme.ts` is the centralized design token source. `theme.ts` re-exports it for the existing `@/theme` imports.
 - Rider and driver Batch 2 screens live under `app/rider` and `app/driver` and are connected from the existing flow:

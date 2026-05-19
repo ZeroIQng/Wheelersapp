@@ -1,7 +1,8 @@
-import { useRouter } from 'expo-router';
-import { useEffect, useRef } from 'react';
-import { StatusBar } from 'expo-status-bar';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { usePrivy, type User } from "@privy-io/expo";
+import { useRouter } from "expo-router";
+import { useEffect, useRef } from "react";
+import { StatusBar } from "expo-status-bar";
+import { Pressable, StyleSheet, View } from "react-native";
 import Animated, {
   Easing,
   FadeIn,
@@ -11,27 +12,226 @@ import Animated, {
   withRepeat,
   withTiming,
   ZoomIn,
-} from 'react-native-reanimated';
+} from "react-native-reanimated";
 
-import { AppScreen } from '@/components/app-screen';
-import { AppText } from '@/components/app-text';
-import { BlobShape, DiamondPair, StarBurst } from '@/components/decorative-shapes';
-import { theme } from '@/theme';
+import { AppScreen } from "@/components/app-screen";
+import { AppText } from "@/components/app-text";
+import { BlobShape, DiamondPair, StarBurst } from "@/components/decorative-shapes";
+import { isBackendConfigured, syncPrivyAuth } from "@/lib/api";
+import {
+  clearStoredAuthState,
+  getAuthenticatedRoute,
+  persistAuthenticatedRole,
+  readStoredAuthState,
+  type AuthenticatedRoute,
+} from "@/lib/auth-state";
+import { isPrivyConfigured } from "@/lib/privy";
+import {
+  getPrivyEmail,
+  getPrivyEthereumWalletAddress,
+  getPrivyName,
+} from "@/lib/privy-user";
+import { theme } from "@/theme";
+
+type SplashRoute = "/role-selection" | AuthenticatedRoute;
+type AccessTokenGetter = () => Promise<string | null | undefined>;
+
+const SESSION_RESTORE_GRACE_MS = 2500;
+const ACCESS_TOKEN_RETRY_ATTEMPTS = 6;
+const ACCESS_TOKEN_RETRY_DELAY_MS = 250;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function getAccessTokenWithRetry(
+  getAccessToken: AccessTokenGetter,
+): Promise<string | null> {
+  for (let attempt = 0; attempt < ACCESS_TOKEN_RETRY_ATTEMPTS; attempt += 1) {
+    const accessToken = await getAccessToken();
+    if (accessToken) {
+      return accessToken;
+    }
+
+    if (attempt < ACCESS_TOKEN_RETRY_ATTEMPTS - 1) {
+      await sleep(ACCESS_TOKEN_RETRY_DELAY_MS);
+    }
+  }
+
+  return null;
+}
+
+async function resolvePrivyDestination({
+  user,
+  getAccessToken,
+}: {
+  user: User;
+  getAccessToken: AccessTokenGetter;
+}): Promise<SplashRoute> {
+  const storedAuthState = await readStoredAuthState();
+  if (storedAuthState) {
+    return getAuthenticatedRoute(storedAuthState);
+  }
+
+  if (!isBackendConfigured()) {
+    return "/role-selection";
+  }
+
+  const accessToken = await getAccessTokenWithRetry(getAccessToken);
+  if (!accessToken) {
+    return "/role-selection";
+  }
+
+  try {
+    const response = await syncPrivyAuth({
+      accessToken,
+      authMethod: "google",
+      email: getPrivyEmail(user),
+      name: getPrivyName(user),
+      walletAddress: getPrivyEthereumWalletAddress(user),
+    });
+    const nextState = await persistAuthenticatedRole(
+      response.user.role === "DRIVER" ? "DRIVER" : "RIDER",
+      {
+        phoneVerified:
+          response.user.role !== "DRIVER" &&
+          typeof response.user.phone === "string" &&
+          response.user.phone.length > 0,
+      },
+    );
+    return getAuthenticatedRoute(nextState);
+  } catch {
+    return "/role-selection";
+  }
+}
 
 export default function SplashScreen() {
+  if (!isPrivyConfigured) {
+    return <GuestSplashScreen />;
+  }
+
+  return <PrivyAwareSplashScreen />;
+}
+
+function GuestSplashScreen() {
   const router = useRouter();
-  const floatY = useSharedValue(0);
-  const spin = useSharedValue(0);
   const hasNavigated = useRef(false);
 
-  function leaveSplash() {
+  function navigate(href: SplashRoute) {
     if (hasNavigated.current) {
       return;
     }
 
     hasNavigated.current = true;
-    router.replace('/role-selection');
+    router.replace(href);
   }
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (hasNavigated.current) {
+        return;
+      }
+
+      hasNavigated.current = true;
+      router.replace("/role-selection");
+    }, 3000);
+
+    return () => clearTimeout(timer);
+  }, [router]);
+
+  return <SplashShell onContinue={() => navigate("/role-selection")} />;
+}
+
+function PrivyAwareSplashScreen() {
+  const router = useRouter();
+  const { getAccessToken, isReady, user } = usePrivy();
+  const hasNavigated = useRef(false);
+
+  function navigate(href: SplashRoute) {
+    if (hasNavigated.current) {
+      return;
+    }
+
+    hasNavigated.current = true;
+    router.replace(href);
+  }
+
+  useEffect(() => {
+    if (!isReady || hasNavigated.current) {
+      return;
+    }
+
+    let cancelled = false;
+
+    if (!user) {
+      const timer = setTimeout(() => {
+        if (cancelled || hasNavigated.current) {
+          return;
+        }
+
+        void (async () => {
+          await clearStoredAuthState();
+
+          if (cancelled || hasNavigated.current) {
+            return;
+          }
+
+          hasNavigated.current = true;
+          router.replace("/role-selection");
+        })();
+      }, SESSION_RESTORE_GRACE_MS);
+
+      return () => {
+        cancelled = true;
+        clearTimeout(timer);
+      };
+    }
+
+    void (async () => {
+      const destination = await resolvePrivyDestination({
+        user,
+        getAccessToken,
+      });
+
+      if (cancelled || hasNavigated.current) {
+        return;
+      }
+
+      hasNavigated.current = true;
+      router.replace(destination);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [getAccessToken, isReady, router, user]);
+
+  function handleContinue() {
+    if (!isReady || hasNavigated.current) {
+      return;
+    }
+
+    if (!user) {
+      navigate("/role-selection");
+      return;
+    }
+
+    void (async () => {
+      navigate(
+        await resolvePrivyDestination({
+          user,
+          getAccessToken,
+        }),
+      );
+    })();
+  }
+
+  return <SplashShell onContinue={handleContinue} />;
+}
+
+function SplashShell({ onContinue }: { onContinue: () => void }) {
+  const floatY = useSharedValue(0);
+  const spin = useSharedValue(0);
 
   useEffect(() => {
     floatY.value = withRepeat(
@@ -50,18 +250,7 @@ export default function SplashScreen() {
       -1,
       false
     );
-
-    const timer = setTimeout(() => {
-      if (hasNavigated.current) {
-        return;
-      }
-
-      hasNavigated.current = true;
-      router.replace('/role-selection');
-    }, 3000);
-
-    return () => clearTimeout(timer);
-  }, [floatY, router, spin]);
+  }, [floatY, spin]);
 
   const logoStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: floatY.value }],
@@ -74,7 +263,7 @@ export default function SplashScreen() {
   return (
     <AppScreen backgroundColor={theme.colors.orange} contentStyle={styles.container}>
       <StatusBar style="light" backgroundColor={theme.colors.orange} />
-      <Pressable onPress={leaveSplash} style={styles.pressable}>
+      <Pressable onPress={onContinue} style={styles.pressable}>
         <BlobShape color="rgba(255,255,255,0.18)" style={styles.blobTop} />
         <Animated.View style={[styles.starRight, starStyle]}>
           <StarBurst color="rgba(255,255,255,0.22)" width={54} height={54} />
@@ -124,16 +313,16 @@ const styles = StyleSheet.create({
   },
   pressable: {
     flex: 1,
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    width: '100%',
+    justifyContent: "space-between",
+    alignItems: "center",
+    width: "100%",
     paddingVertical: theme.spacing.xxxl,
   },
   center: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    width: '100%',
+    justifyContent: "center",
+    alignItems: "center",
+    width: "100%",
   },
   logoWrap: {
     marginBottom: theme.spacing.md,
@@ -142,17 +331,17 @@ const styles = StyleSheet.create({
     width: 82,
     height: 82,
     borderRadius: theme.radius.pill,
-    backgroundColor: 'rgba(255,255,255,0.18)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: "rgba(255,255,255,0.18)",
+    alignItems: "center",
+    justifyContent: "center",
   },
   logoInner: {
     width: 58,
     height: 58,
     borderRadius: theme.radius.pill,
-    backgroundColor: 'rgba(255,255,255,0.14)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: "rgba(255,255,255,0.14)",
+    alignItems: "center",
+    justifyContent: "center",
   },
   markText: {
     fontSize: 25,
@@ -160,15 +349,15 @@ const styles = StyleSheet.create({
     letterSpacing: -0.4,
   },
   titleBlock: {
-    alignItems: 'center',
+    alignItems: "center",
     gap: theme.spacing.xs,
   },
   wordmark: {
-    alignItems: 'center',
+    alignItems: "center",
     gap: 0,
   },
   titleLine: {
-    textAlign: 'center',
+    textAlign: "center",
     fontSize: 28,
     lineHeight: 27,
     letterSpacing: -0.8,
@@ -178,22 +367,22 @@ const styles = StyleSheet.create({
     lineHeight: 16,
   },
   bottom: {
-    width: '100%',
-    alignItems: 'center',
+    width: "100%",
+    alignItems: "center",
     gap: theme.spacing.sm,
   },
   blobTop: {
-    position: 'absolute',
+    position: "absolute",
     top: -18,
     left: -20,
   },
   starRight: {
-    position: 'absolute',
+    position: "absolute",
     right: 20,
     bottom: 108,
   },
   diamondLeft: {
-    position: 'absolute',
+    position: "absolute",
     top: 68,
     left: 28,
   },
@@ -201,12 +390,12 @@ const styles = StyleSheet.create({
     width: 112,
     height: 8,
     borderRadius: theme.radius.pill,
-    backgroundColor: 'rgba(255,255,255,0.24)',
-    overflow: 'hidden',
+    backgroundColor: "rgba(255,255,255,0.24)",
+    overflow: "hidden",
   },
   loaderBar: {
-    width: '72%',
-    height: '100%',
+    width: "72%",
+    height: "100%",
     borderRadius: theme.radius.pill,
     backgroundColor: theme.colors.white,
   },

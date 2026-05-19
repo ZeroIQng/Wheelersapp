@@ -17,9 +17,10 @@ import { AppCard } from "@/components/app-card";
 import { AppScreen } from "@/components/app-screen";
 import { AppText } from "@/components/app-text";
 import { StarBurst, TriangleShape } from "@/components/decorative-shapes";
+import { LiveMap } from "@/components/live-map";
 import { FloatingView, RevealView } from "@/components/motion";
-import { StaticMap } from "@/components/static-map";
-import { riderHomeHistory, walletBalance } from "@/data/mock";
+import { useRiderHistory } from "@/lib/rider-history";
+import { useWalletOverview } from "@/lib/wallet-overview";
 import { theme } from "@/theme";
 
 const riderServices = [
@@ -35,16 +36,21 @@ const riderServices = [
     label: "Schedule",
     tag: "Later",
     cardColor: "#FFF4CC",
-    route: "/destination-search" as Href,
+    route: "/schedule-ride" as Href,
   },
   {
     id: "group-ride",
     label: "Group Ride",
     tag: "Split",
     cardColor: "#E8FFF7",
-    route: "/destination-search" as Href,
+    route: "/group-ride" as Href,
   },
 ] as const;
+
+const riderHomeCenter = {
+  lat: 6.4473,
+  lng: 3.4729,
+};
 
 function ClockBadge() {
   return (
@@ -152,62 +158,6 @@ function SvgPersonTwo() {
   );
 }
 
-function SvgPersonThree() {
-  return (
-    <Svg width={34} height={88} viewBox="0 0 145 360">
-      <Ellipse cx="79" cy="352" rx="36" ry="10" fill="#D9DCE5" />
-      <Rect x="58" y="246" width="14" height="98" rx="7" fill="#3E355D" />
-      <Rect x="88" y="246" width="14" height="98" rx="7" fill="#3E355D" />
-      <Path d="M55 338H75L71 348H51L55 338Z" fill="#242035" />
-      <Path d="M85 338H105L109 348H89L85 338Z" fill="#242035" />
-      <Path
-        d="M38 120C38 108 48 98 60 98H98C110 98 120 108 120 120V246H38V120Z"
-        fill="#6B59C9"
-      />
-      <Path d="M79 116L62 152H96L79 116Z" fill="#EEF1FA" />
-      <Rect x="14" y="128" width="18" height="76" rx="9" fill="#D59A79" />
-      <Rect x="123" y="130" width="18" height="90" rx="9" fill="#D59A79" />
-      <Rect
-        x="10"
-        y="124"
-        width="18"
-        height="60"
-        rx="9"
-        transform="rotate(18 10 124)"
-        fill="#6B59C9"
-      />
-      <Rect
-        x="121"
-        y="124"
-        width="18"
-        height="72"
-        rx="9"
-        transform="rotate(-28 121 124)"
-        fill="#6B59C9"
-      />
-      <Rect x="9" y="165" width="12" height="20" rx="2" fill="#2B314A" />
-      <Path
-        d="M114 205H142C146 205 149 208 149 212V244H107V212C107 208 110 205 114 205Z"
-        fill="#2A2439"
-      />
-      <Path
-        d="M116 205C116 192 122 184 128 184C134 184 140 192 140 205"
-        stroke="#2A2439"
-        strokeWidth="6"
-        strokeLinecap="round"
-      />
-      <Rect x="71" y="80" width="16" height="18" rx="6" fill="#D59A79" />
-      <Circle cx="79" cy="54" r="26" fill="#D59A79" />
-      <Path
-        d="M53 49C53 31 65 20 80 20C95 20 105 32 105 48V67H97C93 57 85 49 73 47C66 46 59 47 53 49Z"
-        fill="#5A3667"
-      />
-      <Circle cx="71" cy="56" r="2.2" fill="#2D1F1F" />
-      <Circle cx="86" cy="56" r="2.2" fill="#2D1F1F" />
-    </Svg>
-  );
-}
-
 function GroupRideArtwork() {
   const leftFloat = useSharedValue(0);
   const rightFloat = useSharedValue(0);
@@ -216,18 +166,18 @@ function GroupRideArtwork() {
     leftFloat.value = withRepeat(
       withSequence(
         withTiming(-3, { duration: 1100, easing: Easing.inOut(Easing.ease) }),
-        withTiming(0, { duration: 1100, easing: Easing.inOut(Easing.ease) })
+        withTiming(0, { duration: 1100, easing: Easing.inOut(Easing.ease) }),
       ),
       -1,
-      false
+      false,
     );
     rightFloat.value = withRepeat(
       withSequence(
         withTiming(-2, { duration: 1200, easing: Easing.inOut(Easing.ease) }),
-        withTiming(0, { duration: 1200, easing: Easing.inOut(Easing.ease) })
+        withTiming(0, { duration: 1200, easing: Easing.inOut(Easing.ease) }),
       ),
       -1,
-      false
+      false,
     );
   }, [leftFloat, rightFloat]);
 
@@ -257,17 +207,15 @@ function GroupRideArtwork() {
   );
 }
 
-function ElectricVehicle({
-  accentColor,
-}: {
-  accentColor: string;
-}) {
+function ElectricVehicle({ accentColor }: { accentColor: string }) {
   return (
     <View style={styles.evWrap}>
       <View style={[styles.evBody, { backgroundColor: accentColor }]}>
         <View style={styles.evCabin} />
         <View style={styles.evWindow} />
-        <View style={[styles.evBolt, { backgroundColor: theme.colors.white }]} />
+        <View
+          style={[styles.evBolt, { backgroundColor: theme.colors.white }]}
+        />
         <View style={[styles.evLight, styles.evHeadlight]} />
         <View style={[styles.evLight, styles.evTaillight]} />
       </View>
@@ -301,23 +249,31 @@ function ServiceArtwork({
 
   return (
     <View style={styles.vehicleArtwork}>
-      <ElectricVehicle
-        accentColor={theme.colors.orange}
-      />
+      <ElectricVehicle accentColor={theme.colors.orange} />
     </View>
   );
 }
 
+function formatHomeBalance(amountNgn: number | undefined): string {
+  const value = typeof amountNgn === "number" && Number.isFinite(amountNgn) ? amountNgn : 0;
+  const rounded = Math.round(value);
+  return rounded.toLocaleString("en-NG");
+}
+
 export default function RiderHomeScreen() {
   const router = useRouter();
-  const historyPreview = riderHomeHistory.slice(0, 2);
+  const { items: historyItems, isLoading: isLoadingHistory } =
+    useRiderHistory(3);
+  const { overview } = useWalletOverview();
+  const historyPreview = historyItems.slice(0, 2);
   const expandedMapHeight = 345;
   const collapsedMapHeight = 480;
   const collapsedServiceShift = 132;
   const [historyMeasuredHeight, setHistoryMeasuredHeight] = useState<
     number | null
   >(null);
-  const historyVisibility = useSharedValue(1);
+  const historyVisibility = useSharedValue(0);
+  const historyExistsRef = useRef(false);
 
   const hideHistory = () => {
     historyVisibility.value = withTiming(0, { duration: 220 });
@@ -327,13 +283,24 @@ export default function RiderHomeScreen() {
     historyVisibility.value = withTiming(1, { duration: 220 });
   };
 
+  useEffect(() => {
+    if (isLoadingHistory) {
+      return;
+    }
+
+    historyExistsRef.current = historyPreview.length > 0;
+    historyVisibility.value = withTiming(historyPreview.length === 0 ? 0 : 1, {
+      duration: 220,
+    });
+  }, [historyPreview.length, historyVisibility, isLoadingHistory]);
+
   const serviceSwipeResponder = useRef(
     PanResponder.create({
       onMoveShouldSetPanResponder: (_, gestureState) =>
         Math.abs(gestureState.dy) > 12 &&
         Math.abs(gestureState.dy) > Math.abs(gestureState.dx),
       onPanResponderRelease: (_, gestureState) => {
-        if (gestureState.dy > 35) {
+        if (gestureState.dy > 35 && !historyExistsRef.current) {
           hideHistory();
           return;
         }
@@ -343,7 +310,7 @@ export default function RiderHomeScreen() {
         }
       },
       onPanResponderTerminate: (_, gestureState) => {
-        if (gestureState.dy > 35) {
+        if (gestureState.dy > 35 && !historyExistsRef.current) {
           hideHistory();
           return;
         }
@@ -352,7 +319,7 @@ export default function RiderHomeScreen() {
           showHistory();
         }
       },
-    })
+    }),
   ).current;
 
   const historyAnimatedStyle = useAnimatedStyle(() => ({
@@ -372,7 +339,9 @@ export default function RiderHomeScreen() {
   }));
 
   const serviceAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: (1 - historyVisibility.value) * collapsedServiceShift }],
+    transform: [
+      { translateY: (1 - historyVisibility.value) * collapsedServiceShift },
+    ],
   }));
 
   return (
@@ -383,7 +352,11 @@ export default function RiderHomeScreen() {
     >
       <StatusBar style="dark" backgroundColor="#D4E6D4" />
       <Animated.View style={[styles.mapWrap, mapAnimatedStyle]}>
-        <StaticMap height={collapsedMapHeight} scene="riderHome">
+        <LiveMap
+          height={collapsedMapHeight}
+          initialCenter={riderHomeCenter}
+          initialDelta={{ latitudeDelta: 0.038, longitudeDelta: 0.03 }}
+        >
           <FloatingView style={styles.triangle} distance={12} rotate={8}>
             <TriangleShape color="rgba(255,92,0,0.15)" />
           </FloatingView>
@@ -410,14 +383,14 @@ export default function RiderHomeScreen() {
                     color={theme.colors.white}
                     style={styles.balanceValue}
                   >
-                    {walletBalance}
+                    {formatHomeBalance(overview?.balanceNgn)}
                   </AppText>
                   <AppText
                     variant="bodySmall"
                     color={theme.colors.white}
                     style={styles.balanceUnit}
                   >
-                    USDT
+                    NGN
                   </AppText>
                 </Pressable>
               </FloatingView>
@@ -441,7 +414,7 @@ export default function RiderHomeScreen() {
               </View>
             </View>
           </View>
-        </StaticMap>
+        </LiveMap>
       </Animated.View>
 
       <Animated.View
@@ -457,7 +430,7 @@ export default function RiderHomeScreen() {
             color={theme.colors.orange}
             style={styles.serviceHeading}
           >
-            Let's Wheel
+            Let&apos;s Wheel
           </AppText>
         </RevealView>
         <View style={styles.serviceRow}>
@@ -518,60 +491,69 @@ export default function RiderHomeScreen() {
           </Pressable>
         </View>
 
-        <Animated.View style={historyAnimatedStyle}>
-          <RevealView delay={180}>
-            <View
-              style={styles.historyPanel}
-              onLayout={({ nativeEvent }) => {
-                if (historyMeasuredHeight == null) {
-                  setHistoryMeasuredHeight(nativeEvent.layout.height);
-                }
-              }}
-            >
-              <View style={styles.historyHeader}>
-                <AppText variant="bodySmall" color={theme.colors.muted}>
-                  Ride history
-                </AppText>
-                <Pressable onPress={() => router.push("/rider/history" as Href)}>
-                  <AppText variant="monoSmall" color={theme.colors.orange}>
-                    See all
+        {historyPreview.length > 0 ? (
+          <Animated.View style={historyAnimatedStyle}>
+            <RevealView delay={180}>
+              <View
+                style={styles.historyPanel}
+                onLayout={({ nativeEvent }) => {
+                  if (historyMeasuredHeight == null) {
+                    setHistoryMeasuredHeight(nativeEvent.layout.height);
+                  }
+                }}
+              >
+                <View style={styles.historyHeader}>
+                  <AppText variant="bodySmall" color={theme.colors.muted}>
+                    Ride history
                   </AppText>
-                </Pressable>
-              </View>
-              <View style={styles.historySection}>
-                {historyPreview.map((ride, index) => (
-                  <RevealView key={ride.id} delay={220 + index * 70}>
-                    <Pressable
-                      onPress={() => router.push("/rider/history" as Href)}
-                    >
-                      <AppCard style={styles.historyCard}>
-                        <View style={styles.historyIcon}>
-                          <MaterialIcons
-                            name={ride.icon as any}
-                            size={16}
-                            color={theme.colors.black}
-                          />
-                        </View>
-                        <View style={styles.historyCopy}>
-                          <AppText variant="bodyMedium">{ride.title}</AppText>
+                  <Pressable
+                    onPress={() => router.push("/rider/history" as Href)}
+                  >
+                    <AppText variant="monoSmall" color={theme.colors.orange}>
+                      See all
+                    </AppText>
+                  </Pressable>
+                </View>
+                <View style={styles.historySection}>
+                  {historyPreview.map((ride, index) => (
+                    <RevealView key={ride.id} delay={220 + index * 70}>
+                      <Pressable
+                        onPress={() => router.push("/rider/history" as Href)}
+                      >
+                        <AppCard style={styles.historyCard}>
+                          <View style={styles.historyIcon}>
+                            <MaterialIcons
+                              name={
+                                ride.icon as keyof typeof MaterialIcons.glyphMap
+                              }
+                              size={16}
+                              color={theme.colors.black}
+                            />
+                          </View>
+                          <View style={styles.historyCopy}>
+                            <AppText variant="bodyMedium">{ride.title}</AppText>
+                            <AppText
+                              variant="bodySmall"
+                              color={theme.colors.muted}
+                            >
+                              {ride.meta}
+                            </AppText>
+                          </View>
                           <AppText
-                            variant="bodySmall"
-                            color={theme.colors.muted}
+                            variant="monoSmall"
+                            color={theme.colors.orange}
                           >
-                            {ride.meta}
+                            {ride.fare}
                           </AppText>
-                        </View>
-                        <AppText variant="monoSmall" color={theme.colors.orange}>
-                          {ride.fare}
-                        </AppText>
-                      </AppCard>
-                    </Pressable>
-                  </RevealView>
-                ))}
+                        </AppCard>
+                      </Pressable>
+                    </RevealView>
+                  ))}
+                </View>
               </View>
-            </View>
-          </RevealView>
-        </Animated.View>
+            </RevealView>
+          </Animated.View>
+        ) : null}
       </View>
     </AppScreen>
   );

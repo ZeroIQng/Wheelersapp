@@ -1,10 +1,11 @@
+import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { Pressable, StyleSheet, View } from "react-native";
 
 import { AppText } from "@/components/app-text";
 import { theme } from "@/theme";
 
 type SettingsRowProps = {
-  icon: string;
+  icon: keyof typeof MaterialIcons.glyphMap;
   title: string;
   subtitle?: string;
   value?: string;
@@ -37,7 +38,11 @@ export function SettingsRow({
           destructive ? styles.destructiveIconBox : null,
         ]}
       >
-        <AppText variant="h3">{icon}</AppText>
+        <MaterialIcons
+          color={destructive ? theme.colors.danger : theme.colors.black}
+          name={icon}
+          size={20}
+        />
       </View>
       <View style={styles.copy}>
         <AppText

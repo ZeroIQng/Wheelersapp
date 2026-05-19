@@ -1,0 +1,67 @@
+import {
+  parseRideEstimateWaypoint,
+  parseRideRouteGeometry,
+  type RideEstimateResponse,
+} from "@/lib/api";
+import { estimateRide, type RideItinerary } from "@/lib/ride-route";
+
+export function buildInstantRideEstimate(
+  itinerary: RideItinerary,
+): RideEstimateResponse {
+  const preview = estimateRide(itinerary);
+
+  return {
+    plannedDistanceKm: preview.distanceKm,
+    plannedDurationSeconds: preview.etaMinutes * 60,
+    fareEstimateUsdt: 0,
+    fareEstimateNgn: preview.priceNgn,
+  };
+}
+
+export function serializeRideEstimate(estimate: RideEstimateResponse): string {
+  return encodeURIComponent(JSON.stringify(estimate));
+}
+
+export function parseRideEstimateParam(
+  value: string | string[] | undefined,
+): RideEstimateResponse | null {
+  const raw = Array.isArray(value) ? value[0] : value;
+
+  if (!raw) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(decodeURIComponent(raw)) as Partial<RideEstimateResponse>;
+    if (
+      typeof parsed.plannedDistanceKm !== "number" ||
+      !Number.isFinite(parsed.plannedDistanceKm) ||
+      typeof parsed.plannedDurationSeconds !== "number" ||
+      !Number.isFinite(parsed.plannedDurationSeconds) ||
+      typeof parsed.fareEstimateUsdt !== "number" ||
+      !Number.isFinite(parsed.fareEstimateUsdt)
+    ) {
+      return null;
+    }
+
+    return {
+      plannedDistanceKm: parsed.plannedDistanceKm,
+      plannedDurationSeconds: parsed.plannedDurationSeconds,
+      fareEstimateUsdt: parsed.fareEstimateUsdt,
+      fareEstimateNgn:
+        typeof parsed.fareEstimateNgn === "number" && Number.isFinite(parsed.fareEstimateNgn)
+          ? parsed.fareEstimateNgn
+          : undefined,
+      pickup: parseRideEstimateWaypoint(parsed.pickup) ?? undefined,
+      destination: parseRideEstimateWaypoint(parsed.destination) ?? undefined,
+      stops: Array.isArray(parsed.stops)
+        ? parsed.stops
+            .map((stop) => parseRideEstimateWaypoint(stop))
+            .filter((stop): stop is NonNullable<RideEstimateResponse["stops"]>[number] => stop != null)
+        : undefined,
+      route: parseRideRouteGeometry(parsed.route) ?? undefined,
+    };
+  } catch {
+    return null;
+  }
+}

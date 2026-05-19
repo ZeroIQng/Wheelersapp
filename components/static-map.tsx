@@ -9,8 +9,9 @@ import Animated, {
   withSequence,
   withTiming,
 } from 'react-native-reanimated';
-import MapView, { Circle, Marker, Polyline } from 'react-native-maps';
+import { Circle, Marker, Polyline } from 'react-native-maps';
 
+import { GoogleMapView } from '@/components/GoogleMapView';
 import { mapScenes, MapScene } from '@/data/mock';
 import { theme } from '@/theme';
 
@@ -40,7 +41,7 @@ export function StaticMap({
           borderTopRightRadius: roundedTop ? theme.radius.lg : 0,
         },
       ]}>
-      <MapView
+      <GoogleMapView
         initialRegion={mapScene.region}
         mapPadding={Platform.select({ ios: undefined, default: undefined })}
         rotateEnabled={false}
@@ -73,7 +74,7 @@ export function StaticMap({
             <View style={[styles.marker, styles.endMarker]} />
           </Marker>
         ) : null}
-      </MapView>
+      </GoogleMapView>
       <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
         {children}
       </View>

@@ -1,3 +1,5 @@
+import MaterialIcons from "@expo/vector-icons/MaterialIcons";
+
 export type MetricStat = {
   id: string;
   label: string;
@@ -65,7 +67,7 @@ export type NotificationItem = {
 
 export type SettingOption = {
   id: string;
-  icon: string;
+  icon: keyof typeof MaterialIcons.glyphMap;
   title: string;
   subtitle?: string;
   type: 'navigation' | 'toggle' | 'value' | 'danger';
@@ -473,25 +475,25 @@ export const userProfile = {
 export const settingsOptions = [
   {
     id: 'edit-profile',
-    icon: '👤',
+    icon: 'person-outline',
     title: 'Edit profile',
     type: 'navigation',
   },
   {
     id: 'notifications',
-    icon: '🔔',
+    icon: 'notifications-none',
     title: 'Notifications',
     type: 'toggle',
   },
   {
     id: 'security',
-    icon: '🔐',
+    icon: 'lock-outline',
     title: 'Security & PIN',
     type: 'navigation',
   },
   {
     id: 'logout',
-    icon: '🚪',
+    icon: 'logout',
     title: 'Log out',
     type: 'danger',
   },

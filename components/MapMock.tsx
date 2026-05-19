@@ -1,7 +1,8 @@
 import { PropsWithChildren } from 'react';
 import { StyleSheet, View } from 'react-native';
-import MapView, { Circle, Marker, Polyline } from 'react-native-maps';
+import { Circle, Marker, Polyline } from 'react-native-maps';
 
+import { GoogleMapView } from '@/components/GoogleMapView';
 import { InstructionCard } from '@/components/InstructionCard';
 import { AppText } from '@/components/app-text';
 import { mapScenes, MapScene, RouteInstruction } from '@/data/mock';
@@ -44,7 +45,7 @@ export function MapMock({
 
   return (
     <View style={[styles.container, { height }]}>
-      <MapView
+      <GoogleMapView
         initialRegion={scene.region}
         pitchEnabled={false}
         rotateEnabled={false}
@@ -81,7 +82,7 @@ export function MapMock({
             </View>
           </Marker>
         ) : null}
-      </MapView>
+      </GoogleMapView>
 
       {topBadge ? (
         <View style={styles.topBadge}>

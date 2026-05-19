@@ -1,7 +1,7 @@
 import "fast-text-encoding";
 import "react-native-reanimated";
 
-import { PrivyProvider } from "@privy-io/expo";
+import { PrivyProvider, usePrivy } from "@privy-io/expo";
 import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
@@ -9,6 +9,8 @@ import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
 import { useColorScheme } from "react-native";
 
+import { AppLockOverlay, AppLockProvider } from "@/lib/app-lock";
+import { RideSessionProvider } from "@/lib/ride-session";
 import { isPrivyConfigured, privyAppId, privyClientId } from "@/lib/privy";
 import { ThirdwebProvider } from "@/lib/thirdweb-runtime";
 import { theme } from "@/theme";
@@ -61,12 +63,38 @@ export default function RootLayout() {
   const withWalletKit = <ThirdwebProvider>{layout}</ThirdwebProvider>;
 
   if (!isPrivyConfigured || !privyAppId || !privyClientId) {
-    return withWalletKit;
+    return (
+      <AppLockProvider>
+        {withWalletKit}
+        <AppLockOverlay onForgotPin={async () => undefined} />
+      </AppLockProvider>
+    );
   }
 
   return (
-    <PrivyProvider appId={privyAppId} clientId={privyClientId}>
-      {withWalletKit}
+    <PrivyProvider
+      appId={privyAppId}
+      clientId={privyClientId}
+      config={{
+        embedded: {
+          ethereum: {
+            createOnLogin: "users-without-wallets",
+          },
+        },
+      }}
+    >
+      <RideSessionProvider>
+        <AppLockProvider>
+          {withWalletKit}
+          <PrivyAppLockOverlay />
+        </AppLockProvider>
+      </RideSessionProvider>
     </PrivyProvider>
   );
+}
+
+function PrivyAppLockOverlay() {
+  const { logout } = usePrivy();
+
+  return <AppLockOverlay onForgotPin={logout} />;
 }

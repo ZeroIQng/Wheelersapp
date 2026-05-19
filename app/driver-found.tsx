@@ -1,41 +1,121 @@
-import { Href, useRouter } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, View } from 'react-native';
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { StatusBar } from "expo-status-bar";
+import { useEffect, useMemo } from "react";
+import { StyleSheet, View } from "react-native";
 
-import { BackArrow } from '@/components/back-arrow';
-import { AppBadge } from '@/components/app-badge';
-import { AppButton } from '@/components/app-button';
-import { AppCard } from '@/components/app-card';
-import { AppScreen } from '@/components/app-screen';
-import { AppText } from '@/components/app-text';
-import { FloatingView, PulseView, RevealView } from '@/components/motion';
-import { StaticMap } from '@/components/static-map';
-import { driver } from '@/data/mock';
-import { theme } from '@/theme';
+import { BackArrow } from "@/components/back-arrow";
+import { AppBadge } from "@/components/app-badge";
+import { AppButton } from "@/components/app-button";
+import { AppCard } from "@/components/app-card";
+import { AppScreen } from "@/components/app-screen";
+import { AppText } from "@/components/app-text";
+import { FloatingView, PulseView, RevealView } from "@/components/motion";
+import { LiveMap } from "@/components/live-map";
+import {
+  getAdditionalStopCount,
+  parseRideItineraryParam,
+  serializeRideItinerary,
+} from "@/lib/ride-route";
+import { useRideSession } from "@/lib/ride-session";
+import { theme } from "@/theme";
+
+function formatRideFare(params: {
+  ngn?: number;
+  usdt?: number;
+}): string | null {
+  if (typeof params.ngn === "number" && Number.isFinite(params.ngn)) {
+    return `NGN ${Math.round(params.ngn).toLocaleString("en-NG")}`;
+  }
+
+  if (typeof params.usdt === "number" && Number.isFinite(params.usdt)) {
+    return `${params.usdt.toFixed(2)} USDT`;
+  }
+
+  return null;
+}
 
 export default function DriverFoundScreen() {
   const router = useRouter();
-  const activeTripRoute = '/rider/active-trip' as Href;
+  const params = useLocalSearchParams<{
+    itinerary?: string | string[];
+  }>();
+  const fallbackItinerary = useMemo(
+    () => parseRideItineraryParam(params.itinerary),
+    [params.itinerary],
+  );
+  const { cancelRide, currentRide } = useRideSession();
+  const itinerary = currentRide?.itinerary ?? fallbackItinerary;
+  const extraStops = getAdditionalStopCount(itinerary);
+  const serializedItinerary = serializeRideItinerary(itinerary);
+  const liveDriver = currentRide?.driver;
+  const etaMinutes = liveDriver?.etaSeconds
+    ? Math.max(1, Math.ceil(liveDriver.etaSeconds / 60))
+    : null;
+  const fareLabel =
+    formatRideFare({
+      ngn: liveDriver?.lockedFareNgn ?? currentRide?.fareEstimateNgn,
+      usdt: liveDriver?.lockedFareUsdt ?? currentRide?.fareEstimateUsdt,
+    }) ?? "Fare pending";
+  const driverName = liveDriver?.driverName ?? "Driver assigned";
+  const driverInitials = driverName
+    .split(" ")
+    .map((part) => part[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+
+  useEffect(() => {
+    if (currentRide?.status === "active") {
+      router.replace({
+        pathname: "/rider/active-trip",
+        params: { itinerary: serializedItinerary },
+      });
+    }
+  }, [currentRide?.status, router, serializedItinerary]);
+
+  async function handleCancelRide() {
+    try {
+      await cancelRide("rider_cancelled");
+    } finally {
+      router.replace("/rider");
+    }
+  }
 
   return (
-    <AppScreen backgroundColor={theme.colors.offWhite} contentStyle={styles.container}>
+    <AppScreen
+      backgroundColor={theme.colors.offWhite}
+      contentStyle={styles.container}
+    >
       <StatusBar style="dark" backgroundColor="#D4E6D4" />
       <RevealView style={styles.mapWrap}>
-        <StaticMap height={232} scene="driverFound">
+        <LiveMap
+          height={232}
+          pickup={currentRide?.route?.pickup}
+          destination={currentRide?.route?.destination}
+          stops={currentRide?.route?.stops}
+          route={currentRide?.route?.route}
+          driverLocation={currentRide?.driverLocation}
+          initialCenter={currentRide?.route?.pickup}
+          fitPadding={{ top: 52, right: 32, bottom: 52, left: 32 }}
+        >
           <FloatingView style={styles.backButton} distance={5}>
-            <BackArrow />
+            <BackArrow onPress={() => router.back()} />
           </FloatingView>
           <FloatingView style={styles.etaChip} distance={6}>
-            <AppText variant="monoSmall">ETA: 2 min</AppText>
+            <AppText variant="monoSmall">
+              ETA: {etaMinutes !== null ? `${etaMinutes} min` : "pending"}
+            </AppText>
           </FloatingView>
-        </StaticMap>
+        </LiveMap>
       </RevealView>
 
       <RevealView delay={120} style={styles.content}>
         <View style={styles.headerRow}>
-          <AppBadge label="DRIVER MATCHED" />
+          <AppBadge
+            label={currentRide?.status === "active" ? "TRIP STARTED" : "DRIVER MATCHED"}
+          />
           <AppText variant="monoSmall" color={theme.colors.green}>
-            ● CONFIRMED
+            ● {currentRide?.status === "active" ? "LIVE" : "CONFIRMED"}
           </AppText>
         </View>
 
@@ -43,48 +123,79 @@ export default function DriverFoundScreen() {
           <PulseView>
             <View style={styles.avatar}>
               <AppText variant="h3" color={theme.colors.white}>
-                {driver.initials}
+                {driverInitials || "DR"}
               </AppText>
             </View>
           </PulseView>
           <View style={styles.driverText}>
-            <AppText variant="h3">{driver.name}</AppText>
+            <AppText variant="h3">{driverName}</AppText>
             <AppText variant="bodySmall" color={theme.colors.muted}>
-              ⭐ {driver.rating} · {driver.vehicle}
+              {typeof liveDriver?.driverRating === "number"
+                ? `⭐ ${liveDriver.driverRating.toFixed(1)}`
+                : "Rating pending"}
+              {liveDriver?.vehicleModel ? ` · ${liveDriver.vehicleModel}` : " · Vehicle pending"}
             </AppText>
             <View style={styles.plate}>
               <AppText variant="monoSmall" color={theme.colors.offWhite}>
-                {driver.plate}
+                {liveDriver?.vehiclePlate ?? "PLATE PENDING"}
               </AppText>
             </View>
           </View>
           <AppText style={styles.chat}>💬</AppText>
         </View>
 
+        <AppCard style={styles.routeSummaryCard}>
+          <AppText variant="monoSmall" color={theme.colors.muted}>
+            ROUTE CONFIRMED
+          </AppText>
+          <AppText variant="bodyMedium">{itinerary.stops[0]}</AppText>
+          <AppText variant="bodySmall" color={theme.colors.muted}>
+            {extraStops > 0
+              ? `${extraStops} extra stop${extraStops === 1 ? "" : "s"} added before final drop-off.`
+              : "Direct trip with no extra stops."}
+          </AppText>
+        </AppCard>
+
         <View style={styles.statsRow}>
           <RevealView delay={180} style={styles.statSlot}>
-            <StatCard value={`${driver.etaMinutes}`} label="MIN AWAY" accent />
+            <StatCard value={etaMinutes !== null ? `${etaMinutes}` : "--"} label="MIN AWAY" accent />
           </RevealView>
           <RevealView delay={240} style={styles.statSlot}>
-            <StatCard value={driver.fare} label="FARE" />
+            <StatCard value={fareLabel} label="LIVE FARE" />
           </RevealView>
           <RevealView delay={300} style={styles.statSlot}>
-            <StatCard value={`${driver.tripMinutes}`} label="MIN TRIP" />
+            <StatCard
+              value={
+                currentRide?.plannedDurationSeconds
+                  ? `${Math.max(1, Math.ceil(currentRide.plannedDurationSeconds / 60))}`
+                  : "--"
+              }
+              label="MIN TRIP"
+            />
           </RevealView>
         </View>
 
         <View style={styles.actions}>
           <AppButton
             title="Track trip ↗"
-            onPress={() => router.push(activeTripRoute)}
+            onPress={() =>
+              router.push({
+                pathname: "/rider/active-trip",
+                params: { itinerary: serializedItinerary },
+              })
+            }
             style={styles.primaryAction}
           />
           <View style={styles.secondaryActions}>
-            <AppButton title="Call" variant="ghost" style={styles.secondaryButton} />
+            <AppButton
+              title="Call"
+              variant="ghost"
+              style={styles.secondaryButton}
+            />
             <AppButton
               title="Cancel"
               variant="danger"
-              onPress={() => router.replace('/rider')}
+              onPress={handleCancelRide}
               style={styles.secondaryButton}
             />
           </View>
@@ -94,10 +205,21 @@ export default function DriverFoundScreen() {
   );
 }
 
-function StatCard({ value, label, accent }: { value: string; label: string; accent?: boolean }) {
+function StatCard({
+  value,
+  label,
+  accent,
+}: {
+  value: string;
+  label: string;
+  accent?: boolean;
+}) {
   return (
     <AppCard style={styles.statCard}>
-      <AppText variant="monoLarge" color={accent ? theme.colors.orange : theme.colors.black}>
+      <AppText
+        variant="monoLarge"
+        color={accent ? theme.colors.orange : theme.colors.black}
+      >
         {value}
       </AppText>
       <AppText variant="bodySmall" color={theme.colors.muted}>
@@ -118,7 +240,7 @@ const styles = StyleSheet.create({
     borderBottomColor: theme.colors.black,
   },
   etaChip: {
-    position: 'absolute',
+    position: "absolute",
     top: 12,
     left: 66,
     backgroundColor: theme.colors.white,
@@ -130,7 +252,7 @@ const styles = StyleSheet.create({
     ...theme.shadows.card,
   },
   backButton: {
-    position: 'absolute',
+    position: "absolute",
     top: 12,
     left: theme.spacing.gutter,
     zIndex: 10,
@@ -142,17 +264,17 @@ const styles = StyleSheet.create({
     gap: theme.spacing.md,
   },
   headerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
   },
   driverRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: theme.spacing.md,
     paddingBottom: theme.spacing.md,
     borderBottomWidth: theme.borders.regular,
-    borderBottomColor: '#EEE0D4',
+    borderBottomColor: "#EEE0D4",
   },
   avatar: {
     width: 52,
@@ -161,8 +283,8 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.orange,
     borderWidth: theme.borders.thick,
     borderColor: theme.colors.black,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     ...theme.shadows.card,
   },
   driverText: {
@@ -170,7 +292,7 @@ const styles = StyleSheet.create({
     gap: 3,
   },
   plate: {
-    alignSelf: 'flex-start',
+    alignSelf: "flex-start",
     backgroundColor: theme.colors.black,
     paddingHorizontal: theme.spacing.sm,
     paddingVertical: 4,
@@ -180,8 +302,11 @@ const styles = StyleSheet.create({
   chat: {
     fontSize: 22,
   },
+  routeSummaryCard: {
+    gap: theme.spacing.xs,
+  },
   statsRow: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: theme.spacing.sm,
   },
   statSlot: {
@@ -189,7 +314,7 @@ const styles = StyleSheet.create({
   },
   statCard: {
     flex: 1,
-    alignItems: 'center',
+    alignItems: "center",
     gap: 2,
     paddingVertical: theme.spacing.sm,
   },
@@ -198,10 +323,10 @@ const styles = StyleSheet.create({
     marginTop: theme.spacing.sm,
   },
   primaryAction: {
-    width: '100%',
+    width: "100%",
   },
   secondaryActions: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: theme.spacing.sm,
   },
   secondaryButton: {

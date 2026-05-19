@@ -123,6 +123,13 @@ export default function RiderLayout() {
         }}
       />
       <Tabs.Screen
+        name="transactions"
+        options={{
+          href: null,
+          tabBarStyle: { display: "none" },
+        }}
+      />
+      <Tabs.Screen
         name="profile"
         options={{
           title: "Profile",

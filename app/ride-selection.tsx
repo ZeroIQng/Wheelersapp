@@ -1,6 +1,7 @@
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { usePrivy } from "@privy-io/expo";
 import { StatusBar } from "expo-status-bar";
-import { useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Dimensions,
   PanResponder,
@@ -18,116 +19,131 @@ import { AppButton } from "@/components/app-button";
 import { AppScreen } from "@/components/app-screen";
 import { AppText } from "@/components/app-text";
 import { BackArrow } from "@/components/back-arrow";
+import { LiveMap } from "@/components/live-map";
 import { FloatingView } from "@/components/motion";
-import { StaticMap } from "@/components/static-map";
-import { walletOverview } from "@/data/mock";
+import { getAccessTokenWithRetry } from "@/lib/access-token";
+import { getRideEstimate, isBackendConfigured, type RideEstimateResponse } from "@/lib/api";
+import { resolvePlaceQuery } from "@/lib/google-places";
+import {
+  buildInstantRideEstimate,
+  parseRideEstimateParam,
+  serializeRideEstimate,
+} from "@/lib/ride-estimate";
+import {
+  estimateRide,
+  getRideRouteRows,
+  parseRideItineraryParam,
+  serializeRideItinerary,
+} from "@/lib/ride-route";
+import { submitScheduledRide } from "@/lib/scheduled-rides";
 import { theme } from "@/theme";
-const { height, width } = Dimensions.get("window");
 
-const wheelerRide = {
-  name: "Wheeler",
-  price: "₦3,800",
-  eta: "3 min away",
-  distance: "5.2 km trip",
-  subtitle: "Fast bike ride for 1 rider",
-  pickup: "Current location • Lekki Phase 1",
-  destination: "Civic Centre, Victoria Island",
-} as const;
+const { height } = Dimensions.get("window");
 
-// Route coordinates as percentages of the map area
-// Pickup: Lagos Island (top-left-ish), Destination: Victoria Island (bottom-right-ish)
-const PICKUP_PCT = { x: 0.33, y: 0.52 };
-const DEST_PCT = { x: 0.84, y: 0.84 };
+function getLiveEstimateFareNgn(
+  estimate: RideEstimateResponse,
+): number | null {
+  if (typeof estimate.fareEstimateNgn === "number" && Number.isFinite(estimate.fareEstimateNgn)) {
+    return estimate.fareEstimateNgn;
+  }
 
-function parseAmount(value: string) {
-  const normalized = value.replace(/,/g, "");
-  const match = normalized.match(/\d+(?:\.\d+)?/);
-
-  return match ? Number(match[0]) : 0;
+  return null;
 }
 
-function RouteOverlay({
-  mapWidth,
-  mapHeight,
-}: {
-  mapWidth: number;
-  mapHeight: number;
-}) {
-  const x1 = PICKUP_PCT.x * mapWidth;
-  const y1 = PICKUP_PCT.y * mapHeight;
-  const x2 = DEST_PCT.x * mapWidth;
-  const y2 = DEST_PCT.y * mapHeight;
+function formatNgn(value: number): string {
+  return `NGN ${Math.round(value).toLocaleString("en-NG")}`;
+}
 
-  const dx = x2 - x1;
-  const dy = y2 - y1;
-  const lineLength = Math.sqrt(dx * dx + dy * dy);
-  const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+function hasResolvedLiveEstimate(
+  estimate: RideEstimateResponse | null,
+): estimate is RideEstimateResponse &
+  Required<Pick<RideEstimateResponse, "pickup" | "destination" | "route">> {
+  return Boolean(estimate?.pickup && estimate.destination && estimate.route);
+}
 
-  const DOT_SIZE = 14;
-  const BORDER = 2;
+function parseScheduledAtParam(
+  value: string | string[] | undefined,
+): string | null {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (typeof raw !== "string" || raw.trim().length === 0) {
+    return null;
+  }
 
-  return (
-    <View style={StyleSheet.absoluteFill} pointerEvents="none">
-      {/* Route line */}
-      <View
-        style={{
-          position: "absolute",
-          left: x1,
-          top: y1,
-          width: lineLength,
-          height: 3,
-          backgroundColor: theme.colors.orange,
-          borderRadius: 2,
-          transformOrigin: "0 50%",
-          transform: [{ rotate: `${angle}deg` }],
-          opacity: 0.95,
-        }}
-      />
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
 
-      {/* Pickup dot — orange */}
-      <View
-        style={{
-          position: "absolute",
-          left: x1 - DOT_SIZE / 2,
-          top: y1 - DOT_SIZE / 2,
-          width: DOT_SIZE,
-          height: DOT_SIZE,
-          borderRadius: DOT_SIZE / 2,
-          backgroundColor: theme.colors.orange,
-          borderWidth: BORDER,
-          borderColor: theme.colors.black,
-        }}
-      />
+  return parsed.toISOString();
+}
 
-      {/* Destination dot — green */}
-      <View
-        style={{
-          position: "absolute",
-          left: x2 - DOT_SIZE / 2,
-          top: y2 - DOT_SIZE / 2,
-          width: DOT_SIZE,
-          height: DOT_SIZE,
-          borderRadius: DOT_SIZE / 2,
-          backgroundColor: theme.colors.green,
-          borderWidth: BORDER,
-          borderColor: theme.colors.black,
-        }}
-      />
-    </View>
-  );
+function formatScheduledAt(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "your selected time";
+  }
+
+  const dayLabel = new Intl.DateTimeFormat("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  }).format(date);
+
+  const timeLabel = new Intl.DateTimeFormat("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
+
+  return `${dayLabel}, ${timeLabel}`;
 }
 
 export default function RideSelectionScreen() {
   const router = useRouter();
+  const { getAccessToken, isReady, user } = usePrivy();
+  const params = useLocalSearchParams<{
+    itinerary?: string | string[];
+    estimate?: string | string[];
+    scheduledAt?: string | string[];
+  }>();
+  const itinerary = useMemo(
+    () => parseRideItineraryParam(params.itinerary),
+    [params.itinerary],
+  );
+  const initialEstimate = useMemo(
+    () => parseRideEstimateParam(params.estimate),
+    [params.estimate],
+  );
+  const instantPreview = useMemo(() => estimateRide(itinerary), [itinerary]);
+  const fallbackEstimate = useMemo(
+    () => buildInstantRideEstimate(itinerary),
+    [itinerary],
+  );
+  const routeRows = useMemo(() => getRideRouteRows(itinerary), [itinerary]);
+  const [liveEstimate, setLiveEstimate] = useState<RideEstimateResponse | null>(
+    initialEstimate ?? fallbackEstimate,
+  );
+  const [estimateError, setEstimateError] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const collapsedSheetOffset = 196;
   const sheetOffset = useSharedValue(0);
-  const rideFare = parseAmount(wheelerRide.price);
-  const walletBalance = parseAmount(walletOverview.fiatApprox);
+  const serializedItinerary = serializeRideItinerary(itinerary);
+  const scheduledAt = useMemo(
+    () => parseScheduledAtParam(params.scheduledAt),
+    [params.scheduledAt],
+  );
 
-  // Map area height = full screen height minus the bottom sheet height
-  const SHEET_MIN_HEIGHT = 438;
-  const mapHeight = height - SHEET_MIN_HEIGHT;
-  const mapWidth = width;
+  useEffect(() => {
+    setLiveEstimate(initialEstimate ?? fallbackEstimate);
+  }, [fallbackEstimate, initialEstimate]);
+
+  const SHEET_MIN_HEIGHT = 470;
+  const routeFitPadding = {
+    top: 88,
+    right: 56,
+    bottom: SHEET_MIN_HEIGHT + 56,
+    left: 56,
+  };
 
   const expandSheet = () => {
     sheetOffset.value = withTiming(0, { duration: 220 });
@@ -167,18 +183,157 @@ export default function RideSelectionScreen() {
     transform: [{ translateY: sheetOffset.value }],
   }));
 
-  const handleBookRide = () => {
-    if (walletBalance >= rideFare) {
-      router.push("/matching");
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadEstimate(): Promise<void> {
+      if (!isBackendConfigured() || !isReady || !user) {
+        if (!cancelled) {
+          setLiveEstimate((current) => current ?? fallbackEstimate);
+        }
+        return;
+      }
+
+      const destinationLabel = itinerary.stops[itinerary.stops.length - 1];
+      if (!destinationLabel) {
+        if (!cancelled) {
+          setLiveEstimate((current) => current ?? fallbackEstimate);
+        }
+        return;
+      }
+
+      setEstimateError(null);
+
+      try {
+        const accessToken = await getAccessTokenWithRetry(getAccessToken);
+        if (!accessToken) {
+          throw new Error("Could not get an access token for ride estimate.");
+        }
+
+        const [pickup, destination, ...stops] = await Promise.all([
+          resolvePlaceQuery(itinerary.pickup),
+          resolvePlaceQuery(destinationLabel),
+          ...itinerary.stops.slice(0, -1).map((stop) => resolvePlaceQuery(stop)),
+        ]);
+
+        const response = await getRideEstimate({
+          accessToken,
+          pickup,
+          destination,
+          stops,
+        });
+
+        if (!cancelled) {
+          setLiveEstimate(response);
+        }
+      } catch (loadError) {
+        if (!cancelled) {
+          setEstimateError(
+            loadError instanceof Error
+              ? loadError.message
+              : "Could not calculate the live route estimate.",
+          );
+        }
+      } finally {
+        // no-op
+      }
+    }
+
+    void loadEstimate();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [fallbackEstimate, getAccessToken, isReady, itinerary, user]);
+
+  const resolvedEstimate = hasResolvedLiveEstimate(liveEstimate) ? liveEstimate : null;
+  const liveEstimateFareNgn = liveEstimate ? getLiveEstimateFareNgn(liveEstimate) : null;
+  const displayEtaLabel = resolvedEstimate
+    ? `${Math.max(1, Math.ceil(resolvedEstimate.plannedDurationSeconds / 60))} min trip`
+    : `${instantPreview.etaMinutes} min trip`;
+  const displayDistanceLabel = resolvedEstimate
+    ? `${resolvedEstimate.plannedDistanceKm.toFixed(1)} km route`
+    : instantPreview.distanceLabel;
+  const displayFareLabel =
+    liveEstimateFareNgn !== null
+      ? formatNgn(liveEstimateFareNgn)
+      : formatNgn(instantPreview.priceNgn);
+  const scheduleSummary = scheduledAt ? formatScheduledAt(scheduledAt) : null;
+  const routeNote = scheduledAt
+    ? `This route will be scheduled for ${scheduleSummary ?? "your selected time"}.`
+    : resolvedEstimate
+      ? "Live estimate for this route."
+      : estimateError
+        ? "Live quote is delayed. Showing an instant route preview."
+        : "Instant route preview. Final live quote will refresh automatically.";
+  const canBookRide = !isSubmitting;
+
+  const handleBookRide = async () => {
+    setSubmitError(null);
+
+    if (scheduledAt) {
+      setIsSubmitting(true);
+
+      try {
+        if (!isBackendConfigured() || !isReady || !user) {
+          throw new Error("Wheelers backend is not configured for scheduled rides.");
+        }
+
+        const destinationLabel = itinerary.stops[itinerary.stops.length - 1];
+        if (!destinationLabel) {
+          throw new Error("Select a destination before scheduling this ride.");
+        }
+
+        const accessToken = await getAccessTokenWithRetry(getAccessToken);
+        if (!accessToken) {
+          throw new Error("Could not get an access token to schedule this ride.");
+        }
+
+        const pickup =
+          liveEstimate?.pickup ?? (await resolvePlaceQuery(itinerary.pickup));
+        const destination =
+          liveEstimate?.destination ?? (await resolvePlaceQuery(destinationLabel));
+        const stops =
+          liveEstimate?.stops ??
+          (await Promise.all(
+            itinerary.stops
+              .slice(0, -1)
+              .map((stop) => resolvePlaceQuery(stop)),
+          ));
+
+        await submitScheduledRide({
+          getAccessToken: async () => accessToken,
+          scheduledFor: scheduledAt,
+          pickup,
+          destination,
+          stops,
+        });
+
+        router.replace({
+          pathname: "/rider/history",
+          params: {
+            tab: "scheduled",
+            toast: `Ride scheduled for ${scheduleSummary ?? "your selected time"}.`,
+          },
+        });
+      } catch (error) {
+        setSubmitError(
+          error instanceof Error
+            ? error.message
+            : "Could not schedule this ride.",
+        );
+      } finally {
+        setIsSubmitting(false);
+      }
+
       return;
     }
 
     router.push({
-      pathname: "/rider/wallet",
+      pathname: "/matching",
       params: {
-        depositAmount: String(rideFare),
-        redirectReason: "insufficient-funds",
-        rideName: wheelerRide.name,
+        itinerary: serializedItinerary,
+        estimate: serializeRideEstimate(liveEstimate ?? fallbackEstimate),
       },
     });
   };
@@ -192,16 +347,21 @@ export default function RideSelectionScreen() {
       <StatusBar style="dark" backgroundColor={theme.colors.mapBase} />
 
       <View style={styles.mapWrap}>
-        <StaticMap height={height} scene="rideSelection">
-          {/* ── Route overlay ── */}
-          <RouteOverlay mapWidth={mapWidth} mapHeight={mapHeight} />
-
+        <LiveMap
+          height={height}
+          pickup={liveEstimate?.pickup}
+          destination={liveEstimate?.destination}
+          stops={liveEstimate?.stops}
+          route={liveEstimate?.route}
+          initialCenter={liveEstimate?.pickup}
+          fitPadding={routeFitPadding}
+        >
           <View style={styles.topBar}>
             <BackArrow onPress={() => router.back()} />
             <FloatingView distance={5}>
               <View style={styles.mapChip}>
                 <AppText variant="monoSmall">
-                  Wheeler • {wheelerRide.eta}
+                  Wheeler • {displayEtaLabel}
                 </AppText>
               </View>
             </FloatingView>
@@ -210,12 +370,12 @@ export default function RideSelectionScreen() {
           <FloatingView style={styles.priceBadge} distance={6}>
             <View style={styles.priceBadgeInner}>
               <AppText variant="bodySmall" color={theme.colors.muted}>
-                Estimated fare
+                {resolvedEstimate ? "Backend fare preview" : "Estimated fare"}
               </AppText>
-              <AppText variant="monoLarge">{wheelerRide.price}</AppText>
+              <AppText variant="monoLarge">{displayFareLabel}</AppText>
             </View>
           </FloatingView>
-        </StaticMap>
+        </LiveMap>
       </View>
 
       <Animated.View
@@ -229,11 +389,13 @@ export default function RideSelectionScreen() {
         <View style={styles.sheetHeader}>
           <View>
             <AppText variant="monoSmall" color={theme.colors.orange}>
-              RIDE OPTION
+              {scheduledAt ? "SCHEDULED RIDE" : "RIDE OPTION"}
             </AppText>
-            <AppText variant="h1">{wheelerRide.name}</AppText>
+            <AppText variant="h1">Wheeler</AppText>
             <AppText variant="bodySmall" color={theme.colors.muted}>
-              {wheelerRide.subtitle}
+              {scheduledAt
+                ? "Reserve this bike ride ahead of time."
+                : "Fast bike ride with multi-stop routing"}
             </AppText>
           </View>
           <View style={styles.rideIcon}>
@@ -245,40 +407,64 @@ export default function RideSelectionScreen() {
           <View style={styles.rideCardMain}>
             <View style={styles.rideCopy}>
               <View style={styles.metricRow}>
-                <MetricPill label={wheelerRide.eta} />
-                <MetricPill label={wheelerRide.distance} muted />
+                <MetricPill label={displayEtaLabel} />
+                <MetricPill label={displayDistanceLabel} muted />
               </View>
-              <AppText variant="h3">Wheeler</AppText>
+              { <AppText variant="h3">Wheeler</AppText> }
               <AppText variant="bodySmall" color={theme.colors.muted}>
-                {/* Direct ride with pickup and drop-off shown on map */}
+                {routeNote}
               </AppText>
+              {estimateError && !resolvedEstimate ? (
+                <AppText variant="bodySmall" color={theme.colors.muted}>
+                  {estimateError}
+                </AppText>
+              ) : null}
             </View>
             <View style={styles.priceBlock}>
               <AppText variant="monoSmall" color={theme.colors.offWhite}>
                 NGN
               </AppText>
               <AppText variant="h2" color={theme.colors.offWhite}>
-                {wheelerRide.price}
+                {liveEstimateFareNgn !== null
+                  ? Math.round(liveEstimateFareNgn).toLocaleString("en-NG")
+                  : "--"}
               </AppText>
             </View>
           </View>
         </Pressable>
 
         <View style={styles.routeBox}>
-          <RouteRow
-            color={theme.colors.green}
-            label="Pickup"
-            value={wheelerRide.pickup}
-          />
-          <View style={styles.routeDivider} />
-          <RouteRow
-            color={theme.colors.orange}
-            label="Destination"
-            value={wheelerRide.destination}
-          />
+          {routeRows.map((row, index) => (
+            <View key={row.id}>
+              <RouteRow
+                kind={row.kind}
+                label={row.label}
+                value={row.value}
+              />
+              {index < routeRows.length - 1 ? (
+                <View style={styles.routeDivider} />
+              ) : null}
+            </View>
+          ))}
         </View>
 
-        <AppButton title="Book Wheeler" onPress={handleBookRide} />
+        {submitError ? (
+          <AppText variant="bodySmall" color={theme.colors.danger}>
+            {submitError}
+          </AppText>
+        ) : null}
+
+        <AppButton
+          title={
+            scheduledAt
+              ? isSubmitting
+                ? "Scheduling Wheeler..."
+                : "Schedule Wheeler"
+              : "Book Wheeler"
+          }
+          onPress={handleBookRide}
+          disabled={!canBookRide}
+        />
       </Animated.View>
     </AppScreen>
   );
@@ -300,17 +486,26 @@ function MetricPill({ label, muted }: { label: string; muted?: boolean }) {
 }
 
 function RouteRow({
-  color,
+  kind,
   label,
   value,
 }: {
-  color: string;
+  kind: "pickup" | "stop" | "destination";
   label: string;
   value: string;
 }) {
   return (
     <View style={styles.routeRow}>
-      <View style={[styles.routeDot, { backgroundColor: color }]} />
+      <View
+        style={[
+          styles.routeDot,
+          kind === "pickup"
+            ? styles.routeDotPickup
+            : kind === "destination"
+              ? styles.routeDotDestination
+              : styles.routeDotStop,
+        ]}
+      />
       <View style={styles.routeCopy}>
         <AppText variant="monoSmall" color={theme.colors.muted}>
           {label}
@@ -378,7 +573,7 @@ const styles = StyleSheet.create({
     paddingTop: theme.spacing.sm,
     paddingBottom: theme.spacing.xl,
     gap: theme.spacing.md,
-    minHeight: 438,
+    minHeight: 470,
   },
   handleArea: {
     alignItems: "center",
@@ -445,7 +640,7 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.white,
   },
   priceBlock: {
-    minWidth: 108,
+    minWidth: 118,
     alignSelf: "stretch",
     borderWidth: theme.borders.regular,
     borderColor: theme.colors.black,
@@ -473,9 +668,20 @@ const styles = StyleSheet.create({
   routeDot: {
     width: 14,
     height: 14,
-    borderRadius: theme.radius.pill,
     borderWidth: theme.borders.regular,
     borderColor: theme.colors.black,
+  },
+  routeDotPickup: {
+    borderRadius: theme.radius.pill,
+    backgroundColor: theme.colors.green,
+  },
+  routeDotStop: {
+    borderRadius: 4,
+    backgroundColor: "#FFD1B5",
+  },
+  routeDotDestination: {
+    borderRadius: 4,
+    backgroundColor: theme.colors.orange,
   },
   routeCopy: {
     flex: 1,
@@ -485,5 +691,6 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: theme.colors.borderLight,
     marginLeft: 22,
+    marginVertical: theme.spacing.sm,
   },
 });
