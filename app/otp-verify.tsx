@@ -2,7 +2,7 @@ import { usePrivy } from "@privy-io/expo";
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useRef, useState } from "react";
-import { Pressable, StyleSheet, TextInput, View } from "react-native";
+import { Alert, Pressable, StyleSheet, TextInput, View } from "react-native";
 
 import { AppButton } from "@/components/app-button";
 import { AppScreen } from "@/components/app-screen";
@@ -36,7 +36,6 @@ function PrivyOtpVerifyScreen() {
     Array.from({ length: OTP_LENGTH }, () => ""),
   );
   const [pendingPhone, setPendingPhone] = useState<string | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoadingPhone, setIsLoadingPhone] = useState(true);
   const [isVerifying, setIsVerifying] = useState(false);
   const [isResending, setIsResending] = useState(false);
@@ -99,22 +98,20 @@ function PrivyOtpVerifyScreen() {
       return;
     }
 
-    setErrorMessage(null);
-
     const code = digits.join("");
     if (code.length !== OTP_LENGTH) {
-      setErrorMessage("Enter the full 6-digit verification code.");
+      Alert.alert("Code required", "Enter the full 6-digit verification code.");
       return;
     }
 
     if (!isReady) {
-      setErrorMessage("Privy is still initializing. Try again in a moment.");
+      Alert.alert("Try again", "Privy is still initializing. Try again in a moment.");
       return;
     }
 
     const accessToken = await getAccessToken();
     if (!accessToken) {
-      setErrorMessage("Could not get a Privy access token.");
+      Alert.alert("Authentication required", "Could not get a Privy access token.");
       return;
     }
 
@@ -125,7 +122,8 @@ function PrivyOtpVerifyScreen() {
       await markStoredOnboardingComplete();
       router.replace("/rider");
     } catch (error) {
-      setErrorMessage(
+      Alert.alert(
+        "Verification failed",
         error instanceof Error
           ? error.message
           : "Could not verify the phone code.",
@@ -140,16 +138,14 @@ function PrivyOtpVerifyScreen() {
       return;
     }
 
-    setErrorMessage(null);
-
     if (!isReady) {
-      setErrorMessage("Privy is still initializing. Try again in a moment.");
+      Alert.alert("Try again", "Privy is still initializing. Try again in a moment.");
       return;
     }
 
     const accessToken = await getAccessToken();
     if (!accessToken) {
-      setErrorMessage("Could not get a Privy access token.");
+      Alert.alert("Authentication required", "Could not get a Privy access token.");
       return;
     }
 
@@ -158,7 +154,8 @@ function PrivyOtpVerifyScreen() {
     try {
       await sendPhoneOtp({ accessToken, phone: pendingPhone });
     } catch (error) {
-      setErrorMessage(
+      Alert.alert(
+        "Resend failed",
         error instanceof Error
           ? error.message
           : "Could not resend the phone verification code.",
@@ -277,16 +274,6 @@ function PrivyOtpVerifyScreen() {
             onPress={() => void handleVerify()}
           />
         </RevealView>
-
-        {errorMessage ? (
-          <AppText
-            variant="bodySmall"
-            color={theme.colors.danger}
-            style={styles.feedback}
-          >
-            {errorMessage}
-          </AppText>
-        ) : null}
 
         <Pressable
           disabled={isResending || isVerifying}

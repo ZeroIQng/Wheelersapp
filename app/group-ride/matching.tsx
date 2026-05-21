@@ -2,8 +2,8 @@ import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { usePrivy } from "@privy-io/expo";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { useEffect, useState } from "react";
-import { StyleSheet, View } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import { Alert, StyleSheet, View } from "react-native";
 import Animated, {
   Easing,
   FadeIn,
@@ -104,6 +104,7 @@ export default function GroupRideMatchingScreen() {
   const [requestId, setRequestId] = useState<string | null>(null);
   const [matchStatus, setMatchStatus] = useState<GroupRideMatchRequest["status"] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const lastErrorAlertRef = useRef<string | null>(null);
 
   // Pulse rings
   const ring1 = useSharedValue(0);
@@ -346,6 +347,20 @@ export default function GroupRideMatchingScreen() {
   const dot3Style = useAnimatedStyle(() => ({
     transform: [{ translateY: dot3Y.value }],
   }));
+
+  useEffect(() => {
+    if (!error) {
+      lastErrorAlertRef.current = null;
+      return;
+    }
+
+    if (lastErrorAlertRef.current === error) {
+      return;
+    }
+
+    lastErrorAlertRef.current = error;
+    Alert.alert("Group ride failed", error);
+  }, [error]);
   const statusCopy = getGroupRideStatusCopy(matchStatus);
 
   return (
@@ -408,7 +423,7 @@ export default function GroupRideMatchingScreen() {
           <Animated.View style={[styles.pingDot, dot3Style]} />
         </View>
         <AppText variant="bodySmall" color={theme.colors.muted} style={styles.subText}>
-          {error ?? statusCopy.body}
+          {statusCopy.body}
         </AppText>
       </Animated.View>
 

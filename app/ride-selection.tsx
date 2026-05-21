@@ -3,6 +3,7 @@ import { usePrivy } from "@privy-io/expo";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  Alert,
   Dimensions,
   PanResponder,
   Pressable,
@@ -122,8 +123,6 @@ export default function RideSelectionScreen() {
   const [liveEstimate, setLiveEstimate] = useState<RideEstimateResponse | null>(
     initialEstimate ?? fallbackEstimate,
   );
-  const [estimateError, setEstimateError] = useState<string | null>(null);
-  const [submitError, setSubmitError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const collapsedSheetOffset = 196;
   const sheetOffset = useSharedValue(0);
@@ -202,8 +201,6 @@ export default function RideSelectionScreen() {
         return;
       }
 
-      setEstimateError(null);
-
       try {
         const accessToken = await getAccessTokenWithRetry(getAccessToken);
         if (!accessToken) {
@@ -227,13 +224,7 @@ export default function RideSelectionScreen() {
           setLiveEstimate(response);
         }
       } catch (loadError) {
-        if (!cancelled) {
-          setEstimateError(
-            loadError instanceof Error
-              ? loadError.message
-              : "Could not calculate the live route estimate.",
-          );
-        }
+        void loadError;
       } finally {
         // no-op
       }
@@ -263,14 +254,10 @@ export default function RideSelectionScreen() {
     ? `This route will be scheduled for ${scheduleSummary ?? "your selected time"}.`
     : resolvedEstimate
       ? "Live estimate for this route."
-      : estimateError
-        ? "Live quote is delayed. Showing an instant route preview."
-        : "Instant route preview. Final live quote will refresh automatically.";
+      : "Instant route preview. Final live quote will refresh automatically.";
   const canBookRide = !isSubmitting;
 
   const handleBookRide = async () => {
-    setSubmitError(null);
-
     if (scheduledAt) {
       setIsSubmitting(true);
 
@@ -317,11 +304,11 @@ export default function RideSelectionScreen() {
           },
         });
       } catch (error) {
-        setSubmitError(
+        const message =
           error instanceof Error
             ? error.message
-            : "Could not schedule this ride.",
-        );
+            : "Could not schedule this ride.";
+        Alert.alert("Schedule failed", message);
       } finally {
         setIsSubmitting(false);
       }
@@ -412,13 +399,8 @@ export default function RideSelectionScreen() {
               </View>
               { <AppText variant="h3">Wheeler</AppText> }
               <AppText variant="bodySmall" color={theme.colors.muted}>
-                {routeNote}
+              {routeNote}
               </AppText>
-              {estimateError && !resolvedEstimate ? (
-                <AppText variant="bodySmall" color={theme.colors.muted}>
-                  {estimateError}
-                </AppText>
-              ) : null}
             </View>
             <View style={styles.priceBlock}>
               <AppText variant="monoSmall" color={theme.colors.offWhite}>
@@ -447,12 +429,6 @@ export default function RideSelectionScreen() {
             </View>
           ))}
         </View>
-
-        {submitError ? (
-          <AppText variant="bodySmall" color={theme.colors.danger}>
-            {submitError}
-          </AppText>
-        ) : null}
 
         <AppButton
           title={

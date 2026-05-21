@@ -1,8 +1,8 @@
 import { useLoginWithOAuth, usePrivy, type User } from "@privy-io/expo";
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { useEffect, useState } from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import { Alert, Pressable, StyleSheet, View } from "react-native";
 import Animated, {
   Easing,
   FadeIn,
@@ -139,6 +139,7 @@ function PrivyRoleSelectionScreen() {
   const [restoreAttempt, setRestoreAttempt] = useState(0);
   const [restoreError, setRestoreError] = useState<string | null>(null);
   const [isRestoringSession, setIsRestoringSession] = useState(false);
+  const lastRestoreAlertRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!isPrivyConfigured || !isReady || !user) {
@@ -183,6 +184,20 @@ function PrivyRoleSelectionScreen() {
     };
   }, [getAccessToken, isReady, restoreAttempt, router, user]);
 
+  useEffect(() => {
+    if (!restoreError) {
+      lastRestoreAlertRef.current = null;
+      return;
+    }
+
+    if (lastRestoreAlertRef.current === restoreError) {
+      return;
+    }
+
+    lastRestoreAlertRef.current = restoreError;
+    Alert.alert("Account restore failed", restoreError);
+  }, [restoreError]);
+
   function handleRolePress(role: Role) {
     setSelectedRole(role);
     if (role === "ride") {
@@ -201,7 +216,6 @@ function PrivyRoleSelectionScreen() {
             ? () => setRestoreAttempt((current) => current + 1)
             : undefined
         }
-        statusMessage={restoreError ?? undefined}
       />
     );
   }
@@ -388,6 +402,7 @@ function GoogleContinueButton({
   const [syncError, setSyncError] = useState<string | null>(null);
   const hasGoogleLinkedAccount = Boolean(user && hasGoogleAccount(user));
   const [isSyncing, setIsSyncing] = useState(false);
+  const lastInlineAlertRef = useRef<string | null>(null);
   // const [isResetting, setIsResetting] = useState(false);
   const isLoading = state.status === "loading";
   const errorMessage =
@@ -395,6 +410,20 @@ function GoogleContinueButton({
     (state.status === "error"
       ? getDisplayErrorMessage(state.error, "Could not continue with Google.")
       : null);
+
+  useEffect(() => {
+    if (!errorMessage) {
+      lastInlineAlertRef.current = null;
+      return;
+    }
+
+    if (lastInlineAlertRef.current === errorMessage) {
+      return;
+    }
+
+    lastInlineAlertRef.current = errorMessage;
+    Alert.alert("Sign-in failed", errorMessage);
+  }, [errorMessage]);
 
   async function handlePress() {
     if (isLoading || isSyncing) return;
@@ -504,11 +533,6 @@ function GoogleContinueButton({
         />
       ) : null}
       */}
-      {errorMessage ? (
-        <AppText variant="bodySmall" color={theme.colors.danger}>
-          {errorMessage}
-        </AppText>
-      ) : null}
     </View>
   );
 }

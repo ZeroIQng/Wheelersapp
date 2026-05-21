@@ -4,6 +4,7 @@ import { usePrivy } from "@privy-io/expo";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  Alert,
   Keyboard,
   PanResponder,
   Pressable,
@@ -146,7 +147,6 @@ export default function DestinationSearchScreen() {
   const [activeRouteIndex, setActiveRouteIndex] = useState<number | null>(null);
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
   const [isSubmittingRoute, setIsSubmittingRoute] = useState(false);
-  const [submitError, setSubmitError] = useState<string | null>(null);
   const [prefetchedEstimate, setPrefetchedEstimate] =
     useState<RideEstimateResponse | null>(null);
   const estimateRequestRef = useRef(0);
@@ -697,13 +697,6 @@ export default function DestinationSearchScreen() {
             </ScrollView>
 
             {/* ── Confirm button ── */}
-            {submitError ? (
-              <View style={styles.footerNotice}>
-                <AppText variant="bodySmall" color={theme.colors.danger}>
-                  {submitError}
-                </AppText>
-              </View>
-            ) : null}
             <View style={styles.footerActionBar}>
               <AppButton
                 disabled={isConfirmDisabled || isSubmittingRoute}
@@ -716,7 +709,6 @@ export default function DestinationSearchScreen() {
                 }
                 onPress={async () => {
                   if (flowMode === "trip-edit") {
-                    setSubmitError(null);
                     setIsSubmittingRoute(true);
                     try {
                       await updateRideRoute(itinerary);
@@ -725,17 +717,16 @@ export default function DestinationSearchScreen() {
                         params: { itinerary: serializedItinerary },
                       });
                     } catch (error) {
-                      setSubmitError(
+                      const message =
                         error instanceof Error
                           ? error.message
-                          : "Could not update the ride route.",
-                      );
+                          : "Could not update the ride route.";
+                      Alert.alert("Route update failed", message);
                     } finally {
                       setIsSubmittingRoute(false);
                     }
                     return;
                   }
-                  setSubmitError(null);
                   router.push({
                     pathname: "/ride-selection",
                     params: {

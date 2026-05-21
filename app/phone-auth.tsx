@@ -2,7 +2,7 @@ import { usePrivy } from "@privy-io/expo";
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useState } from "react";
-import { StyleSheet, TextInput, View } from "react-native";
+import { Alert, StyleSheet, TextInput, View } from "react-native";
 
 import { AppButton } from "@/components/app-button";
 import { AppScreen } from "@/components/app-screen";
@@ -54,7 +54,6 @@ function PrivyPhoneAuthScreen() {
   const router = useRouter();
   const { getAccessToken, isReady } = usePrivy();
   const [phone, setPhone] = useState("");
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
   const backgroundColor = theme.colors.offWhite;
   const textColor = theme.colors.black;
@@ -72,10 +71,8 @@ function PrivyPhoneAuthScreen() {
       return;
     }
 
-    setErrorMessage(null);
-
     if (!isReady) {
-      setErrorMessage("Privy is still initializing. Try again in a moment.");
+      Alert.alert("Try again", "Privy is still initializing. Try again in a moment.");
       return;
     }
 
@@ -83,7 +80,8 @@ function PrivyPhoneAuthScreen() {
     try {
       normalizedPhone = toE164Phone(phone);
     } catch (error) {
-      setErrorMessage(
+      Alert.alert(
+        "Invalid phone number",
         error instanceof Error ? error.message : "Enter a valid phone number.",
       );
       return;
@@ -91,7 +89,7 @@ function PrivyPhoneAuthScreen() {
 
     const accessToken = await getAccessToken();
     if (!accessToken) {
-      setErrorMessage("Could not get a Privy access token.");
+      Alert.alert("Authentication required", "Could not get a Privy access token.");
       return;
     }
 
@@ -105,7 +103,8 @@ function PrivyPhoneAuthScreen() {
       await storePendingPhoneVerification(response.phone);
       router.replace("/otp-verify");
     } catch (error) {
-      setErrorMessage(
+      Alert.alert(
+        "Code send failed",
         error instanceof Error
           ? error.message
           : "Could not send the phone verification code.",
@@ -184,12 +183,6 @@ function PrivyPhoneAuthScreen() {
             }}
           />
         </RevealView>
-
-        {errorMessage ? (
-          <AppText variant="bodySmall" color={theme.colors.danger}>
-            {errorMessage}
-          </AppText>
-        ) : null}
 
         <AppText variant="bodySmall" color={mutedColor} style={styles.terms}>
           By continuing you agree to our Terms.

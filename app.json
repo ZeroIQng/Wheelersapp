@@ -12,6 +12,9 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.timmy122.wheleers",
       "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Wheelers uses your location to set pickups, find rides, and keep trip tracking accurate.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Wheelers uses your location during and between ride stages so live tracking, safety tools, and trip progress stay accurate.",
+        "NSLocationAlwaysUsageDescription": "Wheelers uses your location in the background during rides so trip progress and safety monitoring keep working.",
         "UIBackgroundModes": [
           "location",
           "remote-notification"
