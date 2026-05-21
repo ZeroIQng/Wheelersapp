@@ -19,6 +19,7 @@ import Animated, {
 import { AppButton } from "@/components/app-button";
 import { AppText } from "@/components/app-text";
 import { BackArrow } from "@/components/back-arrow";
+import { setGroupRideFaceCapture } from "@/lib/group-ride-draft";
 import { theme } from "@/theme";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -372,6 +373,14 @@ export default function FaceVerifyScreen() {
             holdTimerRef.current = null;
             return;
           }
+        }
+
+        if (pic?.uri) {
+          setGroupRideFaceCapture({
+            uri: pic.uri,
+            mimeType: "image/jpeg",
+            capturedAt: new Date().toISOString(),
+          });
         }
       } catch {
         // proceed even if snapshot fails
