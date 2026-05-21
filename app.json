@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Wheelers",
-    "slug": "wheleers",
+    "slug": "wheelers",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -10,7 +10,7 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.timmy122.wheleers",
+      "bundleIdentifier": "com.timmy122.wheelers",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "Wheelers uses your location to set pickups, find rides, and keep trip tracking accurate.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Wheelers uses your location during and between ride stages so live tracking, safety tools, and trip progress stay accurate.",
