@@ -20,6 +20,7 @@ import { StarBurst, TriangleShape } from "@/components/decorative-shapes";
 import { LiveMap } from "@/components/live-map";
 import { FloatingView, RevealView } from "@/components/motion";
 import { useAppLocation } from "@/lib/location";
+import { useAppNotifications } from "@/lib/notifications";
 import { useRiderHistory } from "@/lib/rider-history";
 import { useWalletOverview } from "@/lib/wallet-overview";
 import { theme } from "@/theme";
@@ -264,6 +265,7 @@ function formatHomeBalance(amountNgn: number | undefined): string {
 export default function RiderHomeScreen() {
   const router = useRouter();
   const { permissionState, requestLocationAccess } = useAppLocation();
+  const { permissionGranted, requestNotificationAccess } = useAppNotifications();
   const { items: historyItems, isLoading: isLoadingHistory } =
     useRiderHistory(3);
   const { overview } = useWalletOverview();
@@ -276,6 +278,7 @@ export default function RiderHomeScreen() {
   >(null);
   const historyVisibility = useSharedValue(0);
   const historyExistsRef = useRef(false);
+  const notificationPromptedRef = useRef(false);
 
   const hideHistory = () => {
     historyVisibility.value = withTiming(0, { duration: 220 });
@@ -292,6 +295,15 @@ export default function RiderHomeScreen() {
 
     void requestLocationAccess();
   }, [permissionState, requestLocationAccess]);
+
+  useEffect(() => {
+    if (notificationPromptedRef.current || permissionGranted) {
+      return;
+    }
+
+    notificationPromptedRef.current = true;
+    void requestNotificationAccess();
+  }, [permissionGranted, requestNotificationAccess]);
 
   useEffect(() => {
     if (isLoadingHistory) {

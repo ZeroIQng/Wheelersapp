@@ -15,6 +15,7 @@ import {
   storePendingPhoneVerification,
   storePhoneEntryStep,
 } from "@/lib/auth-state";
+import { isPrivyConfigured } from "@/lib/privy";
 import { theme } from "@/theme";
 
 function toLocalPhoneDigits(phone: string): string {
@@ -42,6 +43,14 @@ function toE164Phone(rawPhone: string): string {
 }
 
 export default function PhoneAuthScreen() {
+  if (!isPrivyConfigured) {
+    return <PrivyUnavailableScreen />;
+  }
+
+  return <PrivyPhoneAuthScreen />;
+}
+
+function PrivyPhoneAuthScreen() {
   const router = useRouter();
   const { getAccessToken, isReady } = usePrivy();
   const [phone, setPhone] = useState("");
@@ -190,6 +199,26 @@ export default function PhoneAuthScreen() {
   );
 }
 
+function PrivyUnavailableScreen() {
+  const router = useRouter();
+
+  return (
+    <AppScreen
+      backgroundColor={theme.colors.offWhite}
+      contentStyle={styles.unavailableContainer}
+    >
+      <AppText variant="h3">Privy setup missing</AppText>
+      <AppText variant="bodySmall" color={theme.colors.muted}>
+        Add the Privy Expo env keys before opening phone verification.
+      </AppText>
+      <AppButton
+        title="Back to sign in"
+        onPress={() => router.replace("/role-selection")}
+      />
+    </AppScreen>
+  );
+}
+
 const styles = StyleSheet.create({
   container: {
     paddingTop: theme.spacing.lg,
@@ -235,6 +264,11 @@ const styles = StyleSheet.create({
   },
   sendButtonWrap: {
     width: "100%",
+  },
+  unavailableContainer: {
+    flex: 1,
+    justifyContent: "center",
+    gap: theme.spacing.md,
   },
   terms: {
     textAlign: "center",

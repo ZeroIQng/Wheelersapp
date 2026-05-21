@@ -1,4 +1,5 @@
 import { CameraView, useCameraPermissions } from "expo-camera";
+import Constants from "expo-constants";
 import { useRouter } from "expo-router";
 import * as Speech from "expo-speech";
 import { StatusBar } from "expo-status-bar";
@@ -271,6 +272,7 @@ export default function FaceVerifyScreen() {
   const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sampleTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const stateRef = useRef<VerifyState>("requesting");
+  const isSimulator = !Constants.isDevice;
 
   // Keep stateRef in sync so callbacks always see latest state
   useEffect(() => {
@@ -280,6 +282,11 @@ export default function FaceVerifyScreen() {
   // ── Permission ────────────────────────────────────────────────────────────
   useEffect(() => {
     void (async () => {
+      if (isSimulator) {
+        setState("denied");
+        return;
+      }
+
       if (permission?.granted) {
         setState("idle");
         return;
@@ -287,7 +294,7 @@ export default function FaceVerifyScreen() {
       const result = await requestPermission();
       setState(result.granted ? "idle" : "denied");
     })();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isSimulator, permission?.granted, requestPermission]);
 
   // ── Voice prompt on state change ──────────────────────────────────────────
   useEffect(() => {
@@ -415,8 +422,16 @@ export default function FaceVerifyScreen() {
     };
   }, []);
 
-  const cameraReady = state !== "requesting" && state !== "denied" && state !== "failed";
+  const cameraReady =
+    !isSimulator &&
+    state !== "requesting" &&
+    state !== "denied" &&
+    state !== "failed";
   const isHolding = state === "hold" || state === "processing";
+  const hintText =
+    isSimulator && state === "denied"
+      ? "Face verification needs a real device camera. The iOS simulator does not provide the camera feed this step requires."
+      : HINT[state];
 
   return (
     <View style={styles.root}>
@@ -491,15 +506,22 @@ export default function FaceVerifyScreen() {
         <HoldProgress active={isHolding} />
 
         <AppText variant="bodySmall" color="rgba(255,255,255,0.52)" style={styles.hint}>
-          {HINT[state]}
+          {hintText}
         </AppText>
 
         {state === "denied" && (
           <Animated.View entering={FadeInDown.duration(280)} style={styles.actionBtn}>
             <AppButton
-              title="Grant camera access"
+              title={isSimulator ? "Go back" : "Grant camera access"}
               variant="inverse"
-              onPress={() => void requestPermission()}
+              onPress={() => {
+                if (isSimulator) {
+                  router.back();
+                  return;
+                }
+
+                void requestPermission();
+              }}
             />
           </Animated.View>
         )}

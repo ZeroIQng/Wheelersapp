@@ -1,6 +1,6 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { StyleSheet, View } from "react-native";
 
 import { BackArrow } from "@/components/back-arrow";
@@ -11,6 +11,7 @@ import { AppScreen } from "@/components/app-screen";
 import { AppText } from "@/components/app-text";
 import { FloatingView, PulseView, RevealView } from "@/components/motion";
 import { LiveMap } from "@/components/live-map";
+import { useAppLocation } from "@/lib/location";
 import {
   getAdditionalStopCount,
   parseRideItineraryParam,
@@ -36,6 +37,7 @@ function formatRideFare(params: {
 
 export default function DriverFoundScreen() {
   const router = useRouter();
+  const { backgroundGranted, requestBackgroundLocationAccess } = useAppLocation();
   const params = useLocalSearchParams<{
     itinerary?: string | string[];
   }>();
@@ -63,6 +65,7 @@ export default function DriverFoundScreen() {
     .join("")
     .slice(0, 2)
     .toUpperCase();
+  const backgroundPromptedRef = useRef(false);
 
   useEffect(() => {
     if (currentRide?.status === "active") {
@@ -72,6 +75,23 @@ export default function DriverFoundScreen() {
       });
     }
   }, [currentRide?.status, router, serializedItinerary]);
+
+  useEffect(() => {
+    if (
+      backgroundPromptedRef.current ||
+      backgroundGranted ||
+      (currentRide?.status !== "matched" && currentRide?.status !== "active")
+    ) {
+      return;
+    }
+
+    backgroundPromptedRef.current = true;
+    void requestBackgroundLocationAccess();
+  }, [
+    backgroundGranted,
+    currentRide?.status,
+    requestBackgroundLocationAccess,
+  ]);
 
   async function handleCancelRide() {
     try {

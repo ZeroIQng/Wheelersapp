@@ -25,6 +25,7 @@ type NotificationsContextValue = {
   notifications: AppNotification[];
   unreadCount: number;
   permissionGranted: boolean;
+  requestNotificationAccess: () => Promise<void>;
   refreshNotifications: () => Promise<void>;
   markAllRead: () => Promise<void>;
 };
@@ -33,6 +34,7 @@ const defaultValue: NotificationsContextValue = {
   notifications: [],
   unreadCount: 0,
   permissionGranted: false,
+  requestNotificationAccess: async () => undefined,
   refreshNotifications: async () => undefined,
   markAllRead: async () => undefined,
 };
@@ -52,6 +54,33 @@ export function AppNotificationsProvider({ children }: { children: ReactNode }) 
   const { getAccessToken, isReady, user } = usePrivy();
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [permissionGranted, setPermissionGranted] = useState(false);
+
+  const registerDeviceToken = useCallback(
+    async (accessToken: string): Promise<void> => {
+      try {
+        const projectId =
+          Constants.expoConfig?.extra?.eas?.projectId ??
+          Constants.easConfig?.projectId;
+        const expoPushToken = (
+          await Notifications.getExpoPushTokenAsync(
+            projectId ? { projectId } : undefined,
+          )
+        ).data;
+
+        await registerPushToken({
+          accessToken,
+          expoPushToken,
+          platform: Platform.OS,
+          deviceName: `${Platform.OS}-${String(Platform.Version)}`,
+          appOwnership: Constants.appOwnership ?? undefined,
+          enabled: true,
+        });
+      } catch {
+        // Push token registration can fail on simulators or incomplete Expo setup.
+      }
+    },
+    [],
+  );
 
   const refreshNotifications = useCallback(async (): Promise<void> => {
     if (!isReady || !user || !isBackendConfigured()) {
@@ -86,6 +115,42 @@ export function AppNotificationsProvider({ children }: { children: ReactNode }) 
     );
   }, [getAccessToken, isReady, user]);
 
+  const requestNotificationAccess = useCallback(async (): Promise<void> => {
+    if (!isReady || !user || !isBackendConfigured()) {
+      return;
+    }
+
+    try {
+      const existingPermissions = await Notifications.getPermissionsAsync();
+      const finalPermissions = existingPermissions.granted
+        ? existingPermissions
+        : await Notifications.requestPermissionsAsync();
+
+      setPermissionGranted(finalPermissions.granted);
+
+      const accessToken = await getAccessTokenWithRetry(getAccessToken);
+      if (!accessToken) {
+        return;
+      }
+
+      await refreshNotifications();
+
+      if (!finalPermissions.granted) {
+        return;
+      }
+
+      await registerDeviceToken(accessToken);
+    } catch {
+      setPermissionGranted(false);
+    }
+  }, [
+    getAccessToken,
+    isReady,
+    refreshNotifications,
+    registerDeviceToken,
+    user,
+  ]);
+
   useEffect(() => {
     if (!isReady || !user || !isBackendConfigured()) {
       setNotifications([]);
@@ -99,46 +164,28 @@ export function AppNotificationsProvider({ children }: { children: ReactNode }) 
     });
 
     void (async () => {
-      const existingPermissions = await Notifications.getPermissionsAsync();
-      const finalPermissions = existingPermissions.granted
-        ? existingPermissions
-        : await Notifications.requestPermissionsAsync();
-
-      if (!cancelled) {
-        setPermissionGranted(finalPermissions.granted);
-      }
-
-      const accessToken = await getAccessTokenWithRetry(getAccessToken);
-      if (!accessToken) {
-        return;
-      }
-
-      await refreshNotifications();
-
-      if (!finalPermissions.granted) {
-        return;
-      }
-
       try {
-        const projectId =
-          Constants.expoConfig?.extra?.eas?.projectId ??
-          Constants.easConfig?.projectId;
-        const expoPushToken = (
-          await Notifications.getExpoPushTokenAsync(
-            projectId ? { projectId } : undefined,
-          )
-        ).data;
+        const existingPermissions = await Notifications.getPermissionsAsync();
+        if (!cancelled) {
+          setPermissionGranted(existingPermissions.granted);
+        }
 
-        await registerPushToken({
-          accessToken,
-          expoPushToken,
-          platform: Platform.OS,
-          deviceName: `${Platform.OS}-${String(Platform.Version)}`,
-          appOwnership: Constants.appOwnership ?? undefined,
-          enabled: true,
-        });
+        const accessToken = await getAccessTokenWithRetry(getAccessToken);
+        if (!accessToken) {
+          return;
+        }
+
+        await refreshNotifications();
+
+        if (!existingPermissions.granted) {
+          return;
+        }
+
+        await registerDeviceToken(accessToken);
       } catch {
-        // Push token registration can fail on simulators or incomplete Expo setup.
+        if (!cancelled) {
+          setPermissionGranted(false);
+        }
       }
     })();
 
@@ -146,17 +193,24 @@ export function AppNotificationsProvider({ children }: { children: ReactNode }) 
       cancelled = true;
       subscription.remove();
     };
-  }, [getAccessToken, isReady, refreshNotifications, user]);
+  }, [getAccessToken, isReady, refreshNotifications, registerDeviceToken, user]);
 
   const value = useMemo<NotificationsContextValue>(
     () => ({
       notifications,
       unreadCount: notifications.filter((item) => !item.read).length,
       permissionGranted,
+      requestNotificationAccess,
       refreshNotifications,
       markAllRead,
     }),
-    [markAllRead, notifications, permissionGranted, refreshNotifications],
+    [
+      markAllRead,
+      notifications,
+      permissionGranted,
+      refreshNotifications,
+      requestNotificationAccess,
+    ],
   );
 
   return (

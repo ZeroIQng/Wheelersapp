@@ -24,6 +24,7 @@ type LocationContextValue = {
   currentLocation: AppLocation | null;
   error: string | null;
   requestLocationAccess: () => Promise<void>;
+  requestBackgroundLocationAccess: () => Promise<void>;
   refreshLocation: () => Promise<void>;
 };
 
@@ -33,6 +34,7 @@ const defaultValue: LocationContextValue = {
   currentLocation: null,
   error: null,
   requestLocationAccess: async () => undefined,
+  requestBackgroundLocationAccess: async () => undefined,
   refreshLocation: async () => undefined,
 };
 
@@ -140,13 +142,6 @@ export function LocationProvider({ children }: { children: ReactNode }) {
       setPermissionState("granted");
       setError(null);
       await refreshLocation();
-
-      const background = await Location.getBackgroundPermissionsAsync();
-      const backgroundResult = background.granted
-        ? background
-        : await Location.requestBackgroundPermissionsAsync();
-
-      setBackgroundGranted(backgroundResult.granted);
       await startWatchingLocation();
     } catch (locationError) {
       setPermissionState("denied");
@@ -157,6 +152,35 @@ export function LocationProvider({ children }: { children: ReactNode }) {
       );
     }
   }, [refreshLocation, startWatchingLocation]);
+
+  const requestBackgroundLocationAccess = useCallback(async (): Promise<void> => {
+    try {
+      const foreground = await Location.getForegroundPermissionsAsync();
+      if (!foreground.granted) {
+        await requestLocationAccess();
+      }
+
+      const refreshedForeground = await Location.getForegroundPermissionsAsync();
+      if (!refreshedForeground.granted) {
+        setBackgroundGranted(false);
+        return;
+      }
+
+      const background = await Location.getBackgroundPermissionsAsync();
+      const backgroundResult = background.granted
+        ? background
+        : await Location.requestBackgroundPermissionsAsync();
+
+      setBackgroundGranted(backgroundResult.granted);
+    } catch (locationError) {
+      setBackgroundGranted(false);
+      setError(
+        locationError instanceof Error
+          ? locationError.message
+          : "Could not enable background location.",
+      );
+    }
+  }, [requestLocationAccess]);
 
   useEffect(() => {
     let cancelled = false;
@@ -211,6 +235,7 @@ export function LocationProvider({ children }: { children: ReactNode }) {
       currentLocation,
       error,
       requestLocationAccess,
+      requestBackgroundLocationAccess,
       refreshLocation,
     }),
     [
@@ -219,6 +244,7 @@ export function LocationProvider({ children }: { children: ReactNode }) {
       error,
       permissionState,
       refreshLocation,
+      requestBackgroundLocationAccess,
       requestLocationAccess,
     ],
   );

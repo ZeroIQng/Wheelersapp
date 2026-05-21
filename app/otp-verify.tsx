@@ -16,11 +16,20 @@ import {
   readStoredAuthState,
   storePhoneEntryStep,
 } from "@/lib/auth-state";
+import { isPrivyConfigured } from "@/lib/privy";
 import { theme } from "@/theme";
 
 const OTP_LENGTH = 6;
 
 export default function OtpVerifyScreen() {
+  if (!isPrivyConfigured) {
+    return <PrivyUnavailableScreen />;
+  }
+
+  return <PrivyOtpVerifyScreen />;
+}
+
+function PrivyOtpVerifyScreen() {
   const router = useRouter();
   const { getAccessToken, isReady } = usePrivy();
   const [digits, setDigits] = useState<string[]>(
@@ -288,6 +297,26 @@ export default function OtpVerifyScreen() {
           </AppText>
         </Pressable>
       </RevealView>
+    </AppScreen>
+  );
+}
+
+function PrivyUnavailableScreen() {
+  const router = useRouter();
+
+  return (
+    <AppScreen
+      backgroundColor={theme.colors.offWhite}
+      contentStyle={styles.loadingContainer}
+    >
+      <AppText variant="h3">Privy setup missing</AppText>
+      <AppText variant="bodySmall" color={theme.colors.muted}>
+        Add the Privy Expo env keys before opening phone verification.
+      </AppText>
+      <AppButton
+        title="Back to sign in"
+        onPress={() => router.replace("/role-selection")}
+      />
     </AppScreen>
   );
 }
