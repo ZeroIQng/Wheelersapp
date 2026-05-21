@@ -23,6 +23,7 @@ type LocationContextValue = {
   backgroundGranted: boolean;
   currentLocation: AppLocation | null;
   error: string | null;
+  requestLocationAccess: () => Promise<void>;
   refreshLocation: () => Promise<void>;
 };
 
@@ -31,6 +32,7 @@ const defaultValue: LocationContextValue = {
   backgroundGranted: false,
   currentLocation: null,
   error: null,
+  requestLocationAccess: async () => undefined,
   refreshLocation: async () => undefined,
 };
 
@@ -86,6 +88,23 @@ export function LocationProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  const startWatchingLocation = useCallback(async () => {
+    subscriptionRef.current?.remove();
+    subscriptionRef.current = await Location.watchPositionAsync(
+      {
+        accuracy: Location.Accuracy.Balanced,
+        distanceInterval: 25,
+        timeInterval: 15_000,
+      },
+      (position) => {
+        void updateCurrentLocation(
+          position.coords.latitude,
+          position.coords.longitude,
+        );
+      },
+    );
+  }, [updateCurrentLocation]);
+
   const refreshLocation = useCallback(async (): Promise<void> => {
     try {
       const position = await Location.getCurrentPositionAsync({
@@ -105,20 +124,50 @@ export function LocationProvider({ children }: { children: ReactNode }) {
     }
   }, [updateCurrentLocation]);
 
+  const requestLocationAccess = useCallback(async (): Promise<void> => {
+    try {
+      const foreground = await Location.getForegroundPermissionsAsync();
+      const foregroundResult = foreground.granted
+        ? foreground
+        : await Location.requestForegroundPermissionsAsync();
+
+      if (!foregroundResult.granted) {
+        setPermissionState("denied");
+        setError("Location access is disabled.");
+        return;
+      }
+
+      setPermissionState("granted");
+      setError(null);
+      await refreshLocation();
+
+      const background = await Location.getBackgroundPermissionsAsync();
+      const backgroundResult = background.granted
+        ? background
+        : await Location.requestBackgroundPermissionsAsync();
+
+      setBackgroundGranted(backgroundResult.granted);
+      await startWatchingLocation();
+    } catch (locationError) {
+      setPermissionState("denied");
+      setError(
+        locationError instanceof Error
+          ? locationError.message
+          : "Could not start location tracking.",
+      );
+    }
+  }, [refreshLocation, startWatchingLocation]);
+
   useEffect(() => {
     let cancelled = false;
 
     void (async () => {
       try {
         const foreground = await Location.getForegroundPermissionsAsync();
-        const foregroundResult = foreground.granted
-          ? foreground
-          : await Location.requestForegroundPermissionsAsync();
-
-        if (!foregroundResult.granted) {
+        if (!foreground.granted) {
           if (!cancelled) {
-            setPermissionState("denied");
-            setError("Location access is disabled.");
+            setPermissionState("idle");
+            setBackgroundGranted(false);
           }
           return;
         }
@@ -131,27 +180,11 @@ export function LocationProvider({ children }: { children: ReactNode }) {
         await refreshLocation();
 
         const background = await Location.getBackgroundPermissionsAsync();
-        const backgroundResult = background.granted
-          ? background
-          : await Location.requestBackgroundPermissionsAsync();
-
         if (!cancelled) {
-          setBackgroundGranted(backgroundResult.granted);
+          setBackgroundGranted(background.granted);
         }
 
-        subscriptionRef.current = await Location.watchPositionAsync(
-          {
-            accuracy: Location.Accuracy.Balanced,
-            distanceInterval: 25,
-            timeInterval: 15_000,
-          },
-          (position) => {
-            void updateCurrentLocation(
-              position.coords.latitude,
-              position.coords.longitude,
-            );
-          },
-        );
+        await startWatchingLocation();
       } catch (locationError) {
         if (!cancelled) {
           setPermissionState("denied");
@@ -169,7 +202,7 @@ export function LocationProvider({ children }: { children: ReactNode }) {
       subscriptionRef.current?.remove();
       subscriptionRef.current = null;
     };
-  }, [refreshLocation, updateCurrentLocation]);
+  }, [refreshLocation, startWatchingLocation]);
 
   const value = useMemo<LocationContextValue>(
     () => ({
@@ -177,9 +210,17 @@ export function LocationProvider({ children }: { children: ReactNode }) {
       backgroundGranted,
       currentLocation,
       error,
+      requestLocationAccess,
       refreshLocation,
     }),
-    [backgroundGranted, currentLocation, error, permissionState, refreshLocation],
+    [
+      backgroundGranted,
+      currentLocation,
+      error,
+      permissionState,
+      refreshLocation,
+      requestLocationAccess,
+    ],
   );
 
   return <LocationContext.Provider value={value}>{children}</LocationContext.Provider>;

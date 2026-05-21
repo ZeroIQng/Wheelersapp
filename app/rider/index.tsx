@@ -19,6 +19,7 @@ import { AppText } from "@/components/app-text";
 import { StarBurst, TriangleShape } from "@/components/decorative-shapes";
 import { LiveMap } from "@/components/live-map";
 import { FloatingView, RevealView } from "@/components/motion";
+import { useAppLocation } from "@/lib/location";
 import { useRiderHistory } from "@/lib/rider-history";
 import { useWalletOverview } from "@/lib/wallet-overview";
 import { theme } from "@/theme";
@@ -262,6 +263,7 @@ function formatHomeBalance(amountNgn: number | undefined): string {
 
 export default function RiderHomeScreen() {
   const router = useRouter();
+  const { permissionState, requestLocationAccess } = useAppLocation();
   const { items: historyItems, isLoading: isLoadingHistory } =
     useRiderHistory(3);
   const { overview } = useWalletOverview();
@@ -282,6 +284,14 @@ export default function RiderHomeScreen() {
   const showHistory = () => {
     historyVisibility.value = withTiming(1, { duration: 220 });
   };
+
+  useEffect(() => {
+    if (permissionState !== "idle") {
+      return;
+    }
+
+    void requestLocationAccess();
+  }, [permissionState, requestLocationAccess]);
 
   useEffect(() => {
     if (isLoadingHistory) {

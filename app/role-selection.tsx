@@ -123,6 +123,14 @@ const walletConnectTheme = {
 };
 
 export default function RoleSelectionScreen() {
+  if (!isPrivyConfigured) {
+    return <RoleSelectionScreenContent />;
+  }
+
+  return <PrivyRoleSelectionScreen />;
+}
+
+function PrivyRoleSelectionScreen() {
   const router = useRouter();
   const { getAccessToken, isReady, user } = usePrivy();
   const [selectedRole, setSelectedRole] = useState<Role>("ride");
@@ -196,6 +204,31 @@ export default function RoleSelectionScreen() {
         statusMessage={restoreError ?? undefined}
       />
     );
+  }
+
+  return <RoleSelectionScreenContent selectedRole={selectedRole} onRolePress={handleRolePress} />;
+}
+
+function RoleSelectionScreenContent({
+  selectedRole: selectedRoleProp = "ride",
+  onRolePress,
+}: {
+  selectedRole?: Role;
+  onRolePress?: (role: Role) => void;
+}) {
+  const router = useRouter();
+  const [selectedRole, setSelectedRole] = useState<Role>(selectedRoleProp);
+  const [rideMotionKey, setRideMotionKey] = useState(0);
+  const [driveMotionKey, setDriveMotionKey] = useState(1);
+
+  function handleRolePress(role: Role) {
+    setSelectedRole(role);
+    onRolePress?.(role);
+    if (role === "ride") {
+      setRideMotionKey((current) => current + 1);
+      return;
+    }
+    setDriveMotionKey((current) => current + 1);
   }
 
   return (

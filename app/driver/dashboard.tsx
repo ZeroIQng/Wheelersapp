@@ -1,5 +1,6 @@
 import { Href, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { useEffect } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { AppButton } from '@/components/app-button';
@@ -11,12 +12,22 @@ import { MetricCard } from '@/components/MetricCard';
 import { SectionHeader } from '@/components/SectionHeader';
 import { StatusPill } from '@/components/StatusPill';
 import { driverDashboardSummary, driverWalletOverview } from '@/data/mock';
+import { useAppLocation } from '@/lib/location';
 import { theme } from '@/theme';
 
 export default function DriverDashboardScreen() {
   const router = useRouter();
+  const { permissionState, requestLocationAccess } = useAppLocation();
   const requestRoute = '/driver/incoming-request' as Href;
   const walletRoute = '/driver/wallet' as Href;
+
+  useEffect(() => {
+    if (permissionState !== 'idle') {
+      return;
+    }
+
+    void requestLocationAccess();
+  }, [permissionState, requestLocationAccess]);
 
   return (
     <AppScreen backgroundColor={theme.colors.offWhite} scroll contentStyle={styles.container}>
