@@ -1,7 +1,8 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
+import { usePrivy } from "@privy-io/expo";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import Animated, {
   Easing,
@@ -15,16 +16,94 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 
+import { AppButton } from "@/components/app-button";
 import { AppScreen } from "@/components/app-screen";
 import { AppText } from "@/components/app-text";
+import { getAccessTokenWithRetry } from "@/lib/access-token";
+import {
+  completeGroupRideFaceUpload,
+  createGroupRideFaceUploadUrl,
+  createGroupRideMatchRequest,
+  getGroupRideMatchRequest,
+  type GroupRideMatchRequest,
+} from "@/lib/api";
+import {
+  clearGroupRideFaceCapture,
+  getGroupRideFaceCapture,
+} from "@/lib/group-ride-draft";
+import { resolvePlaceQuery } from "@/lib/google-places";
 import { theme } from "@/theme";
 
-// Simulated match delay — in production, this would be replaced with a real network call
-const MATCH_DELAY_MS = 5000;
+const MATCH_POLL_MS = 3000;
+
+function getGroupRideStatusCopy(status: GroupRideMatchRequest["status"] | null) {
+  switch (status) {
+    case "PENDING_FACE_UPLOAD":
+      return {
+        heading: "Uploading your\nverification",
+        body: "Securing your request before matching starts.",
+      };
+    case "READY_FOR_MATCH":
+      return {
+        heading: "Preparing\nyour match",
+        body: "Your route is queued for shared-ride matching.",
+      };
+    case "MATCHING":
+      return {
+        heading: "Finding other\nriders",
+        body: "Matching you with riders headed the same way.",
+      };
+    case "GROUPED":
+      return {
+        heading: "Riders found\nnearby",
+        body: "Wheelers is building the shared route now.",
+      };
+    case "BOOKED":
+      return {
+        heading: "Group ride\nbooked",
+        body: "Your shared ride is confirmed.",
+      };
+    case "EXPIRED":
+      return {
+        heading: "Match window\nexpired",
+        body: "No compatible riders were available in time.",
+      };
+    case "CANCELLED":
+      return {
+        heading: "Request\ncancelled",
+        body: "This group ride request is no longer active.",
+      };
+    default:
+      return {
+        heading: "Creating your\nrequest",
+        body: "Preparing your route and verification details.",
+      };
+  }
+}
+
+async function uploadFaceImage(uploadUrl: string, uri: string, mimeType: string) {
+  const fileResponse = await fetch(uri);
+  const blob = await fileResponse.blob();
+  const response = await fetch(uploadUrl, {
+    method: "PUT",
+    headers: {
+      "content-type": mimeType,
+    },
+    body: blob,
+  });
+
+  if (!response.ok) {
+    throw new Error("Could not upload the face verification image.");
+  }
+}
 
 export default function GroupRideMatchingScreen() {
   const router = useRouter();
+  const { getAccessToken, isReady, user } = usePrivy();
   const params = useLocalSearchParams<{ pickup?: string; destination?: string }>();
+  const [requestId, setRequestId] = useState<string | null>(null);
+  const [matchStatus, setMatchStatus] = useState<GroupRideMatchRequest["status"] | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   // Pulse rings
   const ring1 = useSharedValue(0);
@@ -117,19 +196,128 @@ export default function GroupRideMatchingScreen() {
     );
   }, []);
 
-  // Navigate to ride selection after simulated match
   useEffect(() => {
-    const timeout = setTimeout(() => {
-      router.replace({
-        pathname: "/group-ride/ride-selection",
-        params: {
-          pickup: params.pickup ?? "",
-          destination: params.destination ?? "",
-        },
+    let cancelled = false;
+    let pollTimer: ReturnType<typeof setTimeout> | null = null;
+
+    async function pollRequest(accessToken: string, activeRequestId: string) {
+      const response = await getGroupRideMatchRequest({
+        accessToken,
+        requestId: activeRequestId,
       });
-    }, MATCH_DELAY_MS);
-    return () => clearTimeout(timeout);
-  }, []);
+
+      if (cancelled) {
+        return;
+      }
+
+      setMatchStatus(response.item.status);
+
+      if (response.item.status === "BOOKED") {
+        router.replace({
+          pathname: "/group-ride/ride-selection",
+          params: {
+            requestId: response.item.id,
+          },
+        });
+        return;
+      }
+
+      if (response.item.status === "EXPIRED") {
+        setError("No nearby riders were available for this group ride. Try again in a moment.");
+        return;
+      }
+
+      if (response.item.status === "CANCELLED") {
+        setError("This group ride request was cancelled.");
+        return;
+      }
+
+      pollTimer = setTimeout(() => {
+        void pollRequest(accessToken, activeRequestId);
+      }, MATCH_POLL_MS);
+    }
+
+    void (async () => {
+      try {
+        if (!isReady || !user) {
+          throw new Error("Sign in before requesting a group ride.");
+        }
+
+        const accessToken = await getAccessTokenWithRetry(getAccessToken);
+        if (!accessToken) {
+          throw new Error("Could not get a valid access token.");
+        }
+
+        const faceCapture = getGroupRideFaceCapture();
+        if (!faceCapture) {
+          throw new Error("Complete face verification before requesting a group ride.");
+        }
+
+        const [pickup, destination] = await Promise.all([
+          resolvePlaceQuery(params.pickup ?? ""),
+          resolvePlaceQuery(params.destination ?? ""),
+        ]);
+
+        const created = await createGroupRideMatchRequest({
+          accessToken,
+          pickup,
+          destination,
+          stops: [],
+          paymentMethod: "wallet_balance",
+        });
+
+        if (cancelled) {
+          return;
+        }
+
+        setRequestId(created.item.id);
+        setMatchStatus(created.item.status);
+
+        const upload = await createGroupRideFaceUploadUrl({
+          accessToken,
+          requestId: created.item.id,
+          mimeType: faceCapture.mimeType,
+          capturedAt: faceCapture.capturedAt,
+        });
+
+        await uploadFaceImage(
+          upload.upload.uploadUrl,
+          faceCapture.uri,
+          faceCapture.mimeType,
+        );
+
+        const completed = await completeGroupRideFaceUpload({
+          accessToken,
+          requestId: created.item.id,
+          capturedAt: faceCapture.capturedAt,
+        });
+
+        clearGroupRideFaceCapture();
+
+        if (cancelled) {
+          return;
+        }
+
+        setMatchStatus(completed.item.status);
+        await pollRequest(accessToken, created.item.id);
+      } catch (matchingError) {
+        if (!cancelled) {
+          setError(
+            matchingError instanceof Error
+              ? matchingError.message
+              : "Could not start group ride matching.",
+          );
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      if (pollTimer) {
+        clearTimeout(pollTimer);
+      }
+    };
+  }, [getAccessToken, isReady, params.destination, params.pickup, router, user]);
 
   const ring1Style = useAnimatedStyle(() => ({
     opacity: 1 - ring1.value,
@@ -158,6 +346,7 @@ export default function GroupRideMatchingScreen() {
   const dot3Style = useAnimatedStyle(() => ({
     transform: [{ translateY: dot3Y.value }],
   }));
+  const statusCopy = getGroupRideStatusCopy(matchStatus);
 
   return (
     <AppScreen
@@ -211,7 +400,7 @@ export default function GroupRideMatchingScreen() {
       {/* Status text */}
       <Animated.View entering={FadeIn.delay(300).duration(600)} style={styles.statusWrap}>
         <AppText variant="h1" color={theme.colors.offWhite} style={styles.heading}>
-          Finding other{"\n"}Riders
+          {statusCopy.heading}
         </AppText>
         <View style={styles.dotsRow}>
           <Animated.View style={[styles.pingDot, dot1Style]} />
@@ -219,7 +408,7 @@ export default function GroupRideMatchingScreen() {
           <Animated.View style={[styles.pingDot, dot3Style]} />
         </View>
         <AppText variant="bodySmall" color={theme.colors.muted} style={styles.subText}>
-          Matching you with riders headed the same way
+          {error ?? statusCopy.body}
         </AppText>
       </Animated.View>
 
@@ -230,9 +419,13 @@ export default function GroupRideMatchingScreen() {
             <MaterialIcons name="savings" size={18} color={theme.colors.orange} />
           </View>
           <View style={styles.infoCopy}>
-            <AppText variant="bodyMedium" color={theme.colors.offWhite}>Split the fare</AppText>
+            <AppText variant="bodyMedium" color={theme.colors.offWhite}>
+              {requestId ? `Request ${requestId.slice(0, 8)}` : "Split the fare"}
+            </AppText>
             <AppText variant="bodySmall" color={theme.colors.muted}>
-              Ride cost is shared between all matched riders
+              {matchStatus === "GROUPED" || matchStatus === "BOOKED"
+                ? "Shared route found and being finalised for your group."
+                : "Ride cost is shared between all matched riders."}
             </AppText>
           </View>
         </View>
@@ -244,11 +437,20 @@ export default function GroupRideMatchingScreen() {
           <View style={styles.infoCopy}>
             <AppText variant="bodyMedium" color={theme.colors.offWhite}>Face-verified riders only</AppText>
             <AppText variant="bodySmall" color={theme.colors.muted}>
-              Everyone on this ride has been verified
+              Your verification is uploaded before matching begins.
             </AppText>
           </View>
         </View>
       </Animated.View>
+
+      {error ? (
+        <View style={styles.actionWrap}>
+          <AppButton
+            title="Try again"
+            onPress={() => router.replace("/group-ride/destination")}
+          />
+        </View>
+      ) : null}
     </AppScreen>
   );
 }
@@ -394,6 +596,9 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.05)",
     padding: theme.spacing.md,
     gap: theme.spacing.sm,
+  },
+  actionWrap: {
+    width: "100%",
   },
   infoRow: {
     flexDirection: "row",

@@ -28,6 +28,7 @@ import {
   serializeRideItinerary,
   type RideItinerary,
 } from "@/lib/ride-route";
+import { useAppLocation } from "@/lib/location";
 import { theme } from "@/theme";
 
 // ─── Calendar helpers ─────────────────────────────────────────────────────────
@@ -544,6 +545,7 @@ function StopRouteField({
 
 export default function ScheduleRideScreen() {
   const router = useRouter();
+  const { currentLocation } = useAppLocation();
 
   // Route state
   const [mode, setMode] = useState<ScreenMode>("form");
@@ -572,6 +574,14 @@ export default function ScheduleRideScreen() {
     const t = setTimeout(() => inputRef.current?.focus(), 50);
     return () => clearTimeout(t);
   }, [activeField, mode]);
+
+  useEffect(() => {
+    if (!currentLocation?.address || pickupValue.trim().length > 0) {
+      return;
+    }
+
+    setPickupValue(currentLocation.address);
+  }, [currentLocation?.address, pickupValue]);
 
   // Google place search
   useEffect(() => {

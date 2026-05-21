@@ -41,6 +41,7 @@ import {
   serializeRideItinerary,
   type RideItinerary,
 } from "@/lib/ride-route";
+import { useAppLocation } from "@/lib/location";
 import { useRideSession } from "@/lib/ride-session";
 import { theme } from "@/theme";
 
@@ -110,6 +111,7 @@ function isExactSearchMatch(place: PlaceSuggestion, query: string) {
 export default function DestinationSearchScreen() {
   const router = useRouter();
   const { getAccessToken, isReady, user } = usePrivy();
+  const { currentLocation } = useAppLocation();
   const { updateRideRoute } = useRideSession();
   const params = useLocalSearchParams<{
     flowMode?: string | string[];
@@ -174,6 +176,18 @@ export default function DestinationSearchScreen() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (
+      !currentLocation?.address ||
+      pickupValue.trim().length > 0 ||
+      initialItinerary.pickup.trim().length > 0
+    ) {
+      return;
+    }
+
+    setPickupValue(currentLocation.address);
+  }, [currentLocation?.address, initialItinerary.pickup, pickupValue]);
 
   useEffect(() => {
     const timeout = setTimeout(() => {
