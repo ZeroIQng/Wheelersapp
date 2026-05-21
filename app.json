@@ -10,7 +10,13 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.timmy122.wheleers"
+      "bundleIdentifier": "com.timmy122.wheleers",
+      "infoPlist": {
+        "UIBackgroundModes": [
+          "location",
+          "remote-notification"
+        ]
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -45,6 +51,29 @@
           "backgroundColor": "#FFFAF5",
           "dark": {
             "backgroundColor": "#0D0D0D"
+          }
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/android-icon-monochrome.png",
+          "color": "#FF8A3D",
+          "sounds": []
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Wheelers uses your location at all times during rides so live tracking, safety tools, and trip progress stay accurate.",
+          "locationAlwaysPermission": "Wheelers uses your location in the background during rides so trip progress and safety monitoring keep working.",
+          "locationWhenInUsePermission": "Wheelers uses your location to set pickups, find rides, and keep trip tracking accurate.",
+          "isIosBackgroundLocationEnabled": true,
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true,
+          "foregroundService": {
+            "notificationTitle": "Wheelers is using your location",
+            "notificationBody": "Location stays active for live trip progress and safety updates."
           }
         }
       ]
