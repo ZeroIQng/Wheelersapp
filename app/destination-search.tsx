@@ -35,6 +35,7 @@ import {
   serializeRideEstimate,
 } from "@/lib/ride-estimate";
 import {
+  DEFAULT_PICKUP_LABEL,
   MAX_ADDITIONAL_STOPS,
   moveRouteStop,
   parseRideItineraryParam,
@@ -180,8 +181,9 @@ export default function DestinationSearchScreen() {
   useEffect(() => {
     if (
       !currentLocation?.address ||
-      pickupValue.trim().length > 0 ||
-      initialItinerary.pickup.trim().length > 0
+      (pickupValue.trim().length > 0 && pickupValue !== DEFAULT_PICKUP_LABEL) ||
+      (initialItinerary.pickup.trim().length > 0 &&
+        initialItinerary.pickup !== DEFAULT_PICKUP_LABEL)
     ) {
       return;
     }

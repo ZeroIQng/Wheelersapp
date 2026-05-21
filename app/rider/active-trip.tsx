@@ -10,6 +10,7 @@ import { AppText } from "@/components/app-text";
 import { BackArrow } from "@/components/back-arrow";
 import { LiveMap } from "@/components/live-map";
 import { MetricCard } from "@/components/MetricCard";
+import { RideMovementBar } from "@/components/RideMovementBar";
 import { StatusPill } from "@/components/StatusPill";
 import { TripProgressBar } from "@/components/TripProgressBar";
 import {
@@ -166,6 +167,14 @@ export default function RiderActiveTripScreen() {
                   ? 0.28
                   : 0.14
           }
+        />
+
+        <RideMovementBar
+          distanceToNextStopKm={currentRide?.driverLocation?.distanceToNextStopKm}
+          totalDistanceKm={currentRide?.driverLocation?.totalDistanceKm}
+          plannedDistanceKm={currentRide?.plannedDistanceKm}
+          nextStopAddress={currentRide?.driverLocation?.nextStopAddress}
+          isStale={currentRide?.driverLocation?.isStale}
         />
 
         <View style={styles.metricsRow}>

@@ -20,6 +20,7 @@ import { AppScreen } from "@/components/app-screen";
 import { AppText } from "@/components/app-text";
 import { BlobShape, DiamondPair, RingStack, StarBurst } from "@/components/decorative-shapes";
 import { FlowHeader } from "@/components/flow-header";
+import { getDisplayErrorMessage, isIgnorableUserCancelledError } from "@/lib/errors";
 import { FloatingView, PulseView, RevealView } from "@/components/motion";
 import { RoleMotionBadge } from "@/components/role-motion-badge";
 import { isBackendConfigured, syncPrivyAuth, type BackendRole } from "@/lib/api";
@@ -164,11 +165,7 @@ export default function RoleSelectionScreen() {
           return;
         }
 
-        setRestoreError(
-          error instanceof Error
-            ? error.message
-            : "Could not restore your account.",
-        );
+        setRestoreError(getDisplayErrorMessage(error, "Could not restore your account."));
         setIsRestoringSession(false);
       }
     })();
@@ -214,7 +211,7 @@ export default function RoleSelectionScreen() {
       </FloatingView>
       <RevealView delay={40} from="down" style={styles.headerWrap}>
         <FlowHeader
-          overline="WELCOME TO WHELEERS"
+          overline="WELCOME TO WHEELERS"
           title={"Ride.\nEarn.\nOwn a piece."}
           subtitle="The first decentralized ride-hailing app."
           progress={{ count: 5, active: 1 }}
@@ -363,7 +360,7 @@ function GoogleContinueButton({
   const errorMessage =
     syncError ??
     (state.status === "error"
-      ? (state.error?.message ?? "Could not continue with Google.")
+      ? getDisplayErrorMessage(state.error, "Could not continue with Google.")
       : null);
 
   async function handlePress() {
@@ -386,10 +383,17 @@ function GoogleContinueButton({
     let authenticatedUser = user ?? undefined;
     let requestedRole: BackendRole | undefined = selectedBackendRole;
     if (!authenticatedUser || !hasGoogleAccount(authenticatedUser)) {
-      authenticatedUser = await login({
-        provider: "google",
-        redirectUri: privyOAuthRedirectPath,
-      });
+      try {
+        authenticatedUser = await login({
+          provider: "google",
+          redirectUri: privyOAuthRedirectPath,
+        });
+      } catch (error) {
+        if (!isIgnorableUserCancelledError(error) || __DEV__) {
+          setSyncError(getDisplayErrorMessage(error, "Could not continue with Google."));
+        }
+        return;
+      }
     } else {
       requestedRole = undefined;
     }
@@ -408,11 +412,7 @@ function GoogleContinueButton({
       });
       router.replace(destination);
     } catch (error) {
-      setSyncError(
-        error instanceof Error
-          ? error.message
-          : "Could not sync your account with Wheelers.",
-      );
+      setSyncError(getDisplayErrorMessage(error, "Could not sync your account with Wheelers."));
     } finally {
       setIsSyncing(false);
     }

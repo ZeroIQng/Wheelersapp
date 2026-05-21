@@ -1,5 +1,6 @@
 import * as Location from "expo-location";
 import {
+  useCallback,
   createContext,
   useContext,
   useEffect,
@@ -69,20 +70,23 @@ export function LocationProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const subscriptionRef = useRef<Location.LocationSubscription | null>(null);
 
-  async function updateCurrentLocation(
-    latitude: number,
-    longitude: number,
-    providedAddress?: string | null,
-  ) {
-    const address = providedAddress ?? (await resolveAddress(latitude, longitude));
-    setCurrentLocation({
-      lat: latitude,
-      lng: longitude,
-      address,
-    });
-  }
+  const updateCurrentLocation = useCallback(
+    async (
+      latitude: number,
+      longitude: number,
+      providedAddress?: string | null,
+    ) => {
+      const address = providedAddress ?? (await resolveAddress(latitude, longitude));
+      setCurrentLocation({
+        lat: latitude,
+        lng: longitude,
+        address,
+      });
+    },
+    [],
+  );
 
-  async function refreshLocation(): Promise<void> {
+  const refreshLocation = useCallback(async (): Promise<void> => {
     try {
       const position = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Balanced,
@@ -99,7 +103,7 @@ export function LocationProvider({ children }: { children: ReactNode }) {
           : "Could not read your current location.",
       );
     }
-  }
+  }, [updateCurrentLocation]);
 
   useEffect(() => {
     let cancelled = false;
@@ -145,7 +149,6 @@ export function LocationProvider({ children }: { children: ReactNode }) {
             void updateCurrentLocation(
               position.coords.latitude,
               position.coords.longitude,
-              currentLocation?.address,
             );
           },
         );
@@ -166,7 +169,7 @@ export function LocationProvider({ children }: { children: ReactNode }) {
       subscriptionRef.current?.remove();
       subscriptionRef.current = null;
     };
-  }, []);
+  }, [refreshLocation, updateCurrentLocation]);
 
   const value = useMemo<LocationContextValue>(
     () => ({
@@ -176,7 +179,7 @@ export function LocationProvider({ children }: { children: ReactNode }) {
       error,
       refreshLocation,
     }),
-    [backgroundGranted, currentLocation, error, permissionState],
+    [backgroundGranted, currentLocation, error, permissionState, refreshLocation],
   );
 
   return <LocationContext.Provider value={value}>{children}</LocationContext.Provider>;

@@ -12,7 +12,7 @@ export const isThirdwebConfigured = Boolean(thirdwebClientId);
 export const isThirdwebSdkAvailable = !isExpoGo;
 
 export const thirdwebAppMetadata = {
-  name: "Wheleers",
+  name: "Wheelers",
   url: "https://wheleers.app",
   description: "Decentralized ride-hailing onboarding for riders and drivers.",
   logoUrl: "https://wheleers.app/icon.png",

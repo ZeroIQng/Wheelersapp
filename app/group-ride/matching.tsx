@@ -194,7 +194,7 @@ export default function GroupRideMatchingScreen() {
         true,
       ),
     );
-  }, []);
+  }, [centerScale, dot1Y, dot2Y, dot3Y, ring1, ring2, ring3, rotation]);
 
   useEffect(() => {
     let cancelled = false;

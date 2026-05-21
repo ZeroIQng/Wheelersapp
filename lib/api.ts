@@ -233,6 +233,8 @@ export interface GroupRideMatchRequest {
     | "BOOKED"
     | "EXPIRED"
     | "CANCELLED";
+  groupId: string | null;
+  matchedRideIds: string[];
   pickup: RideEstimateWaypoint;
   destination: RideEstimateWaypoint;
   stops: RideEstimateWaypoint[];
@@ -250,6 +252,17 @@ export interface GroupRideMatchRequest {
   faceVerification: GroupRideFaceVerificationSummary | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface GroupRideMatchedRider {
+  rideId: string;
+  userId: string;
+  name: string | null;
+  username: string | null;
+  photoUrl: string | null;
+  pickupAddress: string;
+  destinationAddress: string;
+  status: GroupRideMatchRequest["status"];
 }
 
 export interface GroupRideFaceUploadDescriptor {
@@ -1041,7 +1054,7 @@ export async function createGroupRideMatchRequest(input: {
 export async function getGroupRideMatchRequest(input: {
   accessToken: string;
   requestId: string;
-}): Promise<{ item: GroupRideMatchRequest }> {
+}): Promise<{ item: GroupRideMatchRequest; matchedRiders: GroupRideMatchedRider[] }> {
   return getJson(`/group-rides/requests/${encodeURIComponent(input.requestId)}`, {
     accessToken: input.accessToken,
     fallbackError: "Could not load the group ride request.",

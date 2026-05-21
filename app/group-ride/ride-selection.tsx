@@ -1,7 +1,8 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
+import { usePrivy } from "@privy-io/expo";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Dimensions,
   PanResponder,
@@ -22,57 +23,94 @@ import { AppText } from "@/components/app-text";
 import { BackArrow } from "@/components/back-arrow";
 import { LiveMap } from "@/components/live-map";
 import { FloatingView } from "@/components/motion";
-import type { RideEstimateWaypoint } from "@/lib/api";
-import { resolvePlaceQuery } from "@/lib/google-places";
+import { getAccessTokenWithRetry } from "@/lib/access-token";
+import {
+  getGroupRideMatchRequest,
+  type GroupRideMatchRequest,
+} from "@/lib/api";
 import { theme } from "@/theme";
 
 const { height } = Dimensions.get("window");
 
-// Mock group ride match data — replace with real backend response when group ride API is ready
-const MOCK_MATCH = {
-  riderCount: 3,
-  farePerRider: 1850,
-  totalFare: 5550,
-  etaMinutes: 12,
-  distanceKm: 7.4,
-  riders: [
-    { name: "Temi A.", initials: "TA" },
-    { name: "Kola B.", initials: "KB" },
-  ],
-};
+function formatUsdt(value: number | null | undefined): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return "Pending";
+  }
 
-function formatNgn(value: number): string {
-  return `NGN ${Math.round(value).toLocaleString("en-NG")}`;
+  return `${value.toFixed(2)} USDT`;
+}
+
+function formatMinutes(value: number | null | undefined): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return "--";
+  }
+
+  return String(Math.max(1, Math.ceil(value / 60)));
+}
+
+function getStatusCopy(status: GroupRideMatchRequest["status"] | undefined) {
+  switch (status) {
+    case "BOOKED":
+      return "Shared route confirmed";
+    case "GROUPED":
+      return "Route sequencing in progress";
+    case "MATCHING":
+      return "Looking for riders on your corridor";
+    case "READY_FOR_MATCH":
+      return "Verification accepted";
+    default:
+      return "Preparing your shared route";
+  }
 }
 
 export default function GroupRideSelectionScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ pickup?: string; destination?: string }>();
-
-  const pickupLabel = params.pickup ?? "";
-  const destinationLabel = params.destination ?? "";
-
-  const [resolvedPickup, setResolvedPickup] = useState<RideEstimateWaypoint | null>(null);
-  const [resolvedDestination, setResolvedDestination] = useState<RideEstimateWaypoint | null>(null);
+  const { getAccessToken, isReady, user } = usePrivy();
+  const params = useLocalSearchParams<{ requestId?: string | string[] }>();
+  const requestId = Array.isArray(params.requestId)
+    ? params.requestId[0]
+    : params.requestId;
+  const [request, setRequest] = useState<GroupRideMatchRequest | null>(null);
 
   useEffect(() => {
     let cancelled = false;
+
     void (async () => {
+      if (!requestId || !isReady || !user) {
+        return;
+      }
+
       try {
-        const [pickup, destination] = await Promise.all([
-          resolvePlaceQuery(pickupLabel),
-          resolvePlaceQuery(destinationLabel),
-        ]);
+        const accessToken = await getAccessTokenWithRetry(getAccessToken);
+        if (!accessToken) {
+          return;
+        }
+
+        const response = await getGroupRideMatchRequest({
+          accessToken,
+          requestId,
+        });
+
         if (!cancelled) {
-          setResolvedPickup(pickup);
-          setResolvedDestination(destination);
+          setRequest(response.item);
         }
       } catch {
-        // map stays without markers — graceful fallback
+        if (!cancelled) {
+          setRequest(null);
+        }
       }
     })();
-    return () => { cancelled = true; };
-  }, [pickupLabel, destinationLabel]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [getAccessToken, isReady, requestId, user]);
+
+  const routeRows = useMemo(
+    () =>
+      request ? [request.pickup, ...request.stops, request.destination] : [],
+    [request],
+  );
 
   const SHEET_MIN_HEIGHT = 500;
   const collapsedSheetOffset = 220;
@@ -96,13 +134,20 @@ export default function GroupRideSelectionScreen() {
   const sheetPanResponder = useRef(
     PanResponder.create({
       onMoveShouldSetPanResponder: (_, gestureState) =>
-        Math.abs(gestureState.dy) > 10 && Math.abs(gestureState.dy) > Math.abs(gestureState.dx),
+        Math.abs(gestureState.dy) > 10 &&
+        Math.abs(gestureState.dy) > Math.abs(gestureState.dx),
       onPanResponderRelease: (_, gestureState) => {
-        if (gestureState.dy < -30) { expandSheet(); return; }
+        if (gestureState.dy < -30) {
+          expandSheet();
+          return;
+        }
         if (gestureState.dy > 30) collapseSheet();
       },
       onPanResponderTerminate: (_, gestureState) => {
-        if (gestureState.dy < -30) { expandSheet(); return; }
+        if (gestureState.dy < -30) {
+          expandSheet();
+          return;
+        }
         if (gestureState.dy > 30) collapseSheet();
       },
     }),
@@ -124,9 +169,10 @@ export default function GroupRideSelectionScreen() {
       <View style={styles.mapWrap}>
         <LiveMap
           height={height}
-          pickup={resolvedPickup}
-          destination={resolvedDestination}
-          initialCenter={resolvedPickup}
+          pickup={request?.pickup}
+          destination={request?.destination}
+          stops={request?.stops}
+          initialCenter={request?.pickup}
           fitPadding={routeFitPadding}
         >
           {/* Top bar overlaid on map */}
@@ -135,7 +181,8 @@ export default function GroupRideSelectionScreen() {
             <FloatingView distance={5}>
               <View style={styles.mapChip}>
                 <AppText variant="monoSmall">
-                  Group • {MOCK_MATCH.etaMinutes} min trip
+                  Group • {formatMinutes(request?.plannedDurationSeconds)} min
+                  trip
                 </AppText>
               </View>
             </FloatingView>
@@ -147,21 +194,18 @@ export default function GroupRideSelectionScreen() {
             style={styles.matchedPill}
           >
             <View style={styles.matchedAvatarRow}>
-              {MOCK_MATCH.riders.map((r, i) => (
-                <View key={i} style={[styles.avatar, i > 0 ? styles.avatarOverlap : null]}>
-                  <AppText variant="monoSmall" color={theme.colors.black} style={styles.avatarText}>
-                    {r.initials}
-                  </AppText>
-                </View>
-              ))}
-              <View style={[styles.avatar, styles.avatarOverlap, styles.avatarYou]}>
-                <AppText variant="monoSmall" color={theme.colors.offWhite} style={styles.avatarText}>
+              <View style={[styles.avatar, styles.avatarYou]}>
+                <AppText
+                  variant="monoSmall"
+                  color={theme.colors.offWhite}
+                  style={styles.avatarText}
+                >
                   YOU
                 </AppText>
               </View>
             </View>
             <AppText variant="bodySmall" color={theme.colors.black}>
-              {MOCK_MATCH.riderCount} riders matched
+              {request?.status ?? "PENDING"}
             </AppText>
           </Animated.View>
         </LiveMap>
@@ -179,10 +223,12 @@ export default function GroupRideSelectionScreen() {
         {/* Sheet header */}
         <View style={styles.sheetHeader}>
           <View style={styles.sheetHeaderCopy}>
-            <AppText variant="monoSmall" color={theme.colors.orange}>GROUP RIDE • MATCHED</AppText>
+            <AppText variant="monoSmall" color={theme.colors.orange}>
+              GROUP RIDE • {request?.status ?? "PENDING"}
+            </AppText>
             <AppText variant="h1">Wheeler Group</AppText>
             <AppText variant="bodySmall" color={theme.colors.muted}>
-              Shared bike ride — split fare with {MOCK_MATCH.riderCount} riders
+              {getStatusCopy(request?.status)}
             </AppText>
           </View>
           <View style={styles.rideIcon}>
@@ -195,57 +241,96 @@ export default function GroupRideSelectionScreen() {
           <View style={styles.priceCardMain}>
             <View style={styles.priceCopy}>
               <View style={styles.metricRow}>
-                <MetricPill label={`${MOCK_MATCH.etaMinutes} min trip`} />
-                <MetricPill label={`${MOCK_MATCH.distanceKm.toFixed(1)} km`} muted />
+                <MetricPill
+                  label={`${formatMinutes(request?.plannedDurationSeconds)} min trip`}
+                />
+                <MetricPill
+                  label={`${request?.plannedDistanceKm?.toFixed(1) ?? "--"} km`}
+                  muted
+                />
               </View>
-              <AppText variant="h3" color={theme.colors.offWhite}>Per rider</AppText>
+              <AppText variant="h3" color={theme.colors.offWhite}>
+                Estimated fare
+              </AppText>
               <AppText variant="bodySmall" color="rgba(255,255,255,0.65)">
-                Total {formatNgn(MOCK_MATCH.totalFare)} ÷ {MOCK_MATCH.riderCount} riders
+                Final split is locked once all riders are confirmed.
               </AppText>
             </View>
             <View style={styles.priceBlock}>
-              <AppText variant="monoSmall" color="rgba(255,255,255,0.6)">NGN</AppText>
+              <AppText variant="monoSmall" color="rgba(255,255,255,0.6)">
+                USDT
+              </AppText>
               <AppText variant="h2" color={theme.colors.offWhite}>
-                {Math.round(MOCK_MATCH.farePerRider).toLocaleString("en-NG")}
+                {typeof request?.fareEstimateUsdt === "number"
+                  ? request.fareEstimateUsdt.toFixed(2)
+                  : "--"}
               </AppText>
             </View>
           </View>
         </Pressable>
 
-        {/* Matched riders list */}
+        {/* Route summary */}
         <View style={styles.ridersCard}>
           <View style={styles.ridersCardHeader}>
             <MaterialIcons name="group" size={16} color={theme.colors.muted} />
-            <AppText variant="monoSmall" color={theme.colors.muted}>YOUR RIDE GROUP</AppText>
+            <AppText variant="monoSmall" color={theme.colors.muted}>
+              ROUTE SUMMARY
+            </AppText>
           </View>
-          {MOCK_MATCH.riders.map((r, i) => (
-            <View key={i}>
+          {routeRows.map((stop, index) => (
+            <View key={`${stop.address}-${index}`}>
               <View style={styles.riderRow}>
                 <View style={styles.riderAvatar}>
-                  <AppText variant="monoSmall" color={theme.colors.black} style={{ fontSize: 11 }}>
-                    {r.initials}
+                  <AppText
+                    variant="monoSmall"
+                    color={theme.colors.black}
+                    style={{ fontSize: 11 }}
+                  >
+                    {index === 0
+                      ? "P"
+                      : index === routeRows.length - 1
+                        ? "D"
+                        : `S${index}`}
                   </AppText>
                 </View>
                 <View style={styles.riderInfo}>
-                  <AppText variant="bodyMedium">{r.name}</AppText>
+                  <AppText variant="bodyMedium">{stop.address}</AppText>
                   <View style={styles.verifiedTag}>
-                    <MaterialIcons name="verified-user" size={11} color={theme.colors.green} />
-                    <AppText variant="monoSmall" color={theme.colors.green} style={{ fontSize: 10 }}>VERIFIED</AppText>
+                    <MaterialIcons
+                      name="verified-user"
+                      size={11}
+                      color={theme.colors.green}
+                    />
+                    <AppText
+                      variant="monoSmall"
+                      color={theme.colors.green}
+                      style={{ fontSize: 10 }}
+                    >
+                      {index === 0
+                        ? "PICKUP"
+                        : index === routeRows.length - 1
+                          ? "DESTINATION"
+                          : "STOP"}
+                    </AppText>
                   </View>
                 </View>
                 <View style={styles.riderFare}>
                   <AppText variant="bodySmall" color={theme.colors.muted}>
-                    {formatNgn(MOCK_MATCH.farePerRider)}
+                    {index === routeRows.length - 1
+                      ? formatUsdt(request?.fareEstimateUsdt)
+                      : ""}
                   </AppText>
                 </View>
               </View>
-              {i < MOCK_MATCH.riders.length - 1 ? <View style={styles.riderDivider} /> : null}
+              {index < routeRows.length - 1 ? (
+                <View style={styles.riderDivider} />
+              ) : null}
             </View>
           ))}
         </View>
 
         <AppButton
-          title="Join Group Ride"
+          title="Back to Home"
           onPress={() => router.replace("/rider")}
         />
       </Animated.View>
@@ -255,7 +340,12 @@ export default function GroupRideSelectionScreen() {
 
 function MetricPill({ label, muted }: { label: string; muted?: boolean }) {
   return (
-    <View style={[styles.metricPill, muted ? styles.metricPillMuted : styles.metricPillAccent]}>
+    <View
+      style={[
+        styles.metricPill,
+        muted ? styles.metricPillMuted : styles.metricPillAccent,
+      ]}
+    >
       <AppText variant="monoSmall" color={theme.colors.black}>
         {label}
       </AppText>

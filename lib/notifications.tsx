@@ -8,6 +8,7 @@ import {
   useEffect,
   useMemo,
   useState,
+  useCallback,
   type ReactNode,
 } from "react";
 
@@ -52,7 +53,7 @@ export function AppNotificationsProvider({ children }: { children: ReactNode }) 
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [permissionGranted, setPermissionGranted] = useState(false);
 
-  async function refreshNotifications(): Promise<void> {
+  const refreshNotifications = useCallback(async (): Promise<void> => {
     if (!isReady || !user || !isBackendConfigured()) {
       return;
     }
@@ -64,9 +65,9 @@ export function AppNotificationsProvider({ children }: { children: ReactNode }) 
 
     const response = await listNotifications({ accessToken, limit: 100 });
     setNotifications(response.items);
-  }
+  }, [getAccessToken, isReady, user]);
 
-  async function markAllRead(): Promise<void> {
+  const markAllRead = useCallback(async (): Promise<void> => {
     if (!isReady || !user || !isBackendConfigured()) {
       return;
     }
@@ -83,7 +84,7 @@ export function AppNotificationsProvider({ children }: { children: ReactNode }) 
         read: true,
       })),
     );
-  }
+  }, [getAccessToken, isReady, user]);
 
   useEffect(() => {
     if (!isReady || !user || !isBackendConfigured()) {
@@ -145,7 +146,7 @@ export function AppNotificationsProvider({ children }: { children: ReactNode }) 
       cancelled = true;
       subscription.remove();
     };
-  }, [getAccessToken, isReady, user]);
+  }, [getAccessToken, isReady, refreshNotifications, user]);
 
   const value = useMemo<NotificationsContextValue>(
     () => ({
@@ -155,7 +156,7 @@ export function AppNotificationsProvider({ children }: { children: ReactNode }) 
       refreshNotifications,
       markAllRead,
     }),
-    [notifications, permissionGranted],
+    [markAllRead, notifications, permissionGranted, refreshNotifications],
   );
 
   return (
