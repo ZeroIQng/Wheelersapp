@@ -370,7 +370,7 @@ export default function RiderHomeScreen() {
           </FloatingView>
           <View style={styles.mapTopRow}>
             <View style={styles.titleRow}>
-              <AppText variant="h2">Wheleers</AppText>
+              <AppText variant="h2">Wheelers</AppText>
             </View>
             <View style={styles.topActions}>
               <FloatingView distance={6}>

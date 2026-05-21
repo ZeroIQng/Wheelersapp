@@ -17,7 +17,7 @@ export default function ReferralScreen() {
 
   async function handleShare() {
     await Share.share({
-      message: `Use my Wheleers referral code ${referralProgram.referralCode} and get rewarded.`,
+      message: `Use my Wheelers referral code ${referralProgram.referralCode} and get rewarded.`,
     });
   }
 

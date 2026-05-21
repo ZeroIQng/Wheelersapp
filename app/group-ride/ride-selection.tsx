@@ -27,6 +27,7 @@ import { getAccessTokenWithRetry } from "@/lib/access-token";
 import {
   getGroupRideMatchRequest,
   type GroupRideMatchRequest,
+  type GroupRideMatchedRider,
 } from "@/lib/api";
 import { theme } from "@/theme";
 
@@ -46,6 +47,31 @@ function formatMinutes(value: number | null | undefined): string {
   }
 
   return String(Math.max(1, Math.ceil(value / 60)));
+}
+
+function getDisplayName(rider: GroupRideMatchedRider): string {
+  const primary = rider.name?.trim() || rider.username?.trim();
+  if (primary) {
+    return primary;
+  }
+
+  return `Rider ${rider.userId.slice(0, 4).toUpperCase()}`;
+}
+
+function getInitials(value: string): string {
+  const parts = value
+    .split(/\s+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  if (parts.length === 0) {
+    return "RD";
+  }
+
+  return parts
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("");
 }
 
 function getStatusCopy(status: GroupRideMatchRequest["status"] | undefined) {
@@ -71,6 +97,7 @@ export default function GroupRideSelectionScreen() {
     ? params.requestId[0]
     : params.requestId;
   const [request, setRequest] = useState<GroupRideMatchRequest | null>(null);
+  const [matchedRiders, setMatchedRiders] = useState<GroupRideMatchedRider[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -93,10 +120,12 @@ export default function GroupRideSelectionScreen() {
 
         if (!cancelled) {
           setRequest(response.item);
+          setMatchedRiders(response.matchedRiders);
         }
       } catch {
         if (!cancelled) {
           setRequest(null);
+          setMatchedRiders([]);
         }
       }
     })();
@@ -194,6 +223,20 @@ export default function GroupRideSelectionScreen() {
             style={styles.matchedPill}
           >
             <View style={styles.matchedAvatarRow}>
+              {matchedRiders.map((rider, index) => (
+                <View
+                  key={rider.userId}
+                  style={[styles.avatar, index > 0 ? styles.avatarOverlap : null]}
+                >
+                  <AppText
+                    variant="monoSmall"
+                    color={theme.colors.black}
+                    style={styles.avatarText}
+                  >
+                    {getInitials(getDisplayName(rider))}
+                  </AppText>
+                </View>
+              ))}
               <View style={[styles.avatar, styles.avatarYou]}>
                 <AppText
                   variant="monoSmall"
@@ -205,7 +248,7 @@ export default function GroupRideSelectionScreen() {
               </View>
             </View>
             <AppText variant="bodySmall" color={theme.colors.black}>
-              {request?.status ?? "PENDING"}
+              {matchedRiders.length + 1} rider{matchedRiders.length === 0 ? "" : "s"} in group
             </AppText>
           </Animated.View>
         </LiveMap>
@@ -228,7 +271,9 @@ export default function GroupRideSelectionScreen() {
             </AppText>
             <AppText variant="h1">Wheeler Group</AppText>
             <AppText variant="bodySmall" color={theme.colors.muted}>
-              {getStatusCopy(request?.status)}
+              {matchedRiders.length > 0
+                ? `Shared ride with ${matchedRiders.map((rider) => getDisplayName(rider)).join(", ")}`
+                : getStatusCopy(request?.status)}
             </AppText>
           </View>
           <View style={styles.rideIcon}>
@@ -269,64 +314,105 @@ export default function GroupRideSelectionScreen() {
           </View>
         </Pressable>
 
-        {/* Route summary */}
+        {/* Ride group */}
         <View style={styles.ridersCard}>
           <View style={styles.ridersCardHeader}>
             <MaterialIcons name="group" size={16} color={theme.colors.muted} />
             <AppText variant="monoSmall" color={theme.colors.muted}>
-              ROUTE SUMMARY
+              YOUR RIDE GROUP
             </AppText>
           </View>
-          {routeRows.map((stop, index) => (
-            <View key={`${stop.address}-${index}`}>
-              <View style={styles.riderRow}>
-                <View style={styles.riderAvatar}>
-                  <AppText
-                    variant="monoSmall"
-                    color={theme.colors.black}
-                    style={{ fontSize: 11 }}
-                  >
-                    {index === 0
-                      ? "P"
-                      : index === routeRows.length - 1
-                        ? "D"
-                        : `S${index}`}
-                  </AppText>
-                </View>
-                <View style={styles.riderInfo}>
-                  <AppText variant="bodyMedium">{stop.address}</AppText>
-                  <View style={styles.verifiedTag}>
-                    <MaterialIcons
-                      name="verified-user"
-                      size={11}
-                      color={theme.colors.green}
-                    />
-                    <AppText
-                      variant="monoSmall"
-                      color={theme.colors.green}
-                      style={{ fontSize: 10 }}
-                    >
-                      {index === 0
-                        ? "PICKUP"
-                        : index === routeRows.length - 1
-                          ? "DESTINATION"
-                          : "STOP"}
-                    </AppText>
+          {matchedRiders.length > 0
+            ? matchedRiders.map((rider, index) => (
+                <View key={rider.userId}>
+                  <View style={styles.riderRow}>
+                    <View style={styles.riderAvatar}>
+                      <AppText
+                        variant="monoSmall"
+                        color={theme.colors.black}
+                        style={{ fontSize: 11 }}
+                      >
+                        {getInitials(getDisplayName(rider))}
+                      </AppText>
+                    </View>
+                    <View style={styles.riderInfo}>
+                      <AppText variant="bodyMedium">{getDisplayName(rider)}</AppText>
+                      <View style={styles.verifiedTag}>
+                        <MaterialIcons
+                          name="verified-user"
+                          size={11}
+                          color={theme.colors.green}
+                        />
+                        <AppText
+                          variant="monoSmall"
+                          color={theme.colors.green}
+                          style={{ fontSize: 10 }}
+                        >
+                          {rider.status}
+                        </AppText>
+                      </View>
+                    </View>
+                    <View style={styles.riderFare}>
+                      <AppText variant="bodySmall" color={theme.colors.muted}>
+                        {rider.destinationAddress}
+                      </AppText>
+                    </View>
                   </View>
+                  {index < matchedRiders.length - 1 ? (
+                    <View style={styles.riderDivider} />
+                  ) : null}
                 </View>
-                <View style={styles.riderFare}>
-                  <AppText variant="bodySmall" color={theme.colors.muted}>
-                    {index === routeRows.length - 1
-                      ? formatUsdt(request?.fareEstimateUsdt)
-                      : ""}
-                  </AppText>
+              ))
+            : routeRows.map((stop, index) => (
+                <View key={`${stop.address}-${index}`}>
+                  <View style={styles.riderRow}>
+                    <View style={styles.riderAvatar}>
+                      <AppText
+                        variant="monoSmall"
+                        color={theme.colors.black}
+                        style={{ fontSize: 11 }}
+                      >
+                        {index === 0
+                          ? "P"
+                          : index === routeRows.length - 1
+                            ? "D"
+                            : `S${index}`}
+                      </AppText>
+                    </View>
+                    <View style={styles.riderInfo}>
+                      <AppText variant="bodyMedium">{stop.address}</AppText>
+                      <View style={styles.verifiedTag}>
+                        <MaterialIcons
+                          name="verified-user"
+                          size={11}
+                          color={theme.colors.green}
+                        />
+                        <AppText
+                          variant="monoSmall"
+                          color={theme.colors.green}
+                          style={{ fontSize: 10 }}
+                        >
+                          {index === 0
+                            ? "PICKUP"
+                            : index === routeRows.length - 1
+                              ? "DESTINATION"
+                              : "STOP"}
+                        </AppText>
+                      </View>
+                    </View>
+                    <View style={styles.riderFare}>
+                      <AppText variant="bodySmall" color={theme.colors.muted}>
+                        {index === routeRows.length - 1
+                          ? formatUsdt(request?.fareEstimateUsdt)
+                          : ""}
+                      </AppText>
+                    </View>
+                  </View>
+                  {index < routeRows.length - 1 ? (
+                    <View style={styles.riderDivider} />
+                  ) : null}
                 </View>
-              </View>
-              {index < routeRows.length - 1 ? (
-                <View style={styles.riderDivider} />
-              ) : null}
-            </View>
-          ))}
+              ))}
         </View>
 
         <AppButton
