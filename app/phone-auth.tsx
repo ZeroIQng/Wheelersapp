@@ -107,7 +107,7 @@ function PrivyPhoneAuthScreen() {
         "Code send failed",
         error instanceof Error
           ? error.message
-          : "Could not send the phone verification code.",
+          : "Could not send the WhatsApp verification code.",
       );
     } finally {
       setIsSending(false);
@@ -131,9 +131,9 @@ function PrivyPhoneAuthScreen() {
         <FlowHeader
           showBack
           backHref="/role-selection"
-          overline="PHONE VERIFY"
+          overline="WHATSAPP VERIFY"
           title={"What's your\nnumber?"}
-          subtitle="We'll send a one-time code to verify your phone."
+          subtitle="We'll send a one-time code to your WhatsApp to verify your phone."
           progress={{ count: 5, active: 2 }}
         />
 
@@ -176,7 +176,7 @@ function PrivyPhoneAuthScreen() {
 
         <RevealView delay={220} style={styles.sendButtonWrap}>
           <AppButton
-            title={isSending ? "Sending code…" : "Send code"}
+            title={isSending ? "Sending on WhatsApp…" : "Send on WhatsApp"}
             disabled={isSending}
             onPress={() => {
               void handleSendCode();

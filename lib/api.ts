@@ -104,6 +104,7 @@ interface SendPhoneOtpInput {
 
 interface SendPhoneOtpResponse {
   sent: boolean;
+  channel?: "whatsapp" | "sms";
   phone: string;
   expiresInSeconds: number;
 }
@@ -677,7 +678,7 @@ export async function sendPhoneOtp(
     { phone: input.phone },
     {
       accessToken: input.accessToken,
-      fallbackError: "Could not send the phone verification code.",
+      fallbackError: "Could not send the WhatsApp verification code.",
     },
   );
 }
@@ -690,7 +691,7 @@ export async function verifyPhoneOtp(
     { code: input.code },
     {
       accessToken: input.accessToken,
-      fallbackError: "Could not verify the phone code.",
+      fallbackError: "Could not verify the WhatsApp code.",
     },
   );
 }

@@ -126,7 +126,7 @@ function PrivyOtpVerifyScreen() {
         "Verification failed",
         error instanceof Error
           ? error.message
-          : "Could not verify the phone code.",
+          : "Could not verify the WhatsApp code.",
       );
     } finally {
       setIsVerifying(false);
@@ -158,7 +158,7 @@ function PrivyOtpVerifyScreen() {
         "Resend failed",
         error instanceof Error
           ? error.message
-          : "Could not resend the phone verification code.",
+          : "Could not resend the WhatsApp verification code.",
       );
     } finally {
       setIsResending(false);
@@ -199,12 +199,12 @@ function PrivyOtpVerifyScreen() {
           showBack
           backHref="/phone-auth"
           align="center"
-          overline="VERIFICATION"
+          overline="WHATSAPP CODE"
           title={"Enter the\n6-digit code"}
           subtitle={
             pendingPhone
-              ? `Sent to ${pendingPhone}`
-              : "Enter the code we sent you"
+              ? `Sent on WhatsApp to ${pendingPhone}`
+              : "Enter the code we sent on WhatsApp"
           }
           progress={{ count: 5, active: 3 }}
         />
@@ -280,7 +280,9 @@ function PrivyOtpVerifyScreen() {
           onPress={() => void handleResend()}
         >
           <AppText variant="bodySmall" color={mutedColor} style={styles.resend}>
-            {isResending ? "Resending code…" : "Didn&apos;t receive it? Resend"}
+            {isResending
+              ? "Resending on WhatsApp…"
+              : "Didn&apos;t receive it on WhatsApp? Resend"}
           </AppText>
         </Pressable>
       </RevealView>
