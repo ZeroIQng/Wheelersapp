@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Wheelers",
+    "name": "Wheelers Rides",
     "slug": "wheelers",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -12,13 +12,14 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.timmy122.wheelers",
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "Wheelers uses your location to set pickups, find rides, and keep trip tracking accurate.",
-        "NSLocationAlwaysAndWhenInUseUsageDescription": "Wheelers uses your location during and between ride stages so live tracking, safety tools, and trip progress stay accurate.",
-        "NSLocationAlwaysUsageDescription": "Wheelers uses your location in the background during rides so trip progress and safety monitoring keep working.",
+        "NSLocationWhenInUseUsageDescription": "Wheelers Rides uses your location to set pickups, find rides, and keep trip tracking accurate.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Wheelers Rides uses your location during and between ride stages so live tracking, safety tools, and trip progress stay accurate.",
+        "NSLocationAlwaysUsageDescription": "Wheelers Rides uses your location in the background during rides so trip progress and safety monitoring keep working.",
         "UIBackgroundModes": [
           "location",
           "remote-notification"
-        ]
+        ],
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
@@ -40,7 +41,7 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Wheelers needs camera access to verify your face before a group ride.",
+          "cameraPermission": "Wheelers Rides needs camera access to verify your face before a group ride.",
           "microphonePermission": false,
           "recordAudioAndroid": false
         }
@@ -68,14 +69,14 @@
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "Wheelers uses your location at all times during rides so live tracking, safety tools, and trip progress stay accurate.",
-          "locationAlwaysPermission": "Wheelers uses your location in the background during rides so trip progress and safety monitoring keep working.",
-          "locationWhenInUsePermission": "Wheelers uses your location to set pickups, find rides, and keep trip tracking accurate.",
+          "locationAlwaysAndWhenInUsePermission": "Wheelers Rides uses your location at all times during rides so live tracking, safety tools, and trip progress stay accurate.",
+          "locationAlwaysPermission": "Wheelers Rides uses your location in the background during rides so trip progress and safety monitoring keep working.",
+          "locationWhenInUsePermission": "Wheelers Rides uses your location to set pickups, find rides, and keep trip tracking accurate.",
           "isIosBackgroundLocationEnabled": true,
           "isAndroidBackgroundLocationEnabled": true,
           "isAndroidForegroundServiceEnabled": true,
           "foregroundService": {
-            "notificationTitle": "Wheelers is using your location",
+            "notificationTitle": "Wheelers Rides is using your location",
             "notificationBody": "Location stays active for live trip progress and safety updates."
           }
         }
