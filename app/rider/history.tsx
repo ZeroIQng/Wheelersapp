@@ -27,50 +27,28 @@ function EmptyRideState({
   title,
   subtitle,
   icon,
-  accentColor,
-  ctaLabel,
-  onPress,
 }: {
   title: string;
   subtitle: string;
   icon: keyof typeof MaterialIcons.glyphMap;
-  accentColor: string;
-  ctaLabel: string;
-  onPress: () => void;
 }) {
   return (
-    <View style={styles.emptyCard}>
-      <View style={styles.emptyArtwork}>
-        <View
-          style={[
-            styles.emptyHalo,
-            {
-              backgroundColor:
-                accentColor === theme.colors.orange ? "#FFF1E8" : "#FFF8D8",
-            },
-          ]}
-        />
-        <View style={styles.emptyArtworkMain}>
-          <MaterialIcons color={theme.colors.black} name={icon} size={34} />
+    <View style={styles.emptyState}>
+      <View style={styles.emptyWatermark}>
+        <View style={styles.emptyArtwork}>
+          <View style={styles.emptyArtworkMain}>
+            <MaterialIcons color={theme.colors.black} name={icon} size={56} />
+          </View>
         </View>
-      </View>
 
-      <View style={styles.emptyCopy}>
-        <AppText variant="h2" style={styles.emptyTitle}>
-          {title}
-        </AppText>
-        <AppText variant="bodyMedium" color={theme.colors.muted}>
-          {subtitle}
-        </AppText>
-      </View>
-
-      <View style={styles.emptyFooter}>
-        <AppText variant="bodySmall" color={theme.colors.muted}>
-          {ctaLabel}
-        </AppText>
-        <Pressable onPress={onPress} style={styles.emptyFab}>
-          <MaterialIcons color={theme.colors.offWhite} name="add" size={24} />
-        </Pressable>
+        <View style={styles.emptyCopy}>
+          <AppText variant="h2" style={styles.emptyTitle}>
+            {title}
+          </AppText>
+          <AppText variant="bodyMedium" color={theme.colors.muted}>
+            {subtitle}
+          </AppText>
+        </View>
       </View>
     </View>
   );
@@ -100,6 +78,12 @@ export default function RiderHistoryScreen() {
     requestedTab
   );
   const visibleRides = activeTab === "history" ? rides : scheduledRides;
+  const isCurrentTabLoading =
+    activeTab === "history" ? isLoading : isLoadingScheduled;
+  const isCurrentTabError =
+    activeTab === "history" ? error : scheduledError;
+  const showEmptyFab =
+    visibleRides.length === 0 && !isCurrentTabLoading && !isCurrentTabError;
 
   useEffect(() => {
     setActiveTab(requestedTab);
@@ -227,9 +211,6 @@ export default function RiderHistoryScreen() {
               title="No rides yet"
               subtitle="Your completed trips will show up here with fares, timing, and every route you finish."
               icon="directions-car"
-              accentColor={theme.colors.orange}
-              ctaLabel="Book a ride"
-              onPress={() => router.push("/destination-search")}
             />
           ) : null}
 
@@ -241,9 +222,6 @@ export default function RiderHistoryScreen() {
               title="No scheduled rides"
               subtitle="Plan airport runs, early pickups, and later trips here so this page never feels empty again."
               icon="calendar-month"
-              accentColor="#E8C84A"
-              ctaLabel="Schedule a ride"
-              onPress={() => router.push("/schedule-ride")}
             />
           ) : null}
 
@@ -283,7 +261,7 @@ export default function RiderHistoryScreen() {
           ))}
 
           {visibleRides.length > 0 ? (
-            <View style={styles.listFabRow}>
+            <View style={styles.listFabDock}>
               <Pressable
                 onPress={() =>
                   router.push(
@@ -292,18 +270,39 @@ export default function RiderHistoryScreen() {
                       : "/destination-search",
                   )
                 }
-                style={styles.listFab}
+                style={styles.fab}
               >
                 <MaterialIcons
                   color={theme.colors.offWhite}
                   name="add"
-                  size={24}
+                  size={20}
                 />
               </Pressable>
             </View>
           ) : null}
         </View>
       </AppScreen>
+
+      {showEmptyFab ? (
+        <Pressable
+          onPress={() =>
+            router.push(
+              activeTab === "scheduled"
+                ? "/schedule-ride"
+                : "/destination-search",
+            )
+          }
+          style={[
+            styles.emptyScreenFab,
+            {
+              bottom: Math.max(0, insets.bottom - theme.spacing.lg),
+              right: theme.spacing.sm,
+            },
+          ]}
+        >
+          <MaterialIcons color={theme.colors.offWhite} name="add" size={20} />
+        </Pressable>
+      ) : null}
 
       {toastMessage ? (
         <Animated.View
@@ -378,59 +377,51 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.orange,
   },
   list: {
+    flex: 1,
     gap: theme.spacing.sm,
+    paddingBottom: 68,
   },
-  emptyCard: {
-    gap: theme.spacing.lg,
-    borderWidth: theme.borders.thick,
-    borderColor: theme.colors.black,
-    borderRadius: theme.radius.lg,
-    backgroundColor: theme.colors.white,
-    padding: theme.spacing.lg,
-    minHeight: 280,
-    justifyContent: "space-between",
-    ...theme.shadows.card,
-  },
-  emptyArtwork: {
+  emptyState: {
     position: "relative",
-    minHeight: 112,
+    flex: 1,
     justifyContent: "center",
+    gap: theme.spacing.lg,
+    paddingVertical: theme.spacing.xl,
   },
-  emptyHalo: {
-    position: "absolute",
-    left: 10,
-    top: 10,
-    width: 120,
-    height: 84,
-    borderRadius: 28,
-  },
-  emptyArtworkMain: {
-    width: 84,
-    height: 84,
-    borderRadius: theme.radius.pill,
-    borderWidth: theme.borders.thick,
-    borderColor: theme.colors.black,
-    backgroundColor: theme.colors.offWhite,
+  emptyWatermark: {
+    flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    ...theme.shadows.card,
+    opacity: 0.28,
+  },
+  emptyArtwork: {
+    minHeight: 128,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  emptyArtworkMain: {
+    width: 108,
+    height: 108,
+    borderRadius: theme.radius.pill,
+    alignItems: "center",
+    justifyContent: "center",
   },
   emptyCopy: {
     gap: theme.spacing.sm,
+    alignItems: "center",
   },
   emptyTitle: {
     fontSize: 24,
     lineHeight: 28,
+    textAlign: "center",
   },
-  emptyFooter: {
-    flexDirection: "row",
+  listFabDock: {
     alignItems: "flex-end",
-    justifyContent: "space-between",
-    gap: theme.spacing.md,
+    marginTop: theme.spacing.xs,
   },
-  emptyFab: {
-    width: 52,
-    height: 52,
+  fab: {
+    width: 44,
+    height: 44,
     borderRadius: theme.radius.pill,
     borderWidth: theme.borders.thick,
     borderColor: theme.colors.black,
@@ -439,14 +430,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     ...theme.shadows.card,
   },
-  listFabRow: {
-    alignItems: "flex-end",
-    paddingTop: theme.spacing.sm,
-    paddingBottom: theme.spacing.xs,
-  },
-  listFab: {
-    width: 52,
-    height: 52,
+  emptyScreenFab: {
+    position: "absolute",
+    zIndex: 10,
+    width: 44,
+    height: 44,
     borderRadius: theme.radius.pill,
     borderWidth: theme.borders.thick,
     borderColor: theme.colors.black,
