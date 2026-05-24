@@ -23,6 +23,7 @@ import { BackArrow } from "@/components/back-arrow";
 import { LiveMap } from "@/components/live-map";
 import { FloatingView } from "@/components/motion";
 import { getAccessTokenWithRetry } from "@/lib/access-token";
+import { createIdempotencyKey } from "@/lib/idempotency";
 import { getRideEstimate, isBackendConfigured, type RideEstimateResponse } from "@/lib/api";
 import { resolvePlaceQuery } from "@/lib/google-places";
 import {
@@ -124,6 +125,7 @@ export default function RideSelectionScreen() {
     initialEstimate ?? fallbackEstimate,
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const scheduledRideIdempotencyKeyRef = useRef<string | null>(null);
   const collapsedSheetOffset = 196;
   const sheetOffset = useSharedValue(0);
   const serializedItinerary = serializeRideItinerary(itinerary);
@@ -257,6 +259,19 @@ export default function RideSelectionScreen() {
       : "Instant route preview. Final live quote will refresh automatically.";
   const canBookRide = !isSubmitting;
 
+  useEffect(() => {
+    scheduledRideIdempotencyKeyRef.current = null;
+  }, [scheduledAt, serializedItinerary]);
+
+  const handleEditRoute = () => {
+    router.push({
+      pathname: "/destination-search",
+      params: {
+        itinerary: serializedItinerary,
+      },
+    });
+  };
+
   const handleBookRide = async () => {
     if (scheduledAt) {
       setIsSubmitting(true);
@@ -291,6 +306,11 @@ export default function RideSelectionScreen() {
         await submitScheduledRide({
           getAccessToken: async () => accessToken,
           scheduledFor: scheduledAt,
+          idempotencyKey:
+            scheduledRideIdempotencyKeyRef.current ??
+            (scheduledRideIdempotencyKeyRef.current = createIdempotencyKey(
+              "scheduled-ride",
+            )),
           pickup,
           destination,
           stops,
@@ -416,6 +436,16 @@ export default function RideSelectionScreen() {
         </Pressable>
 
         <View style={styles.routeBox}>
+          <View style={styles.routeBoxHeader}>
+            <AppText variant="monoSmall" color={theme.colors.muted}>
+              ROUTE
+            </AppText>
+            <Pressable onPress={handleEditRoute} style={styles.editRouteButton}>
+              <AppText variant="monoSmall" color={theme.colors.orange}>
+                Edit route
+              </AppText>
+            </Pressable>
+          </View>
           {routeRows.map((row, index) => (
             <View key={row.id}>
               <RouteRow
@@ -635,6 +665,14 @@ const styles = StyleSheet.create({
     padding: theme.spacing.md,
     gap: theme.spacing.sm,
     ...theme.shadows.card,
+  },
+  routeBoxHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  editRouteButton: {
+    paddingVertical: 4,
   },
   routeRow: {
     flexDirection: "row",

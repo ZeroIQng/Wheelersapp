@@ -5,6 +5,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   Animated,
   Modal,
@@ -23,6 +24,7 @@ import { AppText } from "@/components/app-text";
 import { SectionHeader } from "@/components/SectionHeader";
 import { WalletBalanceCard } from "@/components/WalletBalanceCard";
 import { getAccessTokenWithRetry } from "@/lib/access-token";
+import { createIdempotencyKey } from "@/lib/idempotency";
 import {
   createWalletWithdrawal,
   createPouchOnramp,
@@ -36,6 +38,13 @@ import {
 } from "@/lib/api";
 import { useWalletOverview } from "@/lib/wallet-overview";
 import { theme } from "@/theme";
+
+type WalletBlockingLoader =
+  | {
+      title: string;
+      message: string;
+    }
+  | null;
 
 const walletPages = [
   {
@@ -213,6 +222,9 @@ export default function WalletScreen() {
   const [isLoadingBankNetworks, setLoadingBankNetworks] = useState(false);
   const [isVerifyingBankAccount, setVerifyingBankAccount] = useState(false);
   const [isRefreshingPouchStatus, setRefreshingPouchStatus] = useState(false);
+  const [blockingLoader, setBlockingLoader] = useState<WalletBlockingLoader>(
+    null,
+  );
   const [withdrawAmount, setWithdrawAmount] = useState("");
   const [bankSearchQuery, setBankSearchQuery] = useState("");
   const [withdrawBankNetworks, setWithdrawBankNetworks] = useState<
@@ -241,6 +253,8 @@ export default function WalletScreen() {
   const handledRedirectRef = useRef<string | null>(null);
   const lastBankLookupKeyRef = useRef<string | null>(null);
   const hasPrefetchedBanksRef = useRef(false);
+  const depositIdempotencyKeyRef = useRef<string | null>(null);
+  const withdrawalIdempotencyKeyRef = useRef<string | null>(null);
   const redirectReason = Array.isArray(params.redirectReason)
     ? params.redirectReason[0]
     : params.redirectReason;
@@ -353,6 +367,7 @@ export default function WalletScreen() {
   ]);
 
   const handleDepositAmountChange = (value: string) => {
+    depositIdempotencyKeyRef.current = null;
     const digitsOnly = value.replace(/\D/g, "");
 
     if (!digitsOnly) {
@@ -364,6 +379,7 @@ export default function WalletScreen() {
   };
 
   const openDepositModal = () => {
+    setBlockingLoader(null);
     setDepositModalVisible(true);
   };
 
@@ -375,6 +391,7 @@ export default function WalletScreen() {
   };
 
   const handleWithdrawAmountChange = (value: string) => {
+    withdrawalIdempotencyKeyRef.current = null;
     setVerifiedWithdrawAccount(null);
     const digitsOnly = value.replace(/\D/g, "");
 
@@ -389,6 +406,7 @@ export default function WalletScreen() {
   const openWithdrawModal = () => {
     setWithdrawConfirmVisible(false);
     setBankPickerVisible(false);
+    setBlockingLoader(null);
     setWithdrawModalVisible(true);
     void loadWithdrawalBankNetworks("");
   };
@@ -621,12 +639,20 @@ export default function WalletScreen() {
       return;
     }
 
+    setDepositModalVisible(false);
+    setBlockingLoader({
+      title: "Preparing payment",
+      message: "Getting your bank transfer details ready.",
+    });
     setLaunchingPouchDeposit(true);
 
     try {
       const response = await createPouchOnramp({
         accessToken,
         amountLocal,
+        idempotencyKey:
+          depositIdempotencyKeyRef.current ??
+          (depositIdempotencyKeyRef.current = createIdempotencyKey("wallet-deposit")),
       });
 
       const providerRef =
@@ -645,6 +671,7 @@ export default function WalletScreen() {
       setDepositModalVisible(false);
       setPaymentWidgetVisible(true);
       setDepositAmount("");
+      depositIdempotencyKeyRef.current = null;
 
       const instructionAmount = formatInstructionAmount(
         response.paymentInstruction ?? null,
@@ -657,6 +684,7 @@ export default function WalletScreen() {
           : "Pouch deposit created. Use the returned bank transfer instruction to complete payment.",
       );
     } catch (error) {
+      setDepositModalVisible(true);
       Alert.alert(
         "Deposit failed",
         error instanceof Error
@@ -664,6 +692,7 @@ export default function WalletScreen() {
           : "Could not start the Pouch deposit.",
       );
     } finally {
+      setBlockingLoader(null);
       setLaunchingPouchDeposit(false);
     }
   };
@@ -723,6 +752,11 @@ export default function WalletScreen() {
       return;
     }
 
+    setWithdrawModalVisible(false);
+    setBlockingLoader({
+      title: "Checking account",
+      message: "Verifying your bank details before payout.",
+    });
     setVerifyingBankAccount(true);
 
     try {
@@ -745,6 +779,7 @@ export default function WalletScreen() {
       setWithdrawModalVisible(false);
       setWithdrawConfirmVisible(true);
     } catch (error) {
+      setWithdrawModalVisible(true);
       Alert.alert(
         "Verification failed",
         error instanceof Error
@@ -752,6 +787,7 @@ export default function WalletScreen() {
           : "Could not verify the bank account.",
       );
     } finally {
+      setBlockingLoader(null);
       setVerifyingBankAccount(false);
     }
   };
@@ -793,11 +829,21 @@ export default function WalletScreen() {
       return;
     }
 
+    setWithdrawConfirmVisible(false);
+    setBlockingLoader({
+      title: "Sending withdrawal",
+      message: "Submitting your withdrawal request now.",
+    });
     setCreatingWithdrawal(true);
 
     try {
       const response = await createWalletWithdrawal({
         accessToken,
+        idempotencyKey:
+          withdrawalIdempotencyKeyRef.current ??
+          (withdrawalIdempotencyKeyRef.current = createIdempotencyKey(
+            "wallet-withdrawal",
+          )),
         amountNgn,
         bankAccount: {
           accountNumber: verifiedWithdrawAccount.accountNumber,
@@ -808,6 +854,7 @@ export default function WalletScreen() {
 
       await refreshWalletOverview();
       resetWithdrawalFlow();
+      withdrawalIdempotencyKeyRef.current = null;
 
       const payoutAmount =
         response.withdrawal?.quotedAmountNgn ?? response.withdrawal?.requestedAmountNgn;
@@ -818,6 +865,7 @@ export default function WalletScreen() {
           : "Withdrawal request created and is now processing.",
       );
     } catch (error) {
+      setWithdrawConfirmVisible(true);
       Alert.alert(
         "Withdrawal failed",
         error instanceof Error
@@ -825,6 +873,7 @@ export default function WalletScreen() {
           : "Could not create the wallet withdrawal.",
       );
     } finally {
+      setBlockingLoader(null);
       setCreatingWithdrawal(false);
     }
   };
@@ -990,6 +1039,31 @@ export default function WalletScreen() {
 
       <Modal
         animationType="fade"
+        transparent
+        visible={blockingLoader != null}
+      >
+        <View style={styles.loadingBackdrop}>
+          <View style={styles.loadingCard}>
+            <View style={styles.loadingSpinnerWrap}>
+              <ActivityIndicator
+                color={theme.colors.orange}
+                size="large"
+              />
+            </View>
+            <View style={styles.loadingCopy}>
+              <AppText variant="h3">
+                {blockingLoader?.title ?? "Loading"}
+              </AppText>
+              <AppText variant="bodySmall" color={theme.colors.muted}>
+                {blockingLoader?.message ?? "Please wait a moment."}
+              </AppText>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        animationType="fade"
         onRequestClose={closeWithdrawModal}
         transparent
         visible={isWithdrawModalVisible}
@@ -1056,6 +1130,7 @@ export default function WalletScreen() {
               <TextInput
                 keyboardType="number-pad"
                 onChangeText={(value) => {
+                  withdrawalIdempotencyKeyRef.current = null;
                   setVerifiedWithdrawAccount(null);
                   setWithdrawAccountNumber(value.replace(/\D/g, ""));
                 }}
@@ -1131,6 +1206,7 @@ export default function WalletScreen() {
                 <Pressable
                   key={bank.id}
                   onPress={() => {
+                    withdrawalIdempotencyKeyRef.current = null;
                     setSelectedWithdrawBank(bank);
                     setVerifiedWithdrawAccount(null);
                     setBankPickerVisible(false);
@@ -1601,6 +1677,39 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: theme.layout.screenPadding,
+  },
+  loadingBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(13,13,13,0.44)",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: theme.layout.screenPadding,
+  },
+  loadingCard: {
+    width: "100%",
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    borderRadius: theme.radii.lg,
+    backgroundColor: theme.colors.offWhite,
+    paddingHorizontal: theme.spacing.lg,
+    paddingVertical: theme.spacing.xl,
+    alignItems: "center",
+    gap: theme.spacing.md,
+    ...theme.shadows.card,
+  },
+  loadingSpinnerWrap: {
+    width: 72,
+    height: 72,
+    borderRadius: theme.radii.pill,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    backgroundColor: theme.colors.white,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  loadingCopy: {
+    alignItems: "center",
+    gap: theme.spacing.xs,
   },
   modalCard: {
     width: "100%",

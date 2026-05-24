@@ -1,5 +1,5 @@
 import { useLoginWithOAuth, usePrivy, type User } from "@privy-io/expo";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useRef, useState } from "react";
 import { Alert, Pressable, StyleSheet, View } from "react-native";
@@ -20,12 +20,16 @@ import { AppScreen } from "@/components/app-screen";
 import { AppText } from "@/components/app-text";
 import { BlobShape, DiamondPair, RingStack, StarBurst } from "@/components/decorative-shapes";
 import { FlowHeader } from "@/components/flow-header";
+import { getAccessTokenWithRetry } from "@/lib/access-token";
 import { getDisplayErrorMessage, isIgnorableUserCancelledError } from "@/lib/errors";
 import { FloatingView, PulseView, RevealView } from "@/components/motion";
 import { RoleMotionBadge } from "@/components/role-motion-badge";
 import { isBackendConfigured, syncPrivyAuth, type BackendRole } from "@/lib/api";
-import { getAuthenticatedRoute, persistAuthenticatedRole } from "@/lib/auth-state";
-// import { clearStoredAuthState } from "@/lib/auth-state";
+import {
+  getAuthenticatedRoute,
+  persistAuthenticatedRole,
+  readLogoutPending,
+} from "@/lib/auth-state";
 import { isPrivyConfigured, privyOAuthRedirectPath } from "@/lib/privy";
 import {
   getPrivyEmail,
@@ -61,7 +65,7 @@ async function resolveAuthenticatedRoute({
   getAccessToken: AccessTokenGetter;
   requestedRole?: BackendRole;
 }) {
-  const accessToken = await getAccessToken();
+  const accessToken = await getAccessTokenWithRetry(getAccessToken);
   if (!accessToken) {
     throw new Error("Could not get a Privy access token.");
   }
@@ -132,6 +136,7 @@ export default function RoleSelectionScreen() {
 
 function PrivyRoleSelectionScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ logout?: string | string[] }>();
   const { getAccessToken, isReady, user } = usePrivy();
   const [selectedRole, setSelectedRole] = useState<Role>("ride");
   const [rideMotionKey, setRideMotionKey] = useState(0);
@@ -139,10 +144,31 @@ function PrivyRoleSelectionScreen() {
   const [restoreAttempt, setRestoreAttempt] = useState(0);
   const [restoreError, setRestoreError] = useState<string | null>(null);
   const [isRestoringSession, setIsRestoringSession] = useState(false);
+  const [logoutPending, setLogoutPending] = useState(false);
+  const [isManualAuthFlow, setIsManualAuthFlow] = useState(false);
   const lastRestoreAlertRef = useRef<string | null>(null);
+  const logoutRequested =
+    (Array.isArray(params.logout) ? params.logout[0] : params.logout) === "1";
+  const shouldSuppressRestore = logoutRequested || logoutPending;
 
   useEffect(() => {
-    if (!isPrivyConfigured || !isReady || !user) {
+    let cancelled = false;
+
+    void (async () => {
+      const pending = await readLogoutPending();
+      if (!cancelled) {
+        setLogoutPending(pending);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isPrivyConfigured || !isReady || !user || shouldSuppressRestore || isManualAuthFlow) {
+      setIsRestoringSession(false);
       return;
     }
 
@@ -182,7 +208,7 @@ function PrivyRoleSelectionScreen() {
     return () => {
       cancelled = true;
     };
-  }, [getAccessToken, isReady, restoreAttempt, router, user]);
+  }, [getAccessToken, isManualAuthFlow, isReady, restoreAttempt, router, shouldSuppressRestore, user]);
 
   useEffect(() => {
     if (!restoreError) {
@@ -207,7 +233,7 @@ function PrivyRoleSelectionScreen() {
     setDriveMotionKey((current) => current + 1);
   }
 
-  if (isPrivyConfigured && (!isReady || user)) {
+  if (isPrivyConfigured && !shouldSuppressRestore && (!isReady || user)) {
     return (
       <SessionRestoreSplash
         isRestoring={isRestoringSession || !isReady}
@@ -220,15 +246,23 @@ function PrivyRoleSelectionScreen() {
     );
   }
 
-  return <RoleSelectionScreenContent selectedRole={selectedRole} onRolePress={handleRolePress} />;
+  return (
+    <RoleSelectionScreenContent
+      selectedRole={selectedRole}
+      onRolePress={handleRolePress}
+      onSyncStateChange={setIsManualAuthFlow}
+    />
+  );
 }
 
 function RoleSelectionScreenContent({
   selectedRole: selectedRoleProp = "ride",
   onRolePress,
+  onSyncStateChange,
 }: {
   selectedRole?: Role;
   onRolePress?: (role: Role) => void;
+  onSyncStateChange?: (active: boolean) => void;
 }) {
   const router = useRouter();
   const [selectedRole, setSelectedRole] = useState<Role>(selectedRoleProp);
@@ -286,7 +320,10 @@ function RoleSelectionScreenContent({
 
       <RevealView delay={220} style={styles.actions}>
         {isPrivyConfigured ? (
-          <GoogleContinueButton role={selectedRole} />
+          <GoogleContinueButton
+            role={selectedRole}
+            onSyncStateChange={onSyncStateChange}
+          />
         ) : (
           <AppButton
             title="Connect with Google ↗"
@@ -392,8 +429,10 @@ function SessionRestoreSplash({
 
 function GoogleContinueButton({
   role,
+  onSyncStateChange,
 }: {
   role: Role;
+  onSyncStateChange?: (active: boolean) => void;
 }) {
   const router = useRouter();
   const { user, isReady, getAccessToken } = usePrivy();
@@ -429,14 +468,17 @@ function GoogleContinueButton({
     if (isLoading || isSyncing) return;
 
     setSyncError(null);
+    onSyncStateChange?.(true);
 
     if (!isBackendConfigured()) {
       setSyncError("Set EXPO_PUBLIC_API_BASE_URL before continuing.");
+      onSyncStateChange?.(false);
       return;
     }
 
     if (!isReady) {
       setSyncError("Privy is still initializing. Try again in a moment.");
+      onSyncStateChange?.(false);
       return;
     }
 
@@ -454,6 +496,7 @@ function GoogleContinueButton({
         if (!isIgnorableUserCancelledError(error) || __DEV__) {
           setSyncError(getDisplayErrorMessage(error, "Could not continue with Google."));
         }
+        onSyncStateChange?.(false);
         return;
       }
     } else {
@@ -461,6 +504,7 @@ function GoogleContinueButton({
     }
 
     if (!authenticatedUser) {
+      onSyncStateChange?.(false);
       return;
     }
 
@@ -475,6 +519,7 @@ function GoogleContinueButton({
       router.replace(destination);
     } catch (error) {
       setSyncError(getDisplayErrorMessage(error, "Could not sync your account with Wheelers."));
+      onSyncStateChange?.(false);
     } finally {
       setIsSyncing(false);
     }

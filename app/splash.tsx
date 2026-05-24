@@ -17,11 +17,14 @@ import Animated, {
 import { AppScreen } from "@/components/app-screen";
 import { AppText } from "@/components/app-text";
 import { BlobShape, DiamondPair, StarBurst } from "@/components/decorative-shapes";
+import { getAccessTokenWithRetry } from "@/lib/access-token";
 import { isBackendConfigured, syncPrivyAuth } from "@/lib/api";
 import {
+  clearLogoutPending,
   clearStoredAuthState,
   getAuthenticatedRoute,
   persistAuthenticatedRole,
+  readLogoutPending,
   readStoredAuthState,
   type AuthenticatedRoute,
 } from "@/lib/auth-state";
@@ -36,30 +39,7 @@ import { theme } from "@/theme";
 type SplashRoute = "/role-selection" | AuthenticatedRoute;
 type AccessTokenGetter = () => Promise<string | null | undefined>;
 
-const SESSION_RESTORE_GRACE_MS = 2500;
-const ACCESS_TOKEN_RETRY_ATTEMPTS = 6;
-const ACCESS_TOKEN_RETRY_DELAY_MS = 250;
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-async function getAccessTokenWithRetry(
-  getAccessToken: AccessTokenGetter,
-): Promise<string | null> {
-  for (let attempt = 0; attempt < ACCESS_TOKEN_RETRY_ATTEMPTS; attempt += 1) {
-    const accessToken = await getAccessToken();
-    if (accessToken) {
-      return accessToken;
-    }
-
-    if (attempt < ACCESS_TOKEN_RETRY_ATTEMPTS - 1) {
-      await sleep(ACCESS_TOKEN_RETRY_DELAY_MS);
-    }
-  }
-
-  return null;
-}
+const SESSION_RESTORE_GRACE_MS = 800;
 
 async function resolvePrivyDestination({
   user,
@@ -68,6 +48,10 @@ async function resolvePrivyDestination({
   user: User;
   getAccessToken: AccessTokenGetter;
 }): Promise<SplashRoute> {
+  if (await readLogoutPending()) {
+    return "/role-selection";
+  }
+
   const storedAuthState = await readStoredAuthState();
   if (storedAuthState) {
     return getAuthenticatedRoute(storedAuthState);
@@ -134,7 +118,7 @@ function GuestSplashScreen() {
 
       hasNavigated.current = true;
       router.replace("/role-selection");
-    }, 3000);
+    }, 900);
 
     return () => clearTimeout(timer);
   }, [router]);
@@ -170,6 +154,7 @@ function PrivyAwareSplashScreen() {
         }
 
         void (async () => {
+          await clearLogoutPending();
           await clearStoredAuthState();
 
           if (cancelled || hasNavigated.current) {

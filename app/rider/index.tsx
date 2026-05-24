@@ -257,113 +257,119 @@ function ServiceArtwork({
 }
 
 function formatHomeBalance(amountNgn: number | undefined): string {
-  const value = typeof amountNgn === "number" && Number.isFinite(amountNgn) ? amountNgn : 0;
+  const value =
+    typeof amountNgn === "number" && Number.isFinite(amountNgn) ? amountNgn : 0;
   const rounded = Math.round(value);
   return rounded.toLocaleString("en-NG");
 }
 
+// How far the sheet travels upward when fully expanded.
+// Falls back to this constant until history measures itself.
+const EXPAND_OFFSET_FALLBACK = 140;
+
 export default function RiderHomeScreen() {
   const router = useRouter();
   const { permissionState, requestLocationAccess } = useAppLocation();
-  const { permissionGranted, requestNotificationAccess } = useAppNotifications();
+  const { permissionGranted, requestNotificationAccess } =
+    useAppNotifications();
   const { items: historyItems, isLoading: isLoadingHistory } =
     useRiderHistory(3);
   const { overview } = useWalletOverview();
   const historyPreview = historyItems.slice(0, 2);
-  const expandedMapHeight = 345;
-  const collapsedMapHeight = 480;
-  const collapsedServiceShift = 132;
+
+  // Large enough that map always fills behind the sheet regardless of sheet height
+  const mapFillHeight = 800;
+
   const [historyMeasuredHeight, setHistoryMeasuredHeight] = useState<
     number | null
   >(null);
-  const historyVisibility = useSharedValue(0);
+
+  // expandProgress: 0 = default (Image 2 — heading + cards + search visible)
+  //                 1 = fully expanded (whole sheet slid upward, history revealed)
+  // The sheet ALWAYS starts at 0. Swiping up moves it toward 1.
+  // There is NO collapse state below Image 2.
+  const expandProgress = useSharedValue(0);
+
   const historyExistsRef = useRef(false);
   const notificationPromptedRef = useRef(false);
 
-  const hideHistory = () => {
-    historyVisibility.value = withTiming(0, { duration: 220 });
+  // Swipe down — return to default position, hide history
+  const collapseSheet = () => {
+    expandProgress.value = withTiming(0, { duration: 220 });
   };
 
-  const showHistory = () => {
-    historyVisibility.value = withTiming(1, { duration: 220 });
+  // Swipe up — slide the whole sheet upward regardless of history presence
+  const expandSheet = () => {
+    expandProgress.value = withTiming(1, { duration: 220 });
   };
 
   useEffect(() => {
-    if (permissionState !== "idle") {
-      return;
-    }
-
+    if (permissionState !== "idle") return;
     void requestLocationAccess();
   }, [permissionState, requestLocationAccess]);
 
   useEffect(() => {
-    if (notificationPromptedRef.current || permissionGranted) {
-      return;
-    }
-
+    if (notificationPromptedRef.current || permissionGranted) return;
     notificationPromptedRef.current = true;
     void requestNotificationAccess();
   }, [permissionGranted, requestNotificationAccess]);
 
   useEffect(() => {
-    if (isLoadingHistory) {
-      return;
-    }
-
+    if (isLoadingHistory) return;
     historyExistsRef.current = historyPreview.length > 0;
-    historyVisibility.value = withTiming(historyPreview.length === 0 ? 0 : 1, {
-      duration: 220,
-    });
-  }, [historyPreview.length, historyVisibility, isLoadingHistory]);
+    if (historyPreview.length > 0) {
+      // Auto-expand when history arrives so user sees it immediately
+      expandProgress.value = withTiming(1, { duration: 220 });
+    }
+  }, [historyPreview.length, expandProgress, isLoadingHistory]);
 
-  const serviceSwipeResponder = useRef(
+  // Capture-phase PanResponder on the whole sheet.
+  // Vertical swipes are claimed by the sheet; taps pass through to Pressable children.
+  const sheetSwipeResponder = useRef(
     PanResponder.create({
-      onMoveShouldSetPanResponder: (_, gestureState) =>
-        Math.abs(gestureState.dy) > 12 &&
-        Math.abs(gestureState.dy) > Math.abs(gestureState.dx),
+      onStartShouldSetPanResponder: () => false,
+      onStartShouldSetPanResponderCapture: () => false,
+      onMoveShouldSetPanResponderCapture: (_, gestureState) =>
+        Math.abs(gestureState.dy) > 8 &&
+        Math.abs(gestureState.dy) > Math.abs(gestureState.dx) * 1.5,
       onPanResponderRelease: (_, gestureState) => {
-        if (gestureState.dy > 35 && !historyExistsRef.current) {
-          hideHistory();
+        if (gestureState.dy > 20) {
+          collapseSheet();
           return;
         }
-
-        if (gestureState.dy < -35) {
-          showHistory();
-        }
+        if (gestureState.dy < -20) expandSheet();
       },
       onPanResponderTerminate: (_, gestureState) => {
-        if (gestureState.dy > 35 && !historyExistsRef.current) {
-          hideHistory();
+        if (gestureState.dy > 20) {
+          collapseSheet();
           return;
         }
-
-        if (gestureState.dy < -35) {
-          showHistory();
-        }
+        if (gestureState.dy < -20) expandSheet();
       },
     }),
   ).current;
 
+  // Sheet slides UP as expandProgress goes 0→1.
+  // The upward travel distance equals the history panel height (or fallback).
+  const bottomSheetAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [
+      {
+        translateY:
+          -(expandProgress.value *
+            (historyMeasuredHeight ?? EXPAND_OFFSET_FALLBACK)),
+      },
+    ],
+  }));
+
+  // History fades + grows in as the sheet expands upward
   const historyAnimatedStyle = useAnimatedStyle(() => ({
     height:
       historyMeasuredHeight == null
         ? undefined
-        : historyMeasuredHeight * historyVisibility.value,
-    opacity: historyVisibility.value,
-    transform: [{ translateY: (1 - historyVisibility.value) * 18 }],
+        : historyMeasuredHeight * expandProgress.value,
+    opacity: expandProgress.value,
+    transform: [{ translateY: (1 - expandProgress.value) * 18 }],
     overflow: "hidden",
-  }));
-
-  const mapAnimatedStyle = useAnimatedStyle(() => ({
-    height:
-      expandedMapHeight +
-      (1 - historyVisibility.value) * (collapsedMapHeight - expandedMapHeight),
-  }));
-
-  const serviceAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateY: (1 - historyVisibility.value) * collapsedServiceShift },
-    ],
   }));
 
   return (
@@ -373,9 +379,11 @@ export default function RiderHomeScreen() {
       safeAreaEdges={["top", "left", "right"]}
     >
       <StatusBar style="dark" backgroundColor="#D4E6D4" />
-      <Animated.View style={[styles.mapWrap, mapAnimatedStyle]}>
+
+      {/* ── Map ── */}
+      <View style={styles.mapWrap}>
         <LiveMap
-          height={collapsedMapHeight}
+          height={mapFillHeight}
           initialCenter={riderHomeCenter}
           initialDelta={{ latitudeDelta: 0.038, longitudeDelta: 0.03 }}
         >
@@ -437,15 +445,22 @@ export default function RiderHomeScreen() {
             </View>
           </View>
         </LiveMap>
-      </Animated.View>
+      </View>
 
+      {/* ── Unified Bottom Sheet ─────────────────────────────────────── */}
+      {/* Default state = Image 2: handle + heading + cards + search fully visible.  */}
+      {/* Swipe UP → whole sheet translates upward, history slides into view below.  */}
+      {/* No collapsed / hidden state exists below Image 2.                          */}
       <Animated.View
-        style={[styles.serviceSection, serviceAnimatedStyle]}
-        {...serviceSwipeResponder.panHandlers}
+        style={[styles.bottomSheet, bottomSheetAnimatedStyle]}
+        {...sheetSwipeResponder.panHandlers}
       >
+        {/* Swipe handle */}
         <View style={styles.swipeHandleWrap}>
           <View style={styles.swipeHandle} />
         </View>
+
+        {/* "Let's Wheel" heading */}
         <RevealView delay={80}>
           <AppText
             variant="h3"
@@ -455,6 +470,8 @@ export default function RiderHomeScreen() {
             Let&apos;s Wheel
           </AppText>
         </RevealView>
+
+        {/* Service cards */}
         <View style={styles.serviceRow}>
           {riderServices.map((service, index) => (
             <RevealView
@@ -489,30 +506,28 @@ export default function RiderHomeScreen() {
             </RevealView>
           ))}
         </View>
-      </Animated.View>
 
-      <View style={styles.panelStack}>
-        <View style={styles.searchPanel}>
-          <Pressable
-            onPress={() => router.push("/destination-search")}
-            style={styles.searchBox}
-          >
-            <View style={styles.searchCopy}>
-              <AppText variant="bodyMedium">Wheel to?</AppText>
-              <AppText variant="bodySmall" color={theme.colors.muted}>
-                Search destination...
-              </AppText>
-            </View>
-            <View style={styles.searchAction}>
-              <MaterialIcons
-                name="north-east"
-                size={18}
-                color={theme.colors.black}
-              />
-            </View>
-          </Pressable>
-        </View>
+        {/* Search box — always visible in default state */}
+        <Pressable
+          onPress={() => router.push("/destination-search")}
+          style={styles.searchBox}
+        >
+          <View style={styles.searchCopy}>
+            <AppText variant="bodyMedium">Wheel to?</AppText>
+            <AppText variant="bodySmall" color={theme.colors.muted}>
+              Search destination...
+            </AppText>
+          </View>
+          <View style={styles.searchAction}>
+            <MaterialIcons
+              name="north-east"
+              size={18}
+              color={theme.colors.black}
+            />
+          </View>
+        </Pressable>
 
+        {/* History — lives inside the sheet, animates height as sheet expands */}
         {historyPreview.length > 0 ? (
           <Animated.View style={historyAnimatedStyle}>
             <RevealView delay={180}>
@@ -576,7 +591,7 @@ export default function RiderHomeScreen() {
             </RevealView>
           </Animated.View>
         ) : null}
-      </View>
+      </Animated.View>
     </AppScreen>
   );
 }
@@ -587,8 +602,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 0,
     paddingBottom: 0,
   },
+
+  // ── Map ────────────────────────────────────────────────────────────
   mapWrap: {
-    flexShrink: 0,
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     overflow: "hidden",
   },
   mapTopRow: {
@@ -665,26 +686,25 @@ const styles = StyleSheet.create({
     right: "6%",
     bottom: "10%",
   },
-  panelStack: {
+
+  // ── Unified Bottom Sheet ───────────────────────────────────────────
+  // Default = Image 2: fully visible at bottom, translateY = 0.
+  // Swipe UP → translateY goes negative (sheet rises), history appears.
+  // Swipe DOWN → back to translateY = 0 (Image 2). Never goes lower.
+  bottomSheet: {
     position: "absolute",
     left: 0,
     right: 0,
-    bottom: -2,
-    paddingHorizontal: theme.spacing.gutter,
-    paddingBottom: 0,
-    gap: theme.spacing.sm,
-  },
-  serviceSection: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 212,
+    bottom: 0,
+    backgroundColor: theme.colors.offWhite,
     paddingHorizontal: theme.spacing.gutter,
     paddingTop: theme.spacing.sm,
-    backgroundColor: theme.colors.offWhite,
+    paddingBottom: theme.spacing.md,
     gap: theme.spacing.sm,
     zIndex: 1,
   },
+
+  // ── Swipe handle ───────────────────────────────────────────────────
   swipeHandleWrap: {
     alignItems: "center",
     marginBottom: theme.spacing.xs,
@@ -696,11 +716,36 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.black,
     opacity: 0.18,
   },
+
+  // ── Heading ────────────────────────────────────────────────────────
   serviceHeading: {
     fontFamily: "Shrikhand_400Regular",
     fontSize: 28,
     lineHeight: 32,
     letterSpacing: 0.1,
+  },
+
+  // ── Service cards ──────────────────────────────────────────────────
+  serviceRow: {
+    flexDirection: "row",
+    gap: theme.spacing.sm,
+  },
+  serviceSlot: {
+    flex: 1,
+  },
+  serviceCard: {
+    minHeight: 92,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    borderRadius: theme.radius.md,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.sm,
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    ...theme.shadows.card,
+  },
+  serviceCardRaised: {
+    transform: [{ translateY: -6 }],
   },
   serviceTop: {
     flexDirection: "row",
@@ -723,32 +768,73 @@ const styles = StyleSheet.create({
     lineHeight: 11,
     letterSpacing: 0.2,
   },
-  serviceCardRaised: {
-    transform: [{ translateY: -6 }],
-  },
-  serviceRow: {
-    flexDirection: "row",
-    marginTop: theme.spacing.xs,
-    gap: theme.spacing.sm,
-  },
-  serviceSlot: {
-    flex: 1,
-  },
-  serviceCard: {
-    minHeight: 92,
-    borderWidth: theme.borders.thick,
-    borderColor: theme.colors.black,
-    borderRadius: theme.radius.md,
-    paddingHorizontal: theme.spacing.sm,
-    paddingVertical: theme.spacing.sm,
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    ...theme.shadows.card,
-  },
   serviceLabel: {
     fontSize: 13,
     lineHeight: 16,
   },
+
+  // ── Search box ─────────────────────────────────────────────────────
+  searchBox: {
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    borderRadius: theme.radius.sm,
+    backgroundColor: theme.colors.offWhite,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.xs,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  searchCopy: {
+    gap: 0,
+  },
+  searchAction: {
+    width: 28,
+    height: 28,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    borderRadius: theme.radius.pill,
+    backgroundColor: theme.colors.orangeLight,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  // ── History ────────────────────────────────────────────────────────
+  historyPanel: {
+    gap: theme.spacing.sm,
+    paddingBottom: theme.spacing.xs,
+  },
+  historyHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  historySection: {
+    gap: theme.spacing.sm,
+  },
+  historyCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing.sm,
+    paddingVertical: theme.spacing.sm,
+    backgroundColor: theme.colors.offWhite,
+  },
+  historyIcon: {
+    width: 34,
+    height: 34,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    borderRadius: theme.radius.sm,
+    backgroundColor: theme.colors.orangeLight,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  historyCopy: {
+    flex: 1,
+    gap: 2,
+  },
+
+  // ── Vehicle / artwork helpers ──────────────────────────────────────
   vehicleArtwork: {
     position: "relative",
     width: 58,
@@ -911,65 +997,5 @@ const styles = StyleSheet.create({
     height: 1.5,
     backgroundColor: theme.colors.black,
     right: 1.5,
-  },
-  searchPanel: {
-    gap: theme.spacing.sm,
-  },
-  historyPanel: {
-    gap: theme.spacing.sm,
-    paddingBottom: theme.spacing.xs,
-  },
-  searchBox: {
-    borderWidth: theme.borders.thick,
-    borderColor: theme.colors.black,
-    borderRadius: theme.radius.sm,
-    backgroundColor: theme.colors.offWhite,
-    paddingHorizontal: theme.spacing.sm,
-    paddingVertical: theme.spacing.xs,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  searchCopy: {
-    gap: 0,
-  },
-  searchAction: {
-    width: 28,
-    height: 28,
-    borderWidth: theme.borders.thick,
-    borderColor: theme.colors.black,
-    borderRadius: theme.radius.pill,
-    backgroundColor: theme.colors.orangeLight,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  historySection: {
-    gap: theme.spacing.sm,
-  },
-  historyHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  historyCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing.sm,
-    paddingVertical: theme.spacing.sm,
-    backgroundColor: theme.colors.offWhite,
-  },
-  historyIcon: {
-    width: 34,
-    height: 34,
-    borderWidth: theme.borders.thick,
-    borderColor: theme.colors.black,
-    borderRadius: theme.radius.sm,
-    backgroundColor: theme.colors.orangeLight,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  historyCopy: {
-    flex: 1,
-    gap: 2,
   },
 });

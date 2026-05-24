@@ -1,5 +1,5 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
-import { useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -23,7 +23,61 @@ const rideTabs = [
   { id: "scheduled", label: "Scheduled Rides" },
 ] as const;
 
+function EmptyRideState({
+  title,
+  subtitle,
+  icon,
+  accentColor,
+  ctaLabel,
+  onPress,
+}: {
+  title: string;
+  subtitle: string;
+  icon: keyof typeof MaterialIcons.glyphMap;
+  accentColor: string;
+  ctaLabel: string;
+  onPress: () => void;
+}) {
+  return (
+    <View style={styles.emptyCard}>
+      <View style={styles.emptyArtwork}>
+        <View
+          style={[
+            styles.emptyHalo,
+            {
+              backgroundColor:
+                accentColor === theme.colors.orange ? "#FFF1E8" : "#FFF8D8",
+            },
+          ]}
+        />
+        <View style={styles.emptyArtworkMain}>
+          <MaterialIcons color={theme.colors.black} name={icon} size={34} />
+        </View>
+      </View>
+
+      <View style={styles.emptyCopy}>
+        <AppText variant="h2" style={styles.emptyTitle}>
+          {title}
+        </AppText>
+        <AppText variant="bodyMedium" color={theme.colors.muted}>
+          {subtitle}
+        </AppText>
+      </View>
+
+      <View style={styles.emptyFooter}>
+        <AppText variant="bodySmall" color={theme.colors.muted}>
+          {ctaLabel}
+        </AppText>
+        <Pressable onPress={onPress} style={styles.emptyFab}>
+          <MaterialIcons color={theme.colors.offWhite} name="add" size={24} />
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
 export default function RiderHistoryScreen() {
+  const router = useRouter();
   const params = useLocalSearchParams<{ tab?: string | string[]; toast?: string | string[] }>();
   const insets = useSafeAreaInsets();
   const toastOpacity = useRef(new Animated.Value(0)).current;
@@ -169,18 +223,28 @@ export default function RiderHistoryScreen() {
           !isLoading &&
           !error &&
           visibleRides.length === 0 ? (
-            <AppText variant="bodySmall" color={theme.colors.muted}>
-              No completed rides yet.
-            </AppText>
+            <EmptyRideState
+              title="No rides yet"
+              subtitle="Your completed trips will show up here with fares, timing, and every route you finish."
+              icon="directions-car"
+              accentColor={theme.colors.orange}
+              ctaLabel="Book a ride"
+              onPress={() => router.push("/destination-search")}
+            />
           ) : null}
 
           {activeTab === "scheduled" &&
           !isLoadingScheduled &&
           !scheduledError &&
           visibleRides.length === 0 ? (
-            <AppText variant="bodySmall" color={theme.colors.muted}>
-              No scheduled rides yet.
-            </AppText>
+            <EmptyRideState
+              title="No scheduled rides"
+              subtitle="Plan airport runs, early pickups, and later trips here so this page never feels empty again."
+              icon="calendar-month"
+              accentColor="#E8C84A"
+              ctaLabel="Schedule a ride"
+              onPress={() => router.push("/schedule-ride")}
+            />
           ) : null}
 
           {visibleRides.map((ride) => (
@@ -217,6 +281,27 @@ export default function RiderHistoryScreen() {
               </View>
             </AppCard>
           ))}
+
+          {visibleRides.length > 0 ? (
+            <View style={styles.listFabRow}>
+              <Pressable
+                onPress={() =>
+                  router.push(
+                    activeTab === "scheduled"
+                      ? "/schedule-ride"
+                      : "/destination-search",
+                  )
+                }
+                style={styles.listFab}
+              >
+                <MaterialIcons
+                  color={theme.colors.offWhite}
+                  name="add"
+                  size={24}
+                />
+              </Pressable>
+            </View>
+          ) : null}
         </View>
       </AppScreen>
 
@@ -294,6 +379,81 @@ const styles = StyleSheet.create({
   },
   list: {
     gap: theme.spacing.sm,
+  },
+  emptyCard: {
+    gap: theme.spacing.lg,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    borderRadius: theme.radius.lg,
+    backgroundColor: theme.colors.white,
+    padding: theme.spacing.lg,
+    minHeight: 280,
+    justifyContent: "space-between",
+    ...theme.shadows.card,
+  },
+  emptyArtwork: {
+    position: "relative",
+    minHeight: 112,
+    justifyContent: "center",
+  },
+  emptyHalo: {
+    position: "absolute",
+    left: 10,
+    top: 10,
+    width: 120,
+    height: 84,
+    borderRadius: 28,
+  },
+  emptyArtworkMain: {
+    width: 84,
+    height: 84,
+    borderRadius: theme.radius.pill,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    backgroundColor: theme.colors.offWhite,
+    alignItems: "center",
+    justifyContent: "center",
+    ...theme.shadows.card,
+  },
+  emptyCopy: {
+    gap: theme.spacing.sm,
+  },
+  emptyTitle: {
+    fontSize: 24,
+    lineHeight: 28,
+  },
+  emptyFooter: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    justifyContent: "space-between",
+    gap: theme.spacing.md,
+  },
+  emptyFab: {
+    width: 52,
+    height: 52,
+    borderRadius: theme.radius.pill,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    backgroundColor: theme.colors.orange,
+    alignItems: "center",
+    justifyContent: "center",
+    ...theme.shadows.card,
+  },
+  listFabRow: {
+    alignItems: "flex-end",
+    paddingTop: theme.spacing.sm,
+    paddingBottom: theme.spacing.xs,
+  },
+  listFab: {
+    width: 52,
+    height: 52,
+    borderRadius: theme.radius.pill,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    backgroundColor: theme.colors.orange,
+    alignItems: "center",
+    justifyContent: "center",
+    ...theme.shadows.card,
   },
   card: {
     flexDirection: "row",

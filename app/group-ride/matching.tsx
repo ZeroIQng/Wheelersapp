@@ -20,6 +20,7 @@ import { AppButton } from "@/components/app-button";
 import { AppScreen } from "@/components/app-screen";
 import { AppText } from "@/components/app-text";
 import { getAccessTokenWithRetry } from "@/lib/access-token";
+import { createIdempotencyKey } from "@/lib/idempotency";
 import {
   completeGroupRideFaceUpload,
   createGroupRideFaceUploadUrl,
@@ -105,6 +106,7 @@ export default function GroupRideMatchingScreen() {
   const [matchStatus, setMatchStatus] = useState<GroupRideMatchRequest["status"] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const lastErrorAlertRef = useRef<string | null>(null);
+  const createRequestIdempotencyKeyRef = useRef<string | null>(null);
 
   // Pulse rings
   const ring1 = useSharedValue(0);
@@ -261,6 +263,11 @@ export default function GroupRideMatchingScreen() {
 
         const created = await createGroupRideMatchRequest({
           accessToken,
+          idempotencyKey:
+            createRequestIdempotencyKeyRef.current ??
+            (createRequestIdempotencyKeyRef.current = createIdempotencyKey(
+              "group-ride-request",
+            )),
           pickup,
           destination,
           stops: [],

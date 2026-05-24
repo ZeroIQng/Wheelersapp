@@ -601,6 +601,7 @@ async function requestJson<TResponse>(
   options: {
     accessToken?: string;
     body?: unknown;
+    idempotencyKey?: string;
     fallbackError: string;
   },
 ): Promise<TResponse> {
@@ -616,6 +617,10 @@ async function requestJson<TResponse>(
 
   if (options.accessToken) {
     headers.authorization = `Bearer ${options.accessToken}`;
+  }
+
+  if (options.idempotencyKey) {
+    headers["idempotency-key"] = options.idempotencyKey;
   }
 
   const response = await fetch(`${apiBaseUrl}${path}`, {
@@ -643,10 +648,11 @@ async function requestJson<TResponse>(
 async function postJson<TResponse>(
   path: string,
   body: unknown,
-  options?: { accessToken?: string; fallbackError: string },
+  options?: { accessToken?: string; idempotencyKey?: string; fallbackError: string },
 ): Promise<TResponse> {
   return requestJson<TResponse>("POST", path, {
     accessToken: options?.accessToken,
+    idempotencyKey: options?.idempotencyKey,
     body,
     fallbackError: options?.fallbackError ?? "Request failed.",
   });
@@ -709,6 +715,8 @@ export async function updateCurrentProfile(input: {
   accessToken: string;
   username?: string;
   fullName?: string;
+  email?: string;
+  phone?: string;
 }): Promise<CurrentProfileResponse> {
   return requestJson<CurrentProfileResponse>(
     "PUT",
@@ -717,6 +725,8 @@ export async function updateCurrentProfile(input: {
       body: {
         username: input.username,
         fullName: input.fullName,
+        email: input.email,
+        phone: input.phone,
       },
       accessToken: input.accessToken,
       fallbackError: "Could not update your profile.",
@@ -727,6 +737,7 @@ export async function updateCurrentProfile(input: {
 export async function createPouchOnramp(input: {
   accessToken: string;
   amountLocal: number;
+  idempotencyKey?: string;
   countryCode?: string;
   currency?: string;
   cryptoCurrency?: string;
@@ -745,6 +756,7 @@ export async function createPouchOnramp(input: {
     },
     {
       accessToken: input.accessToken,
+      idempotencyKey: input.idempotencyKey,
       fallbackError: "Could not start the Pouch deposit.",
     },
   );
@@ -807,6 +819,7 @@ export async function getWalletTransactions(input: {
 export async function createWalletWithdrawal(input: {
   accessToken: string;
   amountNgn: number;
+  idempotencyKey?: string;
   bankAccount: {
     accountNumber: string;
     accountName: string;
@@ -821,6 +834,7 @@ export async function createWalletWithdrawal(input: {
     },
     {
       accessToken: input.accessToken,
+      idempotencyKey: input.idempotencyKey,
       fallbackError: "Could not create wallet withdrawal.",
     },
   );
@@ -923,6 +937,7 @@ export async function getRiderRideHistory(input: {
 export async function createScheduledRide(input: {
   accessToken: string;
   scheduledFor: string;
+  idempotencyKey?: string;
   pickup: RideEstimateWaypoint;
   destination: RideEstimateWaypoint;
   stops?: RideEstimateWaypoint[];
@@ -939,6 +954,7 @@ export async function createScheduledRide(input: {
     },
     {
       accessToken: input.accessToken,
+      idempotencyKey: input.idempotencyKey,
       fallbackError: "Could not schedule this ride.",
     },
   );
@@ -1038,6 +1054,7 @@ export async function registerPushToken(input: {
 
 export async function createGroupRideMatchRequest(input: {
   accessToken: string;
+  idempotencyKey?: string;
   pickup: RideEstimateWaypoint;
   destination: RideEstimateWaypoint;
   stops?: RideEstimateWaypoint[];
@@ -1048,6 +1065,7 @@ export async function createGroupRideMatchRequest(input: {
 }> {
   return postJson("/group-rides/requests", input, {
     accessToken: input.accessToken,
+    idempotencyKey: input.idempotencyKey,
     fallbackError: "Could not create the group ride request.",
   });
 }

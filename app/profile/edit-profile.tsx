@@ -25,8 +25,8 @@ export default function EditProfileScreen() {
   const fallbackName = user ? getPrivyName(user) ?? "" : "";
   const [username, setUsername] = useState("");
   const [fullName, setFullName] = useState("");
-  const [email, setEmail] = useState(fallbackEmail);
-  const [phone, setPhone] = useState("Not added");
+  const [email, setEmail] = useState(user ? getPrivyEmail(user) ?? "" : "");
+  const [phone, setPhone] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
@@ -34,7 +34,7 @@ export default function EditProfileScreen() {
       return;
     }
 
-    setEmail(fallbackEmail);
+    setEmail(getPrivyEmail(user) ?? "");
     setFullName((current) => current || fallbackName);
   }, [fallbackEmail, fallbackName, user]);
 
@@ -60,7 +60,7 @@ export default function EditProfileScreen() {
         setUsername(response.user.username ?? "");
         setFullName(response.user.name ?? fallbackName);
         setEmail(response.user.email ?? fallbackEmail);
-        setPhone(response.user.phone ?? "Not added");
+        setPhone(response.user.phone ?? "");
       } catch {
         // keep local fallback values
       }
@@ -83,7 +83,8 @@ export default function EditProfileScreen() {
     }
 
     const trimmedUsername = username.trim().toLowerCase();
-    const trimmedFullName = fullName.trim();
+    const trimmedEmail = email.trim().toLowerCase();
+    const trimmedPhone = phone.trim();
 
     if (!trimmedUsername) {
       Alert.alert("Username required", "Enter a username to continue.");
@@ -98,8 +99,13 @@ export default function EditProfileScreen() {
       return;
     }
 
-    if (!trimmedFullName || trimmedFullName.length < 2) {
-      Alert.alert("Full name required", "Enter your full name to continue.");
+    if (trimmedEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      Alert.alert("Invalid email", "Enter a valid email address to continue.");
+      return;
+    }
+
+    if (trimmedPhone && trimmedPhone.length < 7) {
+      Alert.alert("Invalid phone number", "Enter a valid phone number to continue.");
       return;
     }
 
@@ -115,7 +121,8 @@ export default function EditProfileScreen() {
       await updateCurrentProfile({
         accessToken,
         username: trimmedUsername,
-        fullName: trimmedFullName,
+        email: trimmedEmail || undefined,
+        phone: trimmedPhone || undefined,
       });
       router.back();
     } catch (error) {
@@ -160,29 +167,41 @@ export default function EditProfileScreen() {
 
         <View style={styles.fieldGroup}>
           <AppText variant="bodySmall" color={theme.colors.muted}>
-            Full name
+            Email
           </AppText>
           <TextInput
-            onChangeText={setFullName}
-            placeholder="Timilehin Olowu"
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="email-address"
+            onChangeText={setEmail}
+            placeholder="timilehin@email.com"
             placeholderTextColor="#B5ACA4"
             style={styles.input}
-            value={fullName}
+            value={email}
+          />
+        </View>
+
+        <View style={styles.fieldGroup}>
+          <AppText variant="bodySmall" color={theme.colors.muted}>
+            Phone number
+          </AppText>
+          <TextInput
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="phone-pad"
+            onChangeText={setPhone}
+            placeholder="+234 801 234 5678"
+            placeholderTextColor="#B5ACA4"
+            style={styles.input}
+            value={phone}
           />
         </View>
 
         <View style={styles.readOnlyCard}>
           <AppText variant="bodySmall" color={theme.colors.muted}>
-            Email
+            Full name
           </AppText>
-          <AppText variant="bodyMedium">{email}</AppText>
-        </View>
-
-        <View style={styles.readOnlyCard}>
-          <AppText variant="bodySmall" color={theme.colors.muted}>
-            Phone number
-          </AppText>
-          <AppText variant="bodyMedium">{phone}</AppText>
+          <AppText variant="bodyMedium">{fullName || "Not available"}</AppText>
         </View>
 
         <AppButton

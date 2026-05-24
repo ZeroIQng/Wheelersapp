@@ -4,7 +4,7 @@ import { useRouter } from "expo-router";
 import * as Speech from "expo-speech";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { StyleSheet, View } from "react-native";
+import { Linking, StyleSheet, View } from "react-native";
 import Animated, {
   Easing,
   FadeIn,
@@ -291,8 +291,8 @@ export default function FaceVerifyScreen() {
         setState("idle");
         return;
       }
-      const result = await requestPermission();
-      setState(result.granted ? "idle" : "denied");
+
+      setState("denied");
     })();
   }, [isSimulator, permission?.granted, requestPermission]);
 
@@ -427,10 +427,14 @@ export default function FaceVerifyScreen() {
     state !== "requesting" &&
     state !== "denied" &&
     state !== "failed";
+  const cameraPermissionPermanentlyDenied =
+    !isSimulator && permission?.granted !== true && permission?.canAskAgain === false;
   const isHolding = state === "hold" || state === "processing";
   const hintText =
     isSimulator && state === "denied"
       ? "Face verification needs a real device camera. The iOS simulator does not provide the camera feed this step requires."
+      : cameraPermissionPermanentlyDenied
+        ? "Camera access is blocked for Wheelers. Open Settings and allow camera access before continuing."
       : HINT[state];
 
   return (
@@ -512,15 +516,28 @@ export default function FaceVerifyScreen() {
         {state === "denied" && (
           <Animated.View entering={FadeInDown.duration(280)} style={styles.actionBtn}>
             <AppButton
-              title={isSimulator ? "Go back" : "Grant camera access"}
+              title={
+                isSimulator
+                  ? "Go back"
+                  : cameraPermissionPermanentlyDenied
+                    ? "Open settings"
+                    : "Allow camera access"
+              }
               variant="inverse"
-              onPress={() => {
+              onPress={async () => {
                 if (isSimulator) {
                   router.back();
                   return;
                 }
 
-                void requestPermission();
+                if (cameraPermissionPermanentlyDenied) {
+                  await Linking.openSettings();
+                  return;
+                }
+
+                setState("requesting");
+                const result = await requestPermission();
+                setState(result.granted ? "idle" : "denied");
               }}
             />
           </Animated.View>

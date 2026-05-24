@@ -1,4 +1,5 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
+import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { RefreshControl, StyleSheet, View } from "react-native";
 
@@ -105,6 +106,7 @@ function getTransactionMeta(transaction: WalletTransaction): string {
 }
 
 export default function RiderTransactionsScreen() {
+  const router = useRouter();
   const { items, isLoading, error, refresh } = useWalletTransactions(40);
   const refreshing = isLoading && items.length > 0;
   const displayError =
@@ -125,7 +127,10 @@ export default function RiderTransactionsScreen() {
       }
     >
       <StatusBar style="dark" backgroundColor={theme.colors.offWhite} />
-      <BackArrow style={styles.backButton} />
+      <BackArrow
+        onPress={() => router.replace("/rider/wallet")}
+        style={styles.backButton}
+      />
       <SectionHeader
         subtitle="Deposits, ride payments, and every wallet movement tied to your account."
         title="Transactions"
