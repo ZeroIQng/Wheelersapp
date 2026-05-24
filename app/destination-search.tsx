@@ -562,7 +562,7 @@ export default function DestinationSearchScreen() {
           setPrefetchedEstimate(null);
         }
       }
-    }, 90);
+    }, 35);
 
     return () => {
       cancelled = true;

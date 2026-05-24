@@ -158,6 +158,32 @@ export interface RideEstimateResponse {
   route?: RideRouteGeometry;
 }
 
+const RIDE_ESTIMATE_CACHE_TTL_MS = 20 * 1000;
+const rideEstimateCache = new Map<
+  string,
+  { value: RideEstimateResponse; cachedAt: number }
+>();
+const rideEstimateInflight = new Map<string, Promise<RideEstimateResponse>>();
+
+function buildRideEstimateCacheKey(input: {
+  pickup: RideEstimateWaypoint;
+  destination: RideEstimateWaypoint;
+  stops?: RideEstimateWaypoint[];
+}): string {
+  const serializeWaypoint = (waypoint: RideEstimateWaypoint): string =>
+    [
+      waypoint.lat.toFixed(6),
+      waypoint.lng.toFixed(6),
+      waypoint.address.trim().toLowerCase(),
+    ].join("|");
+
+  return JSON.stringify({
+    pickup: serializeWaypoint(input.pickup),
+    destination: serializeWaypoint(input.destination),
+    stops: (input.stops ?? []).map(serializeWaypoint),
+  });
+}
+
 export interface RiderHistoryRide {
   id: string;
   status: "COMPLETED" | "CANCELLED";
@@ -900,7 +926,18 @@ export async function getRideEstimate(input: {
   destination: RideEstimateWaypoint;
   stops?: RideEstimateWaypoint[];
 }): Promise<RideEstimateResponse> {
-  return postJson<RideEstimateResponse>(
+  const cacheKey = buildRideEstimateCacheKey(input);
+  const cached = rideEstimateCache.get(cacheKey);
+  if (cached && Date.now() - cached.cachedAt < RIDE_ESTIMATE_CACHE_TTL_MS) {
+    return cached.value;
+  }
+
+  const inflight = rideEstimateInflight.get(cacheKey);
+  if (inflight) {
+    return inflight;
+  }
+
+  const request = postJson<RideEstimateResponse>(
     "/rides/estimate",
     {
       pickup: input.pickup,
@@ -911,7 +948,20 @@ export async function getRideEstimate(input: {
       accessToken: input.accessToken,
       fallbackError: "Could not calculate the ride estimate.",
     },
-  );
+  ).then((response) => {
+    rideEstimateCache.set(cacheKey, {
+      value: response,
+      cachedAt: Date.now(),
+    });
+    return response;
+  });
+
+  rideEstimateInflight.set(cacheKey, request);
+  try {
+    return await request;
+  } finally {
+    rideEstimateInflight.delete(cacheKey);
+  }
 }
 
 export async function getRiderRideHistory(input: {

@@ -986,7 +986,7 @@ export default function ScheduleRideScreen() {
           setPrefetchedEstimate(null);
         }
       }
-    }, 90);
+    }, 35);
 
     return () => {
       cancelled = true;

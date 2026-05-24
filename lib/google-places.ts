@@ -16,6 +16,13 @@ export type ResolvedPlace = {
   address: string;
 };
 
+const RESOLVED_PLACE_CACHE_TTL_MS = 10 * 60 * 1000;
+const resolvedPlaceCache = new Map<
+  string,
+  { value: ResolvedPlace; cachedAt: number }
+>();
+const resolvedPlaceInflight = new Map<string, Promise<ResolvedPlace>>();
+
 type GoogleAutocompletePrediction = {
   description?: string;
   place_id?: string;
@@ -351,20 +358,44 @@ export async function resolvePlaceQuery(input: string): Promise<ResolvedPlace> {
     throw new Error("A destination is required before requesting a ride.");
   }
 
-  const queries = joinUnique([buildContextualQuery(normalizedInput), normalizedInput]);
-
-  for (const query of queries) {
-    const results = await fetchGoogleGeocodeResults(query);
-    const resolved = results
-      .filter(isGoogleResultInNigeria)
-      .sort((left, right) => scoreGeocodeResult(right) - scoreGeocodeResult(left))
-      .map(mapGeocodeResultToResolvedPlace)
-      .find((item): item is ResolvedPlace => item != null);
-
-    if (resolved) {
-      return resolved;
-    }
+  const cacheKey = normalizedInput.toLowerCase();
+  const cached = resolvedPlaceCache.get(cacheKey);
+  if (cached && Date.now() - cached.cachedAt < RESOLVED_PLACE_CACHE_TTL_MS) {
+    return cached.value;
   }
 
-  throw new Error(`Could not resolve location with Google Maps: ${input}`);
+  const inflight = resolvedPlaceInflight.get(cacheKey);
+  if (inflight) {
+    return inflight;
+  }
+
+  const request = (async () => {
+    const queries = joinUnique([buildContextualQuery(normalizedInput), normalizedInput]);
+
+    for (const query of queries) {
+      const results = await fetchGoogleGeocodeResults(query);
+      const resolved = results
+        .filter(isGoogleResultInNigeria)
+        .sort((left, right) => scoreGeocodeResult(right) - scoreGeocodeResult(left))
+        .map(mapGeocodeResultToResolvedPlace)
+        .find((item): item is ResolvedPlace => item != null);
+
+      if (resolved) {
+        resolvedPlaceCache.set(cacheKey, {
+          value: resolved,
+          cachedAt: Date.now(),
+        });
+        return resolved;
+      }
+    }
+
+    throw new Error(`Could not resolve location with Google Maps: ${input}`);
+  })();
+
+  resolvedPlaceInflight.set(cacheKey, request);
+  try {
+    return await request;
+  } finally {
+    resolvedPlaceInflight.delete(cacheKey);
+  }
 }
