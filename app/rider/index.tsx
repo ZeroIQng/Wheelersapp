@@ -298,8 +298,11 @@ export default function RiderHomeScreen() {
     expandProgress.value = withTiming(0, { duration: 220 });
   };
 
-  // Swipe up — slide the whole sheet upward regardless of history presence
+  // Swipe up — only allow expansion when there is history to reveal
   const expandSheet = () => {
+    if (!historyExistsRef.current) {
+      return;
+    }
     expandProgress.value = withTiming(1, { duration: 220 });
   };
 
