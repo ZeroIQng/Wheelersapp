@@ -6,7 +6,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Keyboard,
-  PanResponder,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -39,7 +38,6 @@ import {
   DEFAULT_DESTINATION_LABEL,
   DEFAULT_PICKUP_LABEL,
   MAX_ADDITIONAL_STOPS,
-  moveRouteStop,
   parseRideItineraryParam,
   serializeRideItinerary,
   type RideItinerary,
@@ -55,7 +53,6 @@ type ActiveField =
 type ScreenMode = "form" | "search";
 type FlowMode = "booking" | "trip-edit";
 
-const DRAG_SWAP_THRESHOLD = 88;
 const SEARCH_DEBOUNCE_MS = 280;
 const FORM_HISTORY_PREVIEW_LIMIT = 3;
 
@@ -167,7 +164,6 @@ export default function DestinationSearchScreen() {
   const [isSearching, setIsSearching] = useState(false);
   // Which field is currently being edited inline in form mode
   const [activeRouteIndex, setActiveRouteIndex] = useState<number | null>(null);
-  const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
   const [isSubmittingRoute, setIsSubmittingRoute] = useState(false);
   const [prefetchedEstimate, setPrefetchedEstimate] =
     useState<RideEstimateResponse | null>(null);
@@ -394,16 +390,8 @@ export default function DestinationSearchScreen() {
     setRouteStops((current) => current.filter((_, i) => i !== index));
   };
 
-  const handleReorderStop = (index: number, dy: number) => {
-    const offset = Math.round(dy / DRAG_SWAP_THRESHOLD);
-    if (offset === 0) return;
-    setActiveRouteIndex(null);
-    setSearchQuery("");
-    setRouteStops((current) => {
-      const lastMovableIndex = current.length - 2;
-      const nextIndex = Math.max(0, Math.min(lastMovableIndex, index + offset));
-      return moveRouteStop(current, index, nextIndex);
-    });
+  const clearPickup = () => {
+    setPickupValue("");
   };
 
   // Destination inline edit
@@ -416,12 +404,20 @@ export default function DestinationSearchScreen() {
     setSearchQuery(value);
   };
 
+  const clearDestination = () => {
+    handleDestinationChange("");
+  };
+
   // Stop inline edit
   const handleStopChange = (index: number, value: string) => {
     setRouteStops((current) =>
       current.map((stop, i) => (i === index ? value : stop)),
     );
     setSearchQuery(value);
+  };
+
+  const clearStop = (index: number) => {
+    handleStopChange(index, "");
   };
 
   const itinerary = useMemo<RideItinerary>(
@@ -645,6 +641,7 @@ export default function DestinationSearchScreen() {
                   color={theme.colors.green}
                   label="Pickup"
                   marker="circle"
+                  onClear={clearPickup}
                   onPress={() => openSearch({ type: "pickup" })}
                   value={pickupValue}
                 />
@@ -657,10 +654,10 @@ export default function DestinationSearchScreen() {
                         dense={isCondensedForm}
                         compact={isUltraCondensedForm}
                         isEditing={activeRouteIndex === index}
-                        isDragging={draggingIndex === index}
                         key={`route-stop-${index}`}
                         label={`Stop ${index + 1}`}
                         onChangeText={(value) => handleStopChange(index, value)}
+                        onClear={() => clearStop(index)}
                         onFocus={() => {
                           setActiveRouteIndex(index);
                           setSearchQuery("");
@@ -669,9 +666,6 @@ export default function DestinationSearchScreen() {
                           });
                         }}
                         onRemove={() => handleRemoveStop(index)}
-                        onReorder={(dy) => handleReorderStop(index, dy)}
-                        onReorderEnd={() => setDraggingIndex(null)}
-                        onReorderStart={() => setDraggingIndex(index)}
                         onSubmitEditing={() => setActiveRouteIndex(null)}
                         value={stop}
                       />
@@ -683,6 +677,7 @@ export default function DestinationSearchScreen() {
                   dense={isCondensedForm}
                   compact={isUltraCondensedForm}
                   isEditing={activeRouteIndex === routeStops.length - 1}
+                  onClear={clearDestination}
                   onChangeText={handleDestinationChange}
                   onFocus={() => {
                     setActiveRouteIndex(routeStops.length - 1);
@@ -829,6 +824,18 @@ export default function DestinationSearchScreen() {
                   style={styles.searchInput}
                   value={searchQuery}
                 />
+                {searchQuery.length > 0 ? (
+                  <Pressable
+                    onPress={() => setSearchQuery("")}
+                    style={styles.inlineClearButton}
+                  >
+                    <MaterialIcons
+                      color={theme.colors.black}
+                      name="close"
+                      size={15}
+                    />
+                  </Pressable>
+                ) : null}
               </View>
             </View>
 
@@ -963,6 +970,7 @@ type SearchTriggerFieldProps = {
   color: string;
   label: string;
   marker: "circle" | "square";
+  onClear: () => void;
   onPress: () => void;
   value: string;
 };
@@ -973,9 +981,12 @@ function SearchTriggerField({
   color,
   label,
   marker,
+  onClear,
   onPress,
   value,
 }: SearchTriggerFieldProps) {
+  const hasValue = value.trim().length > 0;
+
   return (
     <View style={[styles.triggerFieldBlock, dense ? styles.triggerFieldBlockDense : null]}>
       <AppText
@@ -988,8 +999,7 @@ function SearchTriggerField({
       >
         {label}
       </AppText>
-      <Pressable
-        onPress={onPress}
+      <View
         style={[
           styles.triggerField,
           dense ? styles.triggerFieldDense : null,
@@ -1002,14 +1012,21 @@ function SearchTriggerField({
             { backgroundColor: color },
           ]}
         />
-        <AppText numberOfLines={1} variant="body" style={styles.triggerText}>
-          {value || (
-            <AppText variant="body" color={theme.colors.muted}>
-              Where from?
-            </AppText>
-          )}
-        </AppText>
-      </Pressable>
+        <Pressable onPress={onPress} style={styles.triggerPressArea}>
+          <AppText numberOfLines={1} variant="body" style={styles.triggerText}>
+            {value || (
+              <AppText variant="body" color={theme.colors.muted}>
+                Where from?
+              </AppText>
+            )}
+          </AppText>
+        </Pressable>
+        {hasValue ? (
+          <Pressable onPress={onClear} style={styles.inlineClearButton}>
+            <MaterialIcons color={theme.colors.black} name="close" size={15} />
+          </Pressable>
+        ) : null}
+      </View>
     </View>
   );
 }
@@ -1046,6 +1063,7 @@ function DestinationField({
   dense,
   compact,
   isEditing,
+  onClear,
   onChangeText,
   onFocus,
   onSubmitEditing,
@@ -1054,11 +1072,14 @@ function DestinationField({
   dense?: boolean;
   compact?: boolean;
   isEditing: boolean;
+  onClear: () => void;
   onChangeText: (value: string) => void;
   onFocus: () => void;
   onSubmitEditing: () => void;
   value: string;
 }) {
+  const hasValue = value.trim().length > 0;
+
   return (
     <View style={[styles.triggerFieldBlock, dense ? styles.triggerFieldBlockDense : null]}>
       <AppText
@@ -1089,6 +1110,11 @@ function DestinationField({
           style={styles.destinationInput}
           value={value}
         />
+        {hasValue ? (
+          <Pressable onPress={onClear} style={styles.inlineClearButton}>
+            <MaterialIcons color={theme.colors.black} name="close" size={15} />
+          </Pressable>
+        ) : null}
       </View>
     </View>
   );
@@ -1099,14 +1125,11 @@ type StopRouteFieldProps = {
   dense?: boolean;
   compact?: boolean;
   isEditing: boolean;
-  isDragging: boolean;
   label: string;
   onChangeText: (value: string) => void;
+  onClear: () => void;
   onFocus: () => void;
   onRemove: () => void;
-  onReorder: (dy: number) => void;
-  onReorderEnd: () => void;
-  onReorderStart: () => void;
   onSubmitEditing: () => void;
   value: string;
 };
@@ -1116,32 +1139,15 @@ function StopRouteField({
   dense,
   compact,
   isEditing,
-  isDragging,
   label,
   onChangeText,
+  onClear,
   onFocus,
   onRemove,
-  onReorder,
-  onReorderEnd,
-  onReorderStart,
   onSubmitEditing,
   value,
 }: StopRouteFieldProps) {
-  const panResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onStartShouldSetPanResponder: () => true,
-        onMoveShouldSetPanResponder: (_, gestureState) =>
-          Math.abs(gestureState.dy) > 4,
-        onPanResponderGrant: onReorderStart,
-        onPanResponderRelease: (_, gestureState) => {
-          onReorder(gestureState.dy);
-          onReorderEnd();
-        },
-        onPanResponderTerminate: onReorderEnd,
-      }),
-    [onReorder, onReorderEnd, onReorderStart],
-  );
+  const hasValue = value.trim().length > 0;
 
   return (
     <View style={[styles.triggerFieldBlock, dense ? styles.triggerFieldBlockDense : null]}>
@@ -1156,10 +1162,7 @@ function StopRouteField({
         {label}
       </AppText>
       <View
-        style={[
-          styles.stopFieldRow,
-          isDragging ? styles.stopFieldRowDragging : null,
-        ]}
+        style={styles.stopFieldRow}
       >
         <View
           style={[
@@ -1181,14 +1184,11 @@ function StopRouteField({
             style={styles.destinationInput}
             value={value}
           />
-          <View
-            {...panResponder.panHandlers}
-            style={[styles.inlineDragButton, styles.dragButton]}
-          >
-            <AppText variant="monoSmall" color={theme.colors.black}>
-              =
-            </AppText>
-          </View>
+          {hasValue ? (
+            <Pressable onPress={onClear} style={styles.inlineClearButton}>
+              <MaterialIcons color={theme.colors.black} name="close" size={15} />
+            </Pressable>
+          ) : null}
         </View>
 
         {canRemove ? (
@@ -1338,6 +1338,21 @@ const styles = StyleSheet.create({
   },
   triggerText: {
     flex: 1,
+  },
+  triggerPressArea: {
+    flex: 1,
+    minWidth: 0,
+  },
+  inlineClearButton: {
+    width: 26,
+    height: 26,
+    borderRadius: theme.radius.pill,
+    borderWidth: theme.borders.regular,
+    borderColor: theme.colors.black,
+    backgroundColor: theme.colors.white,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
   },
   markerCircle: {
     width: 8,
