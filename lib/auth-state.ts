@@ -12,6 +12,7 @@ export type StoredAuthState = {
 };
 
 const AUTH_STATE_KEY = "wheelers.auth.state";
+const LOGOUT_PENDING_KEY = "wheelers.auth.logout.pending";
 
 export function getPostLoginRoute(role: AppAuthRole): "/driver/dashboard" | "/phone-auth" {
   return role === "DRIVER" ? "/driver/dashboard" : "/phone-auth";
@@ -88,6 +89,7 @@ export async function persistAuthenticatedRole(
   };
 
   await writeStoredAuthState(nextState);
+  await clearLogoutPending();
   return nextState;
 }
 
@@ -148,4 +150,20 @@ export async function markStoredOnboardingComplete(): Promise<StoredAuthState | 
 
 export async function clearStoredAuthState(): Promise<void> {
   await SecureStore.deleteItemAsync(AUTH_STATE_KEY);
+}
+
+export async function markLogoutPending(): Promise<void> {
+  await SecureStore.setItemAsync(LOGOUT_PENDING_KEY, "1");
+}
+
+export async function readLogoutPending(): Promise<boolean> {
+  try {
+    return (await SecureStore.getItemAsync(LOGOUT_PENDING_KEY)) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export async function clearLogoutPending(): Promise<void> {
+  await SecureStore.deleteItemAsync(LOGOUT_PENDING_KEY);
 }

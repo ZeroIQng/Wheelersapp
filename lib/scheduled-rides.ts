@@ -168,6 +168,7 @@ export function useScheduledRides(limit = 20): {
 export async function submitScheduledRide(params: {
   getAccessToken: () => Promise<string | null | undefined>;
   scheduledFor: string;
+  idempotencyKey?: string;
   pickup: RideEstimateWaypoint;
   destination: RideEstimateWaypoint;
   stops?: RideEstimateWaypoint[];
@@ -180,6 +181,7 @@ export async function submitScheduledRide(params: {
   const response = await createScheduledRide({
     accessToken,
     scheduledFor: params.scheduledFor,
+    idempotencyKey: params.idempotencyKey,
     pickup: params.pickup,
     destination: params.destination,
     stops: params.stops ?? [],

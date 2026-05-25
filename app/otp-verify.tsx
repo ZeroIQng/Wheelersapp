@@ -2,7 +2,7 @@ import { usePrivy } from "@privy-io/expo";
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useRef, useState } from "react";
-import { Pressable, StyleSheet, TextInput, View } from "react-native";
+import { Alert, Pressable, StyleSheet, TextInput, View } from "react-native";
 
 import { AppButton } from "@/components/app-button";
 import { AppScreen } from "@/components/app-screen";
@@ -16,18 +16,26 @@ import {
   readStoredAuthState,
   storePhoneEntryStep,
 } from "@/lib/auth-state";
+import { isPrivyConfigured } from "@/lib/privy";
 import { theme } from "@/theme";
 
 const OTP_LENGTH = 6;
 
 export default function OtpVerifyScreen() {
+  if (!isPrivyConfigured) {
+    return <PrivyUnavailableScreen />;
+  }
+
+  return <PrivyOtpVerifyScreen />;
+}
+
+function PrivyOtpVerifyScreen() {
   const router = useRouter();
   const { getAccessToken, isReady } = usePrivy();
   const [digits, setDigits] = useState<string[]>(
     Array.from({ length: OTP_LENGTH }, () => ""),
   );
   const [pendingPhone, setPendingPhone] = useState<string | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoadingPhone, setIsLoadingPhone] = useState(true);
   const [isVerifying, setIsVerifying] = useState(false);
   const [isResending, setIsResending] = useState(false);
@@ -90,22 +98,20 @@ export default function OtpVerifyScreen() {
       return;
     }
 
-    setErrorMessage(null);
-
     const code = digits.join("");
     if (code.length !== OTP_LENGTH) {
-      setErrorMessage("Enter the full 6-digit verification code.");
+      Alert.alert("Code required", "Enter the full 6-digit verification code.");
       return;
     }
 
     if (!isReady) {
-      setErrorMessage("Privy is still initializing. Try again in a moment.");
+      Alert.alert("Try again", "Privy is still initializing. Try again in a moment.");
       return;
     }
 
     const accessToken = await getAccessToken();
     if (!accessToken) {
-      setErrorMessage("Could not get a Privy access token.");
+      Alert.alert("Authentication required", "Could not get a Privy access token.");
       return;
     }
 
@@ -116,10 +122,11 @@ export default function OtpVerifyScreen() {
       await markStoredOnboardingComplete();
       router.replace("/rider");
     } catch (error) {
-      setErrorMessage(
+      Alert.alert(
+        "Verification failed",
         error instanceof Error
           ? error.message
-          : "Could not verify the phone code.",
+          : "Could not verify the WhatsApp code.",
       );
     } finally {
       setIsVerifying(false);
@@ -131,16 +138,14 @@ export default function OtpVerifyScreen() {
       return;
     }
 
-    setErrorMessage(null);
-
     if (!isReady) {
-      setErrorMessage("Privy is still initializing. Try again in a moment.");
+      Alert.alert("Try again", "Privy is still initializing. Try again in a moment.");
       return;
     }
 
     const accessToken = await getAccessToken();
     if (!accessToken) {
-      setErrorMessage("Could not get a Privy access token.");
+      Alert.alert("Authentication required", "Could not get a Privy access token.");
       return;
     }
 
@@ -149,10 +154,11 @@ export default function OtpVerifyScreen() {
     try {
       await sendPhoneOtp({ accessToken, phone: pendingPhone });
     } catch (error) {
-      setErrorMessage(
+      Alert.alert(
+        "Resend failed",
         error instanceof Error
           ? error.message
-          : "Could not resend the phone verification code.",
+          : "Could not resend the WhatsApp verification code.",
       );
     } finally {
       setIsResending(false);
@@ -193,12 +199,12 @@ export default function OtpVerifyScreen() {
           showBack
           backHref="/phone-auth"
           align="center"
-          overline="VERIFICATION"
+          overline="WHATSAPP CODE"
           title={"Enter the\n6-digit code"}
           subtitle={
             pendingPhone
-              ? `Sent to ${pendingPhone}`
-              : "Enter the code we sent you"
+              ? `Sent on WhatsApp to ${pendingPhone}`
+              : "Enter the code we sent on WhatsApp"
           }
           progress={{ count: 5, active: 3 }}
         />
@@ -269,25 +275,37 @@ export default function OtpVerifyScreen() {
           />
         </RevealView>
 
-        {errorMessage ? (
-          <AppText
-            variant="bodySmall"
-            color={theme.colors.danger}
-            style={styles.feedback}
-          >
-            {errorMessage}
-          </AppText>
-        ) : null}
-
         <Pressable
           disabled={isResending || isVerifying}
           onPress={() => void handleResend()}
         >
           <AppText variant="bodySmall" color={mutedColor} style={styles.resend}>
-            {isResending ? "Resending code…" : "Didn&apos;t receive it? Resend"}
+            {isResending
+              ? "Resending on WhatsApp…"
+              : "Didn&apos;t receive it on WhatsApp? Resend"}
           </AppText>
         </Pressable>
       </RevealView>
+    </AppScreen>
+  );
+}
+
+function PrivyUnavailableScreen() {
+  const router = useRouter();
+
+  return (
+    <AppScreen
+      backgroundColor={theme.colors.offWhite}
+      contentStyle={styles.loadingContainer}
+    >
+      <AppText variant="h3">Privy setup missing</AppText>
+      <AppText variant="bodySmall" color={theme.colors.muted}>
+        Add the Privy Expo env keys before opening phone verification.
+      </AppText>
+      <AppButton
+        title="Back to sign in"
+        onPress={() => router.replace("/role-selection")}
+      />
     </AppScreen>
   );
 }

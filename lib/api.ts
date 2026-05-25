@@ -104,6 +104,7 @@ interface SendPhoneOtpInput {
 
 interface SendPhoneOtpResponse {
   sent: boolean;
+  channel?: "whatsapp" | "sms";
   phone: string;
   expiresInSeconds: number;
 }
@@ -157,13 +158,41 @@ export interface RideEstimateResponse {
   route?: RideRouteGeometry;
 }
 
+const RIDE_ESTIMATE_CACHE_TTL_MS = 20 * 1000;
+const rideEstimateCache = new Map<
+  string,
+  { value: RideEstimateResponse; cachedAt: number }
+>();
+const rideEstimateInflight = new Map<string, Promise<RideEstimateResponse>>();
+
+function buildRideEstimateCacheKey(input: {
+  pickup: RideEstimateWaypoint;
+  destination: RideEstimateWaypoint;
+  stops?: RideEstimateWaypoint[];
+}): string {
+  const serializeWaypoint = (waypoint: RideEstimateWaypoint): string =>
+    [
+      waypoint.lat.toFixed(6),
+      waypoint.lng.toFixed(6),
+      waypoint.address.trim().toLowerCase(),
+    ].join("|");
+
+  return JSON.stringify({
+    pickup: serializeWaypoint(input.pickup),
+    destination: serializeWaypoint(input.destination),
+    stops: (input.stops ?? []).map(serializeWaypoint),
+  });
+}
+
 export interface RiderHistoryRide {
   id: string;
   status: "COMPLETED" | "CANCELLED";
   pickupAddress: string;
   destAddress: string;
   fareEstimateUsdt: number | null;
+  fareEstimateNgn?: number | null;
   fareFinalUsdt: number | null;
+  fareFinalNgn?: number | null;
   distanceKm: number | null;
   durationSeconds: number | null;
   cancelReason: string | null;
@@ -198,6 +227,79 @@ export interface ScheduledRide {
 interface ScheduledRideListResponse {
   items: ScheduledRide[];
   nextCursor: string | null;
+}
+
+export interface AppNotification {
+  id: string;
+  title: string;
+  body: string;
+  category: string;
+  referenceId: string | null;
+  referenceType: string | null;
+  read: boolean;
+  createdAt: string;
+}
+
+export interface GroupRideFaceVerificationSummary {
+  id: string;
+  uploadStatus: "UPLOADING" | "STORED" | "FAILED";
+  mimeType: string;
+  sizeBytes: number | null;
+  capturedAt: string | null;
+  storedAt: string | null;
+  failedAt: string | null;
+  failureReason: string | null;
+}
+
+export interface GroupRideMatchRequest {
+  id: string;
+  userId: string;
+  status:
+    | "PENDING_FACE_UPLOAD"
+    | "READY_FOR_MATCH"
+    | "MATCHING"
+    | "GROUPED"
+    | "BOOKED"
+    | "EXPIRED"
+    | "CANCELLED";
+  groupId: string | null;
+  matchedRideIds: string[];
+  pickup: RideEstimateWaypoint;
+  destination: RideEstimateWaypoint;
+  stops: RideEstimateWaypoint[];
+  plannedDistanceKm: number | null;
+  plannedDurationSeconds: number | null;
+  fareEstimateUsdt: number | null;
+  paymentMethod: "wallet_balance" | "smart_account";
+  readyForMatchAt: string | null;
+  matchingStartedAt: string | null;
+  groupedAt: string | null;
+  bookedAt: string | null;
+  expiredAt: string | null;
+  cancelledAt: string | null;
+  cancelReason: string | null;
+  faceVerification: GroupRideFaceVerificationSummary | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GroupRideMatchedRider {
+  rideId: string;
+  userId: string;
+  name: string | null;
+  username: string | null;
+  photoUrl: string | null;
+  pickupAddress: string;
+  destinationAddress: string;
+  status: GroupRideMatchRequest["status"];
+}
+
+export interface GroupRideFaceUploadDescriptor {
+  bucket: string;
+  objectKey: string;
+  uploadUrl: string;
+  expiresInSeconds: number;
+  mimeType: string;
 }
 
 export interface PouchInstructionFees {
@@ -521,48 +623,15 @@ function getErrorMessage(payload: unknown, fallback: string): string {
   return fallback;
 }
 
-async function postJson<TResponse>(
+async function requestJson<TResponse>(
+  method: "GET" | "POST" | "PUT",
   path: string,
-  body: unknown,
-  options?: { accessToken?: string; fallbackError: string },
-): Promise<TResponse> {
-  if (!apiBaseUrl) {
-    throw new Error("EXPO_PUBLIC_API_BASE_URL is not configured.");
-  }
-
-  const headers: Record<string, string> = {
-    "content-type": "application/json",
-  };
-
-  if (options?.accessToken) {
-    headers.authorization = `Bearer ${options.accessToken}`;
-  }
-
-  const response = await fetch(`${apiBaseUrl}${path}`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(body),
-  }).catch((error) => {
-    throw new Error(
-      error instanceof Error && error.message !== "Network request failed"
-        ? error.message
-        : buildConnectivityErrorMessage(),
-    );
-  });
-
-  const payload = (await response.json().catch(() => null)) as unknown;
-  if (!response.ok) {
-    throw new Error(
-      getErrorMessage(payload, options?.fallbackError ?? "Request failed."),
-    );
-  }
-
-  return (payload ?? {}) as TResponse;
-}
-
-async function getJson<TResponse>(
-  path: string,
-  options?: { accessToken?: string; fallbackError: string },
+  options: {
+    accessToken?: string;
+    body?: unknown;
+    idempotencyKey?: string;
+    fallbackError: string;
+  },
 ): Promise<TResponse> {
   if (!apiBaseUrl) {
     throw new Error("EXPO_PUBLIC_API_BASE_URL is not configured.");
@@ -570,13 +639,22 @@ async function getJson<TResponse>(
 
   const headers: Record<string, string> = {};
 
-  if (options?.accessToken) {
+  if (options.body !== undefined) {
+    headers["content-type"] = "application/json";
+  }
+
+  if (options.accessToken) {
     headers.authorization = `Bearer ${options.accessToken}`;
   }
 
+  if (options.idempotencyKey) {
+    headers["idempotency-key"] = options.idempotencyKey;
+  }
+
   const response = await fetch(`${apiBaseUrl}${path}`, {
-    method: "GET",
+    method,
     headers,
+    body: options.body === undefined ? undefined : JSON.stringify(options.body),
   }).catch((error) => {
     throw new Error(
       error instanceof Error && error.message !== "Network request failed"
@@ -588,11 +666,34 @@ async function getJson<TResponse>(
   const payload = (await response.json().catch(() => null)) as unknown;
   if (!response.ok) {
     throw new Error(
-      getErrorMessage(payload, options?.fallbackError ?? "Request failed."),
+      getErrorMessage(payload, options.fallbackError ?? "Request failed."),
     );
   }
 
   return (payload ?? {}) as TResponse;
+}
+
+async function postJson<TResponse>(
+  path: string,
+  body: unknown,
+  options?: { accessToken?: string; idempotencyKey?: string; fallbackError: string },
+): Promise<TResponse> {
+  return requestJson<TResponse>("POST", path, {
+    accessToken: options?.accessToken,
+    idempotencyKey: options?.idempotencyKey,
+    body,
+    fallbackError: options?.fallbackError ?? "Request failed.",
+  });
+}
+
+async function getJson<TResponse>(
+  path: string,
+  options?: { accessToken?: string; fallbackError: string },
+): Promise<TResponse> {
+  return requestJson<TResponse>("GET", path, {
+    accessToken: options?.accessToken,
+    fallbackError: options?.fallbackError ?? "Request failed.",
+  });
 }
 
 export async function syncPrivyAuth(
@@ -611,7 +712,7 @@ export async function sendPhoneOtp(
     { phone: input.phone },
     {
       accessToken: input.accessToken,
-      fallbackError: "Could not send the phone verification code.",
+      fallbackError: "Could not send the WhatsApp verification code.",
     },
   );
 }
@@ -624,7 +725,7 @@ export async function verifyPhoneOtp(
     { code: input.code },
     {
       accessToken: input.accessToken,
-      fallbackError: "Could not verify the phone code.",
+      fallbackError: "Could not verify the WhatsApp code.",
     },
   );
 }
@@ -642,14 +743,19 @@ export async function updateCurrentProfile(input: {
   accessToken: string;
   username?: string;
   fullName?: string;
+  email?: string;
+  phone?: string;
 }): Promise<CurrentProfileResponse> {
-  return postJson<CurrentProfileResponse>(
+  return requestJson<CurrentProfileResponse>(
+    "PUT",
     "/auth/profile",
     {
-      username: input.username,
-      fullName: input.fullName,
-    },
-    {
+      body: {
+        username: input.username,
+        fullName: input.fullName,
+        email: input.email,
+        phone: input.phone,
+      },
       accessToken: input.accessToken,
       fallbackError: "Could not update your profile.",
     },
@@ -659,6 +765,7 @@ export async function updateCurrentProfile(input: {
 export async function createPouchOnramp(input: {
   accessToken: string;
   amountLocal: number;
+  idempotencyKey?: string;
   countryCode?: string;
   currency?: string;
   cryptoCurrency?: string;
@@ -677,6 +784,7 @@ export async function createPouchOnramp(input: {
     },
     {
       accessToken: input.accessToken,
+      idempotencyKey: input.idempotencyKey,
       fallbackError: "Could not start the Pouch deposit.",
     },
   );
@@ -739,6 +847,7 @@ export async function getWalletTransactions(input: {
 export async function createWalletWithdrawal(input: {
   accessToken: string;
   amountNgn: number;
+  idempotencyKey?: string;
   bankAccount: {
     accountNumber: string;
     accountName: string;
@@ -753,6 +862,7 @@ export async function createWalletWithdrawal(input: {
     },
     {
       accessToken: input.accessToken,
+      idempotencyKey: input.idempotencyKey,
       fallbackError: "Could not create wallet withdrawal.",
     },
   );
@@ -818,7 +928,18 @@ export async function getRideEstimate(input: {
   destination: RideEstimateWaypoint;
   stops?: RideEstimateWaypoint[];
 }): Promise<RideEstimateResponse> {
-  return postJson<RideEstimateResponse>(
+  const cacheKey = buildRideEstimateCacheKey(input);
+  const cached = rideEstimateCache.get(cacheKey);
+  if (cached && Date.now() - cached.cachedAt < RIDE_ESTIMATE_CACHE_TTL_MS) {
+    return cached.value;
+  }
+
+  const inflight = rideEstimateInflight.get(cacheKey);
+  if (inflight) {
+    return inflight;
+  }
+
+  const request = postJson<RideEstimateResponse>(
     "/rides/estimate",
     {
       pickup: input.pickup,
@@ -829,7 +950,20 @@ export async function getRideEstimate(input: {
       accessToken: input.accessToken,
       fallbackError: "Could not calculate the ride estimate.",
     },
-  );
+  ).then((response) => {
+    rideEstimateCache.set(cacheKey, {
+      value: response,
+      cachedAt: Date.now(),
+    });
+    return response;
+  });
+
+  rideEstimateInflight.set(cacheKey, request);
+  try {
+    return await request;
+  } finally {
+    rideEstimateInflight.delete(cacheKey);
+  }
 }
 
 export async function getRiderRideHistory(input: {
@@ -855,6 +989,7 @@ export async function getRiderRideHistory(input: {
 export async function createScheduledRide(input: {
   accessToken: string;
   scheduledFor: string;
+  idempotencyKey?: string;
   pickup: RideEstimateWaypoint;
   destination: RideEstimateWaypoint;
   stops?: RideEstimateWaypoint[];
@@ -871,6 +1006,7 @@ export async function createScheduledRide(input: {
     },
     {
       accessToken: input.accessToken,
+      idempotencyKey: input.idempotencyKey,
       fallbackError: "Could not schedule this ride.",
     },
   );
@@ -908,6 +1044,151 @@ export async function cancelScheduledRide(input: {
     {
       accessToken: input.accessToken,
       fallbackError: "Could not cancel scheduled ride.",
+    },
+  );
+}
+
+export async function listNotifications(input: {
+  accessToken: string;
+  limit?: number;
+}): Promise<{ items: AppNotification[] }> {
+  const params = new URLSearchParams();
+  if (input.limit) {
+    params.set("limit", String(input.limit));
+  }
+
+  const path = params.size > 0 ? `/notifications?${params.toString()}` : "/notifications";
+  return getJson<{ items: AppNotification[] }>(path, {
+    accessToken: input.accessToken,
+    fallbackError: "Could not load notifications.",
+  });
+}
+
+export async function markNotificationsRead(input: {
+  accessToken: string;
+  notificationIds?: string[];
+}): Promise<{ updatedCount: number }> {
+  return postJson<{ updatedCount: number }>(
+    "/notifications/read",
+    {
+      notificationIds: input.notificationIds ?? [],
+    },
+    {
+      accessToken: input.accessToken,
+      fallbackError: "Could not update notifications.",
+    },
+  );
+}
+
+export async function registerPushToken(input: {
+  accessToken: string;
+  expoPushToken: string;
+  enabled?: boolean;
+  platform?: string;
+  deviceName?: string;
+  appOwnership?: string;
+}): Promise<{
+  device: {
+    id: string;
+    expoPushToken: string;
+    enabled: boolean;
+    platform: string | null;
+    deviceName: string | null;
+    appOwnership: string | null;
+    lastRegisteredAt: string;
+  };
+}> {
+  return postJson("/notifications/device", input, {
+    accessToken: input.accessToken,
+    fallbackError: "Could not register push notifications.",
+  });
+}
+
+export async function createGroupRideMatchRequest(input: {
+  accessToken: string;
+  idempotencyKey?: string;
+  pickup: RideEstimateWaypoint;
+  destination: RideEstimateWaypoint;
+  stops?: RideEstimateWaypoint[];
+  paymentMethod?: "wallet_balance" | "smart_account";
+}): Promise<{
+  item: GroupRideMatchRequest;
+  uploadRequired: boolean;
+}> {
+  return postJson("/group-rides/requests", input, {
+    accessToken: input.accessToken,
+    idempotencyKey: input.idempotencyKey,
+    fallbackError: "Could not create the group ride request.",
+  });
+}
+
+export async function getGroupRideMatchRequest(input: {
+  accessToken: string;
+  requestId: string;
+}): Promise<{ item: GroupRideMatchRequest; matchedRiders: GroupRideMatchedRider[] }> {
+  return getJson(`/group-rides/requests/${encodeURIComponent(input.requestId)}`, {
+    accessToken: input.accessToken,
+    fallbackError: "Could not load the group ride request.",
+  });
+}
+
+export async function createGroupRideFaceUploadUrl(input: {
+  accessToken: string;
+  requestId: string;
+  mimeType: string;
+  capturedAt?: string;
+}): Promise<{
+  upload: GroupRideFaceUploadDescriptor;
+}> {
+  return postJson(
+    `/group-rides/requests/${encodeURIComponent(input.requestId)}/face-upload-url`,
+    {
+      mimeType: input.mimeType,
+      capturedAt: input.capturedAt,
+    },
+    {
+      accessToken: input.accessToken,
+      fallbackError: "Could not prepare the face verification upload.",
+    },
+  );
+}
+
+export async function completeGroupRideFaceUpload(input: {
+  accessToken: string;
+  requestId: string;
+  capturedAt?: string;
+}): Promise<{
+  item: GroupRideMatchRequest;
+  publishedReadyEvent: boolean;
+}> {
+  return postJson(
+    `/group-rides/requests/${encodeURIComponent(input.requestId)}/face-upload-complete`,
+    {
+      capturedAt: input.capturedAt,
+    },
+    {
+      accessToken: input.accessToken,
+      fallbackError: "Could not complete face verification.",
+    },
+  );
+}
+
+export async function cancelGroupRideMatchRequest(input: {
+  accessToken: string;
+  requestId: string;
+  reason?: string;
+}): Promise<{
+  item: GroupRideMatchRequest | null;
+  cancelled: boolean;
+}> {
+  return postJson(
+    `/group-rides/requests/${encodeURIComponent(input.requestId)}/cancel`,
+    {
+      reason: input.reason,
+    },
+    {
+      accessToken: input.accessToken,
+      fallbackError: "Could not cancel the group ride request.",
     },
   );
 }

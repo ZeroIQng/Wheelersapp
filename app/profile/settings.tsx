@@ -11,7 +11,11 @@ import { SettingsRow } from "@/components/SettingsRow";
 import { SettingOption, settingsOptions, userProfile } from "@/data/mock";
 import { getAccessTokenWithRetry } from "@/lib/access-token";
 import { getCurrentProfile, isBackendConfigured } from "@/lib/api";
-import { clearStoredAuthState } from "@/lib/auth-state";
+import {
+  clearLogoutPending,
+  clearStoredAuthState,
+  markLogoutPending,
+} from "@/lib/auth-state";
 import { isPrivyConfigured } from "@/lib/privy";
 import { getPrivyEmail, getPrivyName } from "@/lib/privy-user";
 import { theme } from "@/theme";
@@ -203,9 +207,15 @@ function PrivySettingsScreen() {
 
     setIsLoggingOut(true);
     try {
-      await logout();
+      await markLogoutPending();
       await clearStoredAuthState();
-      router.replace("/role-selection");
+      router.replace({
+        pathname: "/role-selection",
+        params: { logout: "1" },
+      });
+      void logout().finally(() => {
+        void clearLogoutPending();
+      });
     } finally {
       setIsLoggingOut(false);
     }
@@ -239,6 +249,13 @@ function SettingsScreenBody({
   );
 
   async function handleRowPress(id: string, route?: string) {
+    if (id === "customer-support") {
+      Alert.alert(
+        "Coming soon",
+        "Customer support chat will be available here soon.",
+      );
+      return;
+    }
     if (route) {
       router.push(route as Href);
       return;

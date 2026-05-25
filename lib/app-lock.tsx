@@ -228,14 +228,12 @@ export function AppLockOverlay({
   const { ready, hasPin, appLockEnabled, isLocked, unlock, clearPin } =
     useAppLock();
   const [pin, setPin] = useState("");
-  const [error, setError] = useState<string | null>(null);
   const [isResetting, setResetting] = useState(false);
   const submittingRef = useRef(false);
 
   useEffect(() => {
     if (!isLocked) {
       setPin("");
-      setError(null);
     }
   }, [isLocked]);
 
@@ -266,9 +264,6 @@ export function AppLockOverlay({
           maxLength={4}
           onChangeText={(value) => {
             setPin(value.replace(/\D/g, ""));
-            if (error) {
-              setError(null);
-            }
           }}
           placeholder="••••"
           placeholderTextColor="#B5ACA4"
@@ -276,12 +271,6 @@ export function AppLockOverlay({
           style={styles.pinInput}
           value={pin}
         />
-
-        {error ? (
-          <AppText variant="bodySmall" color={theme.colors.danger}>
-            {error}
-          </AppText>
-        ) : null}
 
         <AppButton
           onPress={() => {
@@ -294,11 +283,9 @@ export function AppLockOverlay({
               try {
                 const matched = await unlock(pin);
                 if (!matched) {
-                  setError(null);
                   Alert.alert("Wrong PIN", "The PIN you entered is incorrect.");
                 } else {
                   setPin("");
-                  setError(null);
                 }
               } finally {
                 submittingRef.current = false;

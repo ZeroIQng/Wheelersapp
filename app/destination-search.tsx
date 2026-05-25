@@ -4,6 +4,7 @@ import { usePrivy } from "@privy-io/expo";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  Alert,
   Keyboard,
   PanResponder,
   Pressable,
@@ -35,6 +36,8 @@ import {
   serializeRideEstimate,
 } from "@/lib/ride-estimate";
 import {
+  DEFAULT_DESTINATION_LABEL,
+  DEFAULT_PICKUP_LABEL,
   MAX_ADDITIONAL_STOPS,
   moveRouteStop,
   parseRideItineraryParam,
@@ -54,7 +57,7 @@ type FlowMode = "booking" | "trip-edit";
 
 const DRAG_SWAP_THRESHOLD = 88;
 const SEARCH_DEBOUNCE_MS = 280;
-const FORM_HISTORY_PREVIEW_LIMIT = 4;
+const FORM_HISTORY_PREVIEW_LIMIT = 3;
 
 function getSearchHeading(activeField: ActiveField) {
   if (activeField.type === "pickup") return "Search pickup";
@@ -124,15 +127,38 @@ export default function DestinationSearchScreen() {
     "trip-edit"
       ? "trip-edit"
       : "booking";
+  const seededItinerary = useMemo(() => {
+    if (flowMode === "trip-edit") {
+      return initialItinerary;
+    }
+
+    const pickup =
+      initialItinerary.pickup === DEFAULT_PICKUP_LABEL
+        ? ""
+        : initialItinerary.pickup;
+    const stops = initialItinerary.stops.map((stop, index) => {
+      const isOnlyDefaultDestination =
+        initialItinerary.stops.length === 1 &&
+        index === 0 &&
+        stop === DEFAULT_DESTINATION_LABEL;
+      return isOnlyDefaultDestination ? "" : stop;
+    });
+
+    return {
+      pickup,
+      stops: stops.length > 0 ? stops : [""],
+    };
+  }, [flowMode, initialItinerary]);
 
   const inputRef = useRef<TextInput>(null);
+  const formScrollRef = useRef<ScrollView>(null);
   const [mode, setMode] = useState<ScreenMode>("form");
   const [activeField, setActiveField] = useState<ActiveField>({
     type: "stop",
     index: 0,
   });
-  const [pickupValue, setPickupValue] = useState(initialItinerary.pickup);
-  const [routeStops, setRouteStops] = useState(initialItinerary.stops);
+  const [pickupValue, setPickupValue] = useState(seededItinerary.pickup);
+  const [routeStops, setRouteStops] = useState(seededItinerary.stops);
   // Single shared search query — used in both form inline mode and full search mode
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
@@ -143,7 +169,6 @@ export default function DestinationSearchScreen() {
   const [activeRouteIndex, setActiveRouteIndex] = useState<number | null>(null);
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
   const [isSubmittingRoute, setIsSubmittingRoute] = useState(false);
-  const [submitError, setSubmitError] = useState<string | null>(null);
   const [prefetchedEstimate, setPrefetchedEstimate] =
     useState<RideEstimateResponse | null>(null);
   const estimateRequestRef = useRef(0);
@@ -187,6 +212,10 @@ export default function DestinationSearchScreen() {
   const matchingRecentPlaces = useMemo(
     () => recentPlaces.filter((place) => matchesSearchQuery(place, trimmedSearchQuery)),
     [recentPlaces, trimmedSearchQuery],
+  );
+  const matchingRecentPlacesPreview = useMemo(
+    () => matchingRecentPlaces.slice(0, FORM_HISTORY_PREVIEW_LIMIT),
+    [matchingRecentPlaces],
   );
   const hasExactRecentMatch = useMemo(
     () =>
@@ -273,25 +302,18 @@ export default function DestinationSearchScreen() {
     () =>
       uniqueProviderSuggestions.filter(
         (item) =>
-          !matchingRecentPlaces.some((recentPlace) =>
+          !matchingRecentPlacesPreview.some((recentPlace) =>
             isSamePlaceSuggestion(recentPlace, item),
           ),
       ),
-    [matchingRecentPlaces, uniqueProviderSuggestions],
+    [matchingRecentPlacesPreview, uniqueProviderSuggestions],
   );
 
   // ─── Open full-screen search for pickup (not editable inline) ───────────────
   const openSearch = (field: ActiveField) => {
     setActiveRouteIndex(null);
     setActiveField(field);
-    const currentVal =
-      field.type === "pickup"
-        ? pickupValue
-        : field.type === "destination"
-        ? destinationValue
-        : routeStops[(field as { type: "stop"; index: number }).index] ?? "";
-    // Set query before switching mode so Google autocomplete fires immediately.
-    setSearchQuery(currentVal);
+    setSearchQuery("");
     setMode("search");
   };
 
@@ -357,7 +379,10 @@ export default function DestinationSearchScreen() {
       return next;
     });
     setActiveRouteIndex(insertIndex);
-    // Don't clear searchQuery — let whatever was there persist
+    setSearchQuery("");
+    requestAnimationFrame(() => {
+      formScrollRef.current?.scrollTo({ y: 0, animated: true });
+    });
   };
 
   const handleRemoveStop = (index: number) => {
@@ -405,7 +430,6 @@ export default function DestinationSearchScreen() {
   );
   const canAddStop =
     intermediateStops.length < MAX_ADDITIONAL_STOPS &&
-    destinationValue.trim().length > 0 &&
     intermediateStops.every((stop) => stop.trim().length > 0);
   const isConfirmDisabled =
     !pickupValue.trim() ||
@@ -423,7 +447,65 @@ export default function DestinationSearchScreen() {
 
   // Show results panel in form mode whenever a route field is focused
   const showInlineResults = activeRouteIndex != null;
+  const isCondensedForm = showInlineResults || hasExtraStops;
+  const isUltraCondensedForm = showInlineResults || intermediateStops.length > 1;
   const shouldShowIdleHistory = !showInlineResults && recentPlacesPreview.length > 0;
+  const firstIncompleteStopIndex = intermediateStops.findIndex(
+    (stop) => stop.trim().length === 0,
+  );
+
+  const focusInlineField = (index: number) => {
+    setActiveRouteIndex(index);
+    setSearchQuery("");
+    requestAnimationFrame(() => {
+      formScrollRef.current?.scrollTo({ y: 0, animated: true });
+    });
+  };
+
+  const handleConfirmRoute = async () => {
+    if (!pickupValue.trim()) {
+      openSearch({ type: "pickup" });
+      return;
+    }
+
+    if (firstIncompleteStopIndex >= 0) {
+      focusInlineField(firstIncompleteStopIndex);
+      return;
+    }
+
+    if (!destinationValue.trim()) {
+      focusInlineField(routeStops.length - 1);
+      return;
+    }
+
+    if (flowMode === "trip-edit") {
+      setIsSubmittingRoute(true);
+      try {
+        await updateRideRoute(itinerary);
+        router.replace({
+          pathname: "/rider/active-trip",
+          params: { itinerary: serializedItinerary },
+        });
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Could not update the ride route.";
+        Alert.alert("Route update failed", message);
+      } finally {
+        setIsSubmittingRoute(false);
+      }
+      return;
+    }
+
+    router.push({
+      pathname: "/ride-selection",
+      params: {
+        itinerary: serializedItinerary,
+        estimate: serializeRideEstimate(prefetchedEstimate ?? instantEstimate),
+      },
+    });
+  };
 
   useEffect(() => {
     if (
@@ -440,6 +522,7 @@ export default function DestinationSearchScreen() {
     let cancelled = false;
     const requestId = estimateRequestRef.current + 1;
     estimateRequestRef.current = requestId;
+    setPrefetchedEstimate(null);
 
     const timeout = setTimeout(async () => {
       try {
@@ -479,7 +562,7 @@ export default function DestinationSearchScreen() {
           setPrefetchedEstimate(null);
         }
       }
-    }, 250);
+    }, 35);
 
     return () => {
       cancelled = true;
@@ -522,21 +605,43 @@ export default function DestinationSearchScreen() {
             {/* FIX: scrollEnabled is ALWAYS true. We removed the lock that broke scroll. */}
             <ScrollView
               bounces={false}
-              contentContainerStyle={styles.formScrollContent}
+              contentContainerStyle={[
+                styles.formScrollContent,
+                isCondensedForm ? styles.formScrollContentCondensed : null,
+                isUltraCondensedForm ? styles.formScrollContentCompact : null,
+              ]}
               keyboardShouldPersistTaps="handled"
+              ref={formScrollRef}
               showsVerticalScrollIndicator={false}
             >
               {/* Form card */}
-              <View style={styles.formSheet}>
+              <View
+                style={[
+                  styles.formSheet,
+                  isCondensedForm ? styles.formSheetDense : null,
+                  isCondensedForm ? styles.formSheetCondensed : null,
+                  isUltraCondensedForm ? styles.formSheetCompact : null,
+                ]}
+              >
                 <View
                   style={[
                     styles.formConnector,
-                    { height: 40 + (intermediateStops.length + 1) * 78 },
+                    isCondensedForm ? styles.formConnectorDense : null,
+                    isCondensedForm ? styles.formConnectorCondensed : null,
+                    {
+                      height: isUltraCondensedForm
+                        ? 24 + (intermediateStops.length + 1) * 58
+                        : isCondensedForm
+                        ? 28 + (intermediateStops.length + 1) * 68
+                        : 40 + (intermediateStops.length + 1) * 78,
+                    },
                   ]}
                 />
 
                 {/* Pickup — taps into full search mode */}
                 <SearchTriggerField
+                  dense={isCondensedForm}
+                  compact={isUltraCondensedForm}
                   color={theme.colors.green}
                   label="Pickup"
                   marker="circle"
@@ -549,6 +654,8 @@ export default function DestinationSearchScreen() {
                   ? intermediateStops.map((stop, index) => (
                       <StopRouteField
                         canRemove
+                        dense={isCondensedForm}
+                        compact={isUltraCondensedForm}
                         isEditing={activeRouteIndex === index}
                         isDragging={draggingIndex === index}
                         key={`route-stop-${index}`}
@@ -556,7 +663,10 @@ export default function DestinationSearchScreen() {
                         onChangeText={(value) => handleStopChange(index, value)}
                         onFocus={() => {
                           setActiveRouteIndex(index);
-                          setSearchQuery(stop);
+                          setSearchQuery("");
+                          requestAnimationFrame(() => {
+                            formScrollRef.current?.scrollTo({ y: 0, animated: true });
+                          });
                         }}
                         onRemove={() => handleRemoveStop(index)}
                         onReorder={(dy) => handleReorderStop(index, dy)}
@@ -570,11 +680,16 @@ export default function DestinationSearchScreen() {
 
                 {/* Destination — inline editable */}
                 <DestinationField
+                  dense={isCondensedForm}
+                  compact={isUltraCondensedForm}
                   isEditing={activeRouteIndex === routeStops.length - 1}
                   onChangeText={handleDestinationChange}
                   onFocus={() => {
                     setActiveRouteIndex(routeStops.length - 1);
-                    setSearchQuery(destinationValue);
+                    setSearchQuery("");
+                    requestAnimationFrame(() => {
+                      formScrollRef.current?.scrollTo({ y: 0, animated: true });
+                    });
                   }}
                   onSubmitEditing={() => setActiveRouteIndex(null)}
                   value={destinationValue}
@@ -586,6 +701,9 @@ export default function DestinationSearchScreen() {
                   onPress={handleAddStop}
                   style={[
                     styles.addStopRow,
+                    isCondensedForm ? styles.addStopRowDense : null,
+                    isCondensedForm ? styles.addStopRowCompact : null,
+                    isUltraCondensedForm ? styles.addStopRowUltraCompact : null,
                     !canAddStop ? styles.addStopRowDisabled : null,
                   ]}
                 >
@@ -633,9 +751,9 @@ export default function DestinationSearchScreen() {
                         Finding matching locations.
                       </AppText>
                     </View>
-                  ) : matchingRecentPlaces.length > 0 || providerResults.length > 0 ? (
+                  ) : matchingRecentPlacesPreview.length > 0 || providerResults.length > 0 ? (
                     <View style={styles.resultsListContent}>
-                      {trimmedSearchQuery.length === 0 && matchingRecentPlaces.length > 0 ? (
+                      {trimmedSearchQuery.length === 0 && matchingRecentPlacesPreview.length > 0 ? (
                         <View style={styles.sectionHeading}>
                           <AppText variant="monoSmall" color={theme.colors.muted}>
                             HISTORY
@@ -645,7 +763,7 @@ export default function DestinationSearchScreen() {
                           </AppText>
                         </View>
                       ) : null}
-                      {matchingRecentPlaces.map((item, index) => (
+                      {matchingRecentPlacesPreview.map((item, index) => (
                         <PlaceResultRow
                           icon="history"
                           item={item}
@@ -681,16 +799,9 @@ export default function DestinationSearchScreen() {
             </ScrollView>
 
             {/* ── Confirm button ── */}
-            {submitError ? (
-              <View style={styles.footerNotice}>
-                <AppText variant="bodySmall" color={theme.colors.danger}>
-                  {submitError}
-                </AppText>
-              </View>
-            ) : null}
             <View style={styles.footerActionBar}>
               <AppButton
-                disabled={isConfirmDisabled || isSubmittingRoute}
+                disabled={isSubmittingRoute}
                 title={
                   flowMode === "trip-edit"
                     ? isSubmittingRoute
@@ -698,38 +809,7 @@ export default function DestinationSearchScreen() {
                       : "Update trip route"
                     : "Confirm route"
                 }
-                onPress={async () => {
-                  if (flowMode === "trip-edit") {
-                    setSubmitError(null);
-                    setIsSubmittingRoute(true);
-                    try {
-                      await updateRideRoute(itinerary);
-                      router.replace({
-                        pathname: "/rider/active-trip",
-                        params: { itinerary: serializedItinerary },
-                      });
-                    } catch (error) {
-                      setSubmitError(
-                        error instanceof Error
-                          ? error.message
-                          : "Could not update the ride route.",
-                      );
-                    } finally {
-                      setIsSubmittingRoute(false);
-                    }
-                    return;
-                  }
-                  setSubmitError(null);
-                  router.push({
-                    pathname: "/ride-selection",
-                    params: {
-                      itinerary: serializedItinerary,
-                      estimate: serializeRideEstimate(
-                        prefetchedEstimate ?? instantEstimate,
-                      ),
-                    },
-                  });
-                }}
+                onPress={handleConfirmRoute}
               />
             </View>
           </View>
@@ -800,9 +880,9 @@ export default function DestinationSearchScreen() {
                       Finding matching locations.
                     </AppText>
                   </View>
-                ) : matchingRecentPlaces.length > 0 || providerResults.length > 0 ? (
+                ) : matchingRecentPlacesPreview.length > 0 || providerResults.length > 0 ? (
                   <View style={styles.resultsListContent}>
-                    {trimmedSearchQuery.length === 0 && matchingRecentPlaces.length > 0 ? (
+                    {trimmedSearchQuery.length === 0 && matchingRecentPlacesPreview.length > 0 ? (
                       <View style={styles.sectionHeading}>
                         <AppText variant="monoSmall" color={theme.colors.muted}>
                           HISTORY
@@ -812,7 +892,7 @@ export default function DestinationSearchScreen() {
                         </AppText>
                       </View>
                     ) : null}
-                    {matchingRecentPlaces.map((item, index) => (
+                    {matchingRecentPlacesPreview.map((item, index) => (
                       <PlaceResultRow
                         icon="history"
                         item={item}
@@ -845,9 +925,9 @@ export default function DestinationSearchScreen() {
                         Recent places saved on this device
                       </AppText>
                     </View>
-                    {recentPlaces.length > 0 ? (
+                    {recentPlacesPreview.length > 0 ? (
                       <View style={styles.resultsListContent}>
-                        {recentPlaces.map((item, index) => (
+                        {recentPlacesPreview.map((item, index) => (
                           <PlaceResultRow
                             icon="history"
                             item={item}
@@ -878,6 +958,8 @@ export default function DestinationSearchScreen() {
 // ─── Sub-components ────────────────────────────────────────────────────────────
 
 type SearchTriggerFieldProps = {
+  dense?: boolean;
+  compact?: boolean;
   color: string;
   label: string;
   marker: "circle" | "square";
@@ -886,6 +968,8 @@ type SearchTriggerFieldProps = {
 };
 
 function SearchTriggerField({
+  dense,
+  compact,
   color,
   label,
   marker,
@@ -893,11 +977,25 @@ function SearchTriggerField({
   value,
 }: SearchTriggerFieldProps) {
   return (
-    <View style={styles.triggerFieldBlock}>
-      <AppText variant="bodySmall" color={theme.colors.muted}>
+    <View style={[styles.triggerFieldBlock, dense ? styles.triggerFieldBlockDense : null]}>
+      <AppText
+        variant="bodySmall"
+        color={theme.colors.muted}
+        style={[
+          dense ? styles.fieldLabelDense : null,
+          compact ? styles.fieldLabelCompact : null,
+        ]}
+      >
         {label}
       </AppText>
-      <Pressable onPress={onPress} style={styles.triggerField}>
+      <Pressable
+        onPress={onPress}
+        style={[
+          styles.triggerField,
+          dense ? styles.triggerFieldDense : null,
+          compact ? styles.triggerFieldCompact : null,
+        ]}
+      >
         <View
           style={[
             marker === "circle" ? styles.markerCircle : styles.markerSquare,
@@ -905,7 +1003,11 @@ function SearchTriggerField({
           ]}
         />
         <AppText numberOfLines={1} variant="body" style={styles.triggerText}>
-          {value}
+          {value || (
+            <AppText variant="body" color={theme.colors.muted}>
+              Where from?
+            </AppText>
+          )}
         </AppText>
       </Pressable>
     </View>
@@ -941,12 +1043,16 @@ function PlaceResultRow({
 }
 
 function DestinationField({
+  dense,
+  compact,
   isEditing,
   onChangeText,
   onFocus,
   onSubmitEditing,
   value,
 }: {
+  dense?: boolean;
+  compact?: boolean;
   isEditing: boolean;
   onChangeText: (value: string) => void;
   onFocus: () => void;
@@ -954,11 +1060,25 @@ function DestinationField({
   value: string;
 }) {
   return (
-    <View style={styles.triggerFieldBlock}>
-      <AppText variant="bodySmall" color={theme.colors.muted}>
+    <View style={[styles.triggerFieldBlock, dense ? styles.triggerFieldBlockDense : null]}>
+      <AppText
+        variant="bodySmall"
+        color={theme.colors.muted}
+        style={[
+          dense ? styles.fieldLabelDense : null,
+          compact ? styles.fieldLabelCompact : null,
+        ]}
+      >
         Destination
       </AppText>
-      <View style={[styles.triggerField, isEditing ? styles.routeInputActive : null]}>
+      <View
+        style={[
+          styles.triggerField,
+          dense ? styles.triggerFieldDense : null,
+          compact ? styles.triggerFieldCompact : null,
+          isEditing ? styles.routeInputActive : null,
+        ]}
+      >
         <View style={[styles.markerSquare, { backgroundColor: theme.colors.orange }]} />
         <TextInput
           onChangeText={onChangeText}
@@ -976,6 +1096,8 @@ function DestinationField({
 
 type StopRouteFieldProps = {
   canRemove: boolean;
+  dense?: boolean;
+  compact?: boolean;
   isEditing: boolean;
   isDragging: boolean;
   label: string;
@@ -991,6 +1113,8 @@ type StopRouteFieldProps = {
 
 function StopRouteField({
   canRemove,
+  dense,
+  compact,
   isEditing,
   isDragging,
   label,
@@ -1020,8 +1144,15 @@ function StopRouteField({
   );
 
   return (
-    <View style={styles.triggerFieldBlock}>
-      <AppText variant="bodySmall" color={theme.colors.muted}>
+    <View style={[styles.triggerFieldBlock, dense ? styles.triggerFieldBlockDense : null]}>
+      <AppText
+        variant="bodySmall"
+        color={theme.colors.muted}
+        style={[
+          dense ? styles.fieldLabelDense : null,
+          compact ? styles.fieldLabelCompact : null,
+        ]}
+      >
         {label}
       </AppText>
       <View
@@ -1033,6 +1164,8 @@ function StopRouteField({
         <View
           style={[
             styles.stopFieldPressable,
+            dense ? styles.stopFieldPressableDense : null,
+            compact ? styles.stopFieldPressableCompact : null,
             isEditing ? styles.routeInputActive : null,
           ]}
         >
@@ -1059,7 +1192,14 @@ function StopRouteField({
         </View>
 
         {canRemove ? (
-          <Pressable onPress={onRemove} style={styles.iconButton}>
+          <Pressable
+            onPress={onRemove}
+            style={[
+              styles.iconButton,
+              dense ? styles.iconButtonDense : null,
+              compact ? styles.iconButtonCompact : null,
+            ]}
+          >
             <MaterialIcons color={theme.colors.black} name="close" size={18} />
           </Pressable>
         ) : (
@@ -1100,6 +1240,14 @@ const styles = StyleSheet.create({
     paddingBottom: theme.spacing.xl,
     gap: theme.spacing.md,
   },
+  formScrollContentCondensed: {
+    paddingBottom: theme.spacing.lg,
+    gap: theme.spacing.sm,
+  },
+  formScrollContentCompact: {
+    paddingBottom: theme.spacing.md,
+    gap: theme.spacing.xs,
+  },
   searchScrollContent: {
     flexGrow: 1,
     paddingBottom: theme.spacing.xl,
@@ -1122,6 +1270,21 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.white,
     ...theme.shadows.card,
   },
+  formSheetCondensed: {
+    gap: theme.spacing.xs,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.sm,
+  },
+  formSheetDense: {
+    gap: 6,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: 10,
+  },
+  formSheetCompact: {
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
   formConnector: {
     position: "absolute",
     left: 27,
@@ -1129,8 +1292,19 @@ const styles = StyleSheet.create({
     width: 2,
     backgroundColor: theme.colors.borderLight,
   },
+  formConnectorCondensed: {
+    left: 23,
+    top: 48,
+  },
+  formConnectorDense: {
+    left: 23,
+    top: 50,
+  },
   triggerFieldBlock: {
     gap: theme.spacing.xs,
+  },
+  triggerFieldBlockDense: {
+    gap: 4,
   },
   triggerField: {
     minHeight: 54,
@@ -1143,6 +1317,24 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing.sm,
+  },
+  triggerFieldCompact: {
+    minHeight: 46,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.xs,
+  },
+  triggerFieldDense: {
+    minHeight: 50,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: 6,
+  },
+  fieldLabelDense: {
+    fontSize: 11,
+    lineHeight: 14,
+  },
+  fieldLabelCompact: {
+    fontSize: 10,
+    lineHeight: 12,
   },
   triggerText: {
     flex: 1,
@@ -1278,6 +1470,16 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: theme.spacing.sm,
   },
+  stopFieldPressableCompact: {
+    minHeight: 46,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.xs,
+  },
+  stopFieldPressableDense: {
+    minHeight: 50,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: 6,
+  },
   routeInputActive: {
     borderColor: theme.colors.orange,
     backgroundColor: "#FFF8F2",
@@ -1304,6 +1506,14 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.white,
     ...theme.shadows.subtle,
   },
+  iconButtonCompact: {
+    width: 40,
+    minHeight: 46,
+  },
+  iconButtonDense: {
+    width: 42,
+    minHeight: 50,
+  },
   iconButtonPlaceholder: {
     width: 44,
   },
@@ -1322,6 +1532,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.spacing.md,
     paddingVertical: theme.spacing.sm,
     ...theme.shadows.card,
+  },
+  addStopRowCompact: {
+    minHeight: 48,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.xs,
+  },
+  addStopRowDense: {
+    minHeight: 52,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: 6,
+  },
+  addStopRowUltraCompact: {
+    minHeight: 44,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
   },
   addStopRowDisabled: {
     opacity: 0.55,

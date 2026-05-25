@@ -1,5 +1,5 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
-import { useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -23,7 +23,39 @@ const rideTabs = [
   { id: "scheduled", label: "Scheduled Rides" },
 ] as const;
 
+function EmptyRideState({
+  title,
+  subtitle,
+  icon,
+}: {
+  title: string;
+  subtitle: string;
+  icon: keyof typeof MaterialIcons.glyphMap;
+}) {
+  return (
+    <View style={styles.emptyState}>
+      <View style={styles.emptyWatermark}>
+        <View style={styles.emptyArtwork}>
+          <View style={styles.emptyArtworkMain}>
+            <MaterialIcons color={theme.colors.black} name={icon} size={56} />
+          </View>
+        </View>
+
+        <View style={styles.emptyCopy}>
+          <AppText variant="h2" style={styles.emptyTitle}>
+            {title}
+          </AppText>
+          <AppText variant="bodyMedium" color={theme.colors.muted}>
+            {subtitle}
+          </AppText>
+        </View>
+      </View>
+    </View>
+  );
+}
+
 export default function RiderHistoryScreen() {
+  const router = useRouter();
   const params = useLocalSearchParams<{ tab?: string | string[]; toast?: string | string[] }>();
   const insets = useSafeAreaInsets();
   const toastOpacity = useRef(new Animated.Value(0)).current;
@@ -46,6 +78,11 @@ export default function RiderHistoryScreen() {
     requestedTab
   );
   const visibleRides = activeTab === "history" ? rides : scheduledRides;
+  const isCurrentTabLoading =
+    activeTab === "history" ? isLoading : isLoadingScheduled;
+  const isCurrentTabError =
+    activeTab === "history" ? error : scheduledError;
+  const showRideFab = !isCurrentTabLoading && !isCurrentTabError;
 
   useEffect(() => {
     setActiveTab(requestedTab);
@@ -169,18 +206,22 @@ export default function RiderHistoryScreen() {
           !isLoading &&
           !error &&
           visibleRides.length === 0 ? (
-            <AppText variant="bodySmall" color={theme.colors.muted}>
-              No completed rides yet.
-            </AppText>
+            <EmptyRideState
+              title="No rides yet"
+              subtitle="Your completed trips will show up here with fares, timing, and every route you finish."
+              icon="directions-car"
+            />
           ) : null}
 
           {activeTab === "scheduled" &&
           !isLoadingScheduled &&
           !scheduledError &&
           visibleRides.length === 0 ? (
-            <AppText variant="bodySmall" color={theme.colors.muted}>
-              No scheduled rides yet.
-            </AppText>
+            <EmptyRideState
+              title="No scheduled rides"
+              subtitle="Plan airport runs, early pickups, and later trips here so this page never feels empty again."
+              icon="calendar-month"
+            />
           ) : null}
 
           {visibleRides.map((ride) => (
@@ -217,8 +258,30 @@ export default function RiderHistoryScreen() {
               </View>
             </AppCard>
           ))}
+
         </View>
       </AppScreen>
+
+      {showRideFab ? (
+        <Pressable
+          onPress={() =>
+            router.push(
+              activeTab === "scheduled"
+                ? "/schedule-ride"
+                : "/destination-search",
+            )
+          }
+          style={[
+            styles.screenFab,
+            {
+              bottom: Math.max(0, insets.bottom - theme.spacing.lg),
+              right: theme.spacing.sm,
+            },
+          ]}
+        >
+          <MaterialIcons color={theme.colors.offWhite} name="add" size={20} />
+        </Pressable>
+      ) : null}
 
       {toastMessage ? (
         <Animated.View
@@ -293,7 +356,56 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.orange,
   },
   list: {
+    flex: 1,
     gap: theme.spacing.sm,
+    paddingBottom: 68,
+  },
+  emptyState: {
+    position: "relative",
+    flex: 1,
+    justifyContent: "center",
+    gap: theme.spacing.lg,
+    paddingVertical: theme.spacing.xl,
+  },
+  emptyWatermark: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    opacity: 0.28,
+  },
+  emptyArtwork: {
+    minHeight: 128,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  emptyArtworkMain: {
+    width: 108,
+    height: 108,
+    borderRadius: theme.radius.pill,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  emptyCopy: {
+    gap: theme.spacing.sm,
+    alignItems: "center",
+  },
+  emptyTitle: {
+    fontSize: 24,
+    lineHeight: 28,
+    textAlign: "center",
+  },
+  screenFab: {
+    position: "absolute",
+    zIndex: 10,
+    width: 44,
+    height: 44,
+    borderRadius: theme.radius.pill,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    backgroundColor: theme.colors.orange,
+    alignItems: "center",
+    justifyContent: "center",
+    ...theme.shadows.card,
   },
   card: {
     flexDirection: "row",

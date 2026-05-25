@@ -63,8 +63,13 @@ function formatWhen(value: string): string {
 }
 
 function formatFare(ride: RiderHistoryRide): string {
-  const fare = ride.fareFinalUsdt ?? ride.fareEstimateUsdt;
-  return typeof fare === "number" ? `${fare.toFixed(2)} USDT` : "Fare pending";
+  const fareNgn = ride.fareFinalNgn ?? ride.fareEstimateNgn;
+  if (typeof fareNgn === "number" && Number.isFinite(fareNgn)) {
+    return `NGN ${Math.round(fareNgn).toLocaleString("en-NG")}`;
+  }
+
+  const fareUsdt = ride.fareFinalUsdt ?? ride.fareEstimateUsdt;
+  return typeof fareUsdt === "number" ? `${fareUsdt.toFixed(2)} USDT` : "Fare pending";
 }
 
 function mapIcon(ride: RiderHistoryRide): string {

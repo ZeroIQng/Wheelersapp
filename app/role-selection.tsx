@@ -1,8 +1,8 @@
 import { useLoginWithOAuth, usePrivy, type User } from "@privy-io/expo";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { useEffect, useState } from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import { Alert, Pressable, StyleSheet, View } from "react-native";
 import Animated, {
   Easing,
   FadeIn,
@@ -20,11 +20,16 @@ import { AppScreen } from "@/components/app-screen";
 import { AppText } from "@/components/app-text";
 import { BlobShape, DiamondPair, RingStack, StarBurst } from "@/components/decorative-shapes";
 import { FlowHeader } from "@/components/flow-header";
+import { getAccessTokenWithRetry } from "@/lib/access-token";
+import { getDisplayErrorMessage, isIgnorableUserCancelledError } from "@/lib/errors";
 import { FloatingView, PulseView, RevealView } from "@/components/motion";
 import { RoleMotionBadge } from "@/components/role-motion-badge";
 import { isBackendConfigured, syncPrivyAuth, type BackendRole } from "@/lib/api";
-import { getAuthenticatedRoute, persistAuthenticatedRole } from "@/lib/auth-state";
-// import { clearStoredAuthState } from "@/lib/auth-state";
+import {
+  getAuthenticatedRoute,
+  persistAuthenticatedRole,
+  readLogoutPending,
+} from "@/lib/auth-state";
 import { isPrivyConfigured, privyOAuthRedirectPath } from "@/lib/privy";
 import {
   getPrivyEmail,
@@ -60,7 +65,7 @@ async function resolveAuthenticatedRoute({
   getAccessToken: AccessTokenGetter;
   requestedRole?: BackendRole;
 }) {
-  const accessToken = await getAccessToken();
+  const accessToken = await getAccessTokenWithRetry(getAccessToken);
   if (!accessToken) {
     throw new Error("Could not get a Privy access token.");
   }
@@ -122,7 +127,16 @@ const walletConnectTheme = {
 };
 
 export default function RoleSelectionScreen() {
+  if (!isPrivyConfigured) {
+    return <RoleSelectionScreenContent />;
+  }
+
+  return <PrivyRoleSelectionScreen />;
+}
+
+function PrivyRoleSelectionScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ logout?: string | string[] }>();
   const { getAccessToken, isReady, user } = usePrivy();
   const [selectedRole, setSelectedRole] = useState<Role>("ride");
   const [rideMotionKey, setRideMotionKey] = useState(0);
@@ -130,9 +144,31 @@ export default function RoleSelectionScreen() {
   const [restoreAttempt, setRestoreAttempt] = useState(0);
   const [restoreError, setRestoreError] = useState<string | null>(null);
   const [isRestoringSession, setIsRestoringSession] = useState(false);
+  const [logoutPending, setLogoutPending] = useState(false);
+  const [isManualAuthFlow, setIsManualAuthFlow] = useState(false);
+  const lastRestoreAlertRef = useRef<string | null>(null);
+  const logoutRequested =
+    (Array.isArray(params.logout) ? params.logout[0] : params.logout) === "1";
+  const shouldSuppressRestore = logoutRequested || logoutPending;
 
   useEffect(() => {
-    if (!isPrivyConfigured || !isReady || !user) {
+    let cancelled = false;
+
+    void (async () => {
+      const pending = await readLogoutPending();
+      if (!cancelled) {
+        setLogoutPending(pending);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isPrivyConfigured || !isReady || !user || shouldSuppressRestore || isManualAuthFlow) {
+      setIsRestoringSession(false);
       return;
     }
 
@@ -164,11 +200,7 @@ export default function RoleSelectionScreen() {
           return;
         }
 
-        setRestoreError(
-          error instanceof Error
-            ? error.message
-            : "Could not restore your account.",
-        );
+        setRestoreError(getDisplayErrorMessage(error, "Could not restore your account."));
         setIsRestoringSession(false);
       }
     })();
@@ -176,7 +208,21 @@ export default function RoleSelectionScreen() {
     return () => {
       cancelled = true;
     };
-  }, [getAccessToken, isReady, restoreAttempt, router, user]);
+  }, [getAccessToken, isManualAuthFlow, isReady, restoreAttempt, router, shouldSuppressRestore, user]);
+
+  useEffect(() => {
+    if (!restoreError) {
+      lastRestoreAlertRef.current = null;
+      return;
+    }
+
+    if (lastRestoreAlertRef.current === restoreError) {
+      return;
+    }
+
+    lastRestoreAlertRef.current = restoreError;
+    Alert.alert("Account restore failed", restoreError);
+  }, [restoreError]);
 
   function handleRolePress(role: Role) {
     setSelectedRole(role);
@@ -187,7 +233,7 @@ export default function RoleSelectionScreen() {
     setDriveMotionKey((current) => current + 1);
   }
 
-  if (isPrivyConfigured && (!isReady || user)) {
+  if (isPrivyConfigured && !shouldSuppressRestore && (!isReady || user)) {
     return (
       <SessionRestoreSplash
         isRestoring={isRestoringSession || !isReady}
@@ -196,9 +242,41 @@ export default function RoleSelectionScreen() {
             ? () => setRestoreAttempt((current) => current + 1)
             : undefined
         }
-        statusMessage={restoreError ?? undefined}
       />
     );
+  }
+
+  return (
+    <RoleSelectionScreenContent
+      selectedRole={selectedRole}
+      onRolePress={handleRolePress}
+      onSyncStateChange={setIsManualAuthFlow}
+    />
+  );
+}
+
+function RoleSelectionScreenContent({
+  selectedRole: selectedRoleProp = "ride",
+  onRolePress,
+  onSyncStateChange,
+}: {
+  selectedRole?: Role;
+  onRolePress?: (role: Role) => void;
+  onSyncStateChange?: (active: boolean) => void;
+}) {
+  const router = useRouter();
+  const [selectedRole, setSelectedRole] = useState<Role>(selectedRoleProp);
+  const [rideMotionKey, setRideMotionKey] = useState(0);
+  const [driveMotionKey, setDriveMotionKey] = useState(1);
+
+  function handleRolePress(role: Role) {
+    setSelectedRole(role);
+    onRolePress?.(role);
+    if (role === "ride") {
+      setRideMotionKey((current) => current + 1);
+      return;
+    }
+    setDriveMotionKey((current) => current + 1);
   }
 
   return (
@@ -214,7 +292,7 @@ export default function RoleSelectionScreen() {
       </FloatingView>
       <RevealView delay={40} from="down" style={styles.headerWrap}>
         <FlowHeader
-          overline="WELCOME TO WHELEERS"
+          overline="WELCOME TO WHEELERS"
           title={"Ride.\nEarn.\nOwn a piece."}
           subtitle="The first decentralized ride-hailing app."
           progress={{ count: 5, active: 1 }}
@@ -242,7 +320,10 @@ export default function RoleSelectionScreen() {
 
       <RevealView delay={220} style={styles.actions}>
         {isPrivyConfigured ? (
-          <GoogleContinueButton role={selectedRole} />
+          <GoogleContinueButton
+            role={selectedRole}
+            onSyncStateChange={onSyncStateChange}
+          />
         ) : (
           <AppButton
             title="Connect with Google ↗"
@@ -348,8 +429,10 @@ function SessionRestoreSplash({
 
 function GoogleContinueButton({
   role,
+  onSyncStateChange,
 }: {
   role: Role;
+  onSyncStateChange?: (active: boolean) => void;
 }) {
   const router = useRouter();
   const { user, isReady, getAccessToken } = usePrivy();
@@ -358,26 +441,44 @@ function GoogleContinueButton({
   const [syncError, setSyncError] = useState<string | null>(null);
   const hasGoogleLinkedAccount = Boolean(user && hasGoogleAccount(user));
   const [isSyncing, setIsSyncing] = useState(false);
+  const lastInlineAlertRef = useRef<string | null>(null);
   // const [isResetting, setIsResetting] = useState(false);
   const isLoading = state.status === "loading";
   const errorMessage =
     syncError ??
     (state.status === "error"
-      ? (state.error?.message ?? "Could not continue with Google.")
+      ? getDisplayErrorMessage(state.error, "Could not continue with Google.")
       : null);
+
+  useEffect(() => {
+    if (!errorMessage) {
+      lastInlineAlertRef.current = null;
+      return;
+    }
+
+    if (lastInlineAlertRef.current === errorMessage) {
+      return;
+    }
+
+    lastInlineAlertRef.current = errorMessage;
+    Alert.alert("Sign-in failed", errorMessage);
+  }, [errorMessage]);
 
   async function handlePress() {
     if (isLoading || isSyncing) return;
 
     setSyncError(null);
+    onSyncStateChange?.(true);
 
     if (!isBackendConfigured()) {
       setSyncError("Set EXPO_PUBLIC_API_BASE_URL before continuing.");
+      onSyncStateChange?.(false);
       return;
     }
 
     if (!isReady) {
       setSyncError("Privy is still initializing. Try again in a moment.");
+      onSyncStateChange?.(false);
       return;
     }
 
@@ -386,15 +487,24 @@ function GoogleContinueButton({
     let authenticatedUser = user ?? undefined;
     let requestedRole: BackendRole | undefined = selectedBackendRole;
     if (!authenticatedUser || !hasGoogleAccount(authenticatedUser)) {
-      authenticatedUser = await login({
-        provider: "google",
-        redirectUri: privyOAuthRedirectPath,
-      });
+      try {
+        authenticatedUser = await login({
+          provider: "google",
+          redirectUri: privyOAuthRedirectPath,
+        });
+      } catch (error) {
+        if (!isIgnorableUserCancelledError(error) || __DEV__) {
+          setSyncError(getDisplayErrorMessage(error, "Could not continue with Google."));
+        }
+        onSyncStateChange?.(false);
+        return;
+      }
     } else {
       requestedRole = undefined;
     }
 
     if (!authenticatedUser) {
+      onSyncStateChange?.(false);
       return;
     }
 
@@ -408,11 +518,8 @@ function GoogleContinueButton({
       });
       router.replace(destination);
     } catch (error) {
-      setSyncError(
-        error instanceof Error
-          ? error.message
-          : "Could not sync your account with Wheelers.",
-      );
+      setSyncError(getDisplayErrorMessage(error, "Could not sync your account with Wheelers."));
+      onSyncStateChange?.(false);
     } finally {
       setIsSyncing(false);
     }
@@ -471,11 +578,6 @@ function GoogleContinueButton({
         />
       ) : null}
       */}
-      {errorMessage ? (
-        <AppText variant="bodySmall" color={theme.colors.danger}>
-          {errorMessage}
-        </AppText>
-      ) : null}
     </View>
   );
 }

@@ -1,6 +1,6 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 
 import { AppButton } from "@/components/app-button";
@@ -10,8 +10,10 @@ import { AppText } from "@/components/app-text";
 import { BackArrow } from "@/components/back-arrow";
 import { LiveMap } from "@/components/live-map";
 import { MetricCard } from "@/components/MetricCard";
+import { RideMovementBar } from "@/components/RideMovementBar";
 import { StatusPill } from "@/components/StatusPill";
 import { TripProgressBar } from "@/components/TripProgressBar";
+import { useAppLocation } from "@/lib/location";
 import {
   getAdditionalStopCount,
   getRideRouteRows,
@@ -38,6 +40,7 @@ function formatRideFare(params: {
 
 export default function RiderActiveTripScreen() {
   const router = useRouter();
+  const { backgroundGranted, requestBackgroundLocationAccess } = useAppLocation();
   const params = useLocalSearchParams<{
     itinerary?: string | string[];
   }>();
@@ -50,6 +53,7 @@ export default function RiderActiveTripScreen() {
   const routeRows = useMemo(() => getRideRouteRows(itinerary), [itinerary]);
   const extraStops = getAdditionalStopCount(itinerary);
   const serializedItinerary = serializeRideItinerary(itinerary);
+  const backgroundPromptedRef = useRef(false);
   const nextStop =
     currentRide?.driverLocation?.nextStopAddress ??
     routeRows[1]?.value ??
@@ -114,6 +118,23 @@ export default function RiderActiveTripScreen() {
     },
   ];
 
+  useEffect(() => {
+    if (
+      backgroundPromptedRef.current ||
+      backgroundGranted ||
+      (currentRide?.status !== "matched" && currentRide?.status !== "active")
+    ) {
+      return;
+    }
+
+    backgroundPromptedRef.current = true;
+    void requestBackgroundLocationAccess();
+  }, [
+    backgroundGranted,
+    currentRide?.status,
+    requestBackgroundLocationAccess,
+  ]);
+
   async function handleCancelRide() {
     try {
       await cancelRide("rider_cancelled");
@@ -166,6 +187,14 @@ export default function RiderActiveTripScreen() {
                   ? 0.28
                   : 0.14
           }
+        />
+
+        <RideMovementBar
+          distanceToNextStopKm={currentRide?.driverLocation?.distanceToNextStopKm}
+          totalDistanceKm={currentRide?.driverLocation?.totalDistanceKm}
+          plannedDistanceKm={currentRide?.plannedDistanceKm}
+          nextStopAddress={currentRide?.driverLocation?.nextStopAddress}
+          isStale={currentRide?.driverLocation?.isStale}
         />
 
         <View style={styles.metricsRow}>

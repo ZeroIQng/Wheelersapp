@@ -10,6 +10,8 @@ import { useEffect } from "react";
 import { useColorScheme } from "react-native";
 
 import { AppLockOverlay, AppLockProvider } from "@/lib/app-lock";
+import { LocationProvider } from "@/lib/location";
+import { AppNotificationsProvider } from "@/lib/notifications";
 import { RideSessionProvider } from "@/lib/ride-session";
 import { isPrivyConfigured, privyAppId, privyClientId } from "@/lib/privy";
 import { ThirdwebProvider } from "@/lib/thirdweb-runtime";
@@ -83,12 +85,16 @@ export default function RootLayout() {
         },
       }}
     >
-      <RideSessionProvider>
-        <AppLockProvider>
-          {withWalletKit}
-          <PrivyAppLockOverlay />
-        </AppLockProvider>
-      </RideSessionProvider>
+      <LocationProvider>
+        <RideSessionProvider>
+          <AppNotificationsProvider>
+            <AppLockProvider>
+              {withWalletKit}
+              <PrivyAppLockOverlay />
+            </AppLockProvider>
+          </AppNotificationsProvider>
+        </RideSessionProvider>
+      </LocationProvider>
     </PrivyProvider>
   );
 }

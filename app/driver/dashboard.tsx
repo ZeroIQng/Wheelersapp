@@ -1,5 +1,6 @@
 import { Href, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { useEffect, useRef } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { AppButton } from '@/components/app-button';
@@ -11,12 +12,34 @@ import { MetricCard } from '@/components/MetricCard';
 import { SectionHeader } from '@/components/SectionHeader';
 import { StatusPill } from '@/components/StatusPill';
 import { driverDashboardSummary, driverWalletOverview } from '@/data/mock';
+import { useAppLocation } from '@/lib/location';
+import { useAppNotifications } from '@/lib/notifications';
 import { theme } from '@/theme';
 
 export default function DriverDashboardScreen() {
   const router = useRouter();
+  const { permissionState, requestLocationAccess } = useAppLocation();
+  const { permissionGranted, requestNotificationAccess } = useAppNotifications();
   const requestRoute = '/driver/incoming-request' as Href;
   const walletRoute = '/driver/wallet' as Href;
+  const notificationPromptedRef = useRef(false);
+
+  useEffect(() => {
+    if (permissionState !== 'idle') {
+      return;
+    }
+
+    void requestLocationAccess();
+  }, [permissionState, requestLocationAccess]);
+
+  useEffect(() => {
+    if (notificationPromptedRef.current || permissionGranted) {
+      return;
+    }
+
+    notificationPromptedRef.current = true;
+    void requestNotificationAccess();
+  }, [permissionGranted, requestNotificationAccess]);
 
   return (
     <AppScreen backgroundColor={theme.colors.offWhite} scroll contentStyle={styles.container}>

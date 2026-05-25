@@ -12,10 +12,10 @@ export const isThirdwebConfigured = Boolean(thirdwebClientId);
 export const isThirdwebSdkAvailable = !isExpoGo;
 
 export const thirdwebAppMetadata = {
-  name: "Wheleers",
-  url: "https://wheleers.app",
+  name: "Wheelers",
+  url: "https://www.wheelersng.com/",
   description: "Decentralized ride-hailing onboarding for riders and drivers.",
-  logoUrl: "https://wheleers.app/icon.png",
+  logoUrl: "https://www.wheelersng.com/icon.png",
 };
 
 type ThirdwebChainsModule = typeof import("thirdweb/chains");

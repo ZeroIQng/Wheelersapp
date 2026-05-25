@@ -500,7 +500,7 @@ export const settingsOptions = [
 ] satisfies SettingOption[];
 
 export const supportChat = {
-  agentName: 'Wheleers Support',
+  agentName: 'Wheelers Support',
   status: 'Online now',
   avatar: '🤖',
   messages: [

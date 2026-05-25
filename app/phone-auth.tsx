@@ -2,7 +2,7 @@ import { usePrivy } from "@privy-io/expo";
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useState } from "react";
-import { StyleSheet, TextInput, View } from "react-native";
+import { Alert, StyleSheet, TextInput, View } from "react-native";
 
 import { AppButton } from "@/components/app-button";
 import { AppScreen } from "@/components/app-screen";
@@ -15,6 +15,7 @@ import {
   storePendingPhoneVerification,
   storePhoneEntryStep,
 } from "@/lib/auth-state";
+import { isPrivyConfigured } from "@/lib/privy";
 import { theme } from "@/theme";
 
 function toLocalPhoneDigits(phone: string): string {
@@ -42,10 +43,17 @@ function toE164Phone(rawPhone: string): string {
 }
 
 export default function PhoneAuthScreen() {
+  if (!isPrivyConfigured) {
+    return <PrivyUnavailableScreen />;
+  }
+
+  return <PrivyPhoneAuthScreen />;
+}
+
+function PrivyPhoneAuthScreen() {
   const router = useRouter();
   const { getAccessToken, isReady } = usePrivy();
   const [phone, setPhone] = useState("");
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
   const backgroundColor = theme.colors.offWhite;
   const textColor = theme.colors.black;
@@ -63,10 +71,8 @@ export default function PhoneAuthScreen() {
       return;
     }
 
-    setErrorMessage(null);
-
     if (!isReady) {
-      setErrorMessage("Privy is still initializing. Try again in a moment.");
+      Alert.alert("Try again", "Privy is still initializing. Try again in a moment.");
       return;
     }
 
@@ -74,7 +80,8 @@ export default function PhoneAuthScreen() {
     try {
       normalizedPhone = toE164Phone(phone);
     } catch (error) {
-      setErrorMessage(
+      Alert.alert(
+        "Invalid phone number",
         error instanceof Error ? error.message : "Enter a valid phone number.",
       );
       return;
@@ -82,7 +89,7 @@ export default function PhoneAuthScreen() {
 
     const accessToken = await getAccessToken();
     if (!accessToken) {
-      setErrorMessage("Could not get a Privy access token.");
+      Alert.alert("Authentication required", "Could not get a Privy access token.");
       return;
     }
 
@@ -96,10 +103,11 @@ export default function PhoneAuthScreen() {
       await storePendingPhoneVerification(response.phone);
       router.replace("/otp-verify");
     } catch (error) {
-      setErrorMessage(
+      Alert.alert(
+        "Code send failed",
         error instanceof Error
           ? error.message
-          : "Could not send the phone verification code.",
+          : "Could not send the WhatsApp verification code.",
       );
     } finally {
       setIsSending(false);
@@ -123,9 +131,9 @@ export default function PhoneAuthScreen() {
         <FlowHeader
           showBack
           backHref="/role-selection"
-          overline="PHONE VERIFY"
+          overline="WHATSAPP VERIFY"
           title={"What's your\nnumber?"}
-          subtitle="We'll send a one-time code to verify your phone."
+          subtitle="We'll send a one-time code to your WhatsApp to verify your phone."
           progress={{ count: 5, active: 2 }}
         />
 
@@ -168,7 +176,7 @@ export default function PhoneAuthScreen() {
 
         <RevealView delay={220} style={styles.sendButtonWrap}>
           <AppButton
-            title={isSending ? "Sending code…" : "Send code"}
+            title={isSending ? "Sending on WhatsApp…" : "Send on WhatsApp"}
             disabled={isSending}
             onPress={() => {
               void handleSendCode();
@@ -176,16 +184,30 @@ export default function PhoneAuthScreen() {
           />
         </RevealView>
 
-        {errorMessage ? (
-          <AppText variant="bodySmall" color={theme.colors.danger}>
-            {errorMessage}
-          </AppText>
-        ) : null}
-
         <AppText variant="bodySmall" color={mutedColor} style={styles.terms}>
           By continuing you agree to our Terms.
         </AppText>
       </RevealView>
+    </AppScreen>
+  );
+}
+
+function PrivyUnavailableScreen() {
+  const router = useRouter();
+
+  return (
+    <AppScreen
+      backgroundColor={theme.colors.offWhite}
+      contentStyle={styles.unavailableContainer}
+    >
+      <AppText variant="h3">Privy setup missing</AppText>
+      <AppText variant="bodySmall" color={theme.colors.muted}>
+        Add the Privy Expo env keys before opening phone verification.
+      </AppText>
+      <AppButton
+        title="Back to sign in"
+        onPress={() => router.replace("/role-selection")}
+      />
     </AppScreen>
   );
 }
@@ -235,6 +257,11 @@ const styles = StyleSheet.create({
   },
   sendButtonWrap: {
     width: "100%",
+  },
+  unavailableContainer: {
+    flex: 1,
+    justifyContent: "center",
+    gap: theme.spacing.md,
   },
   terms: {
     textAlign: "center",

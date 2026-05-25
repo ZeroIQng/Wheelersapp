@@ -24,6 +24,7 @@ import {
   readRecentPlaceSearches,
   saveRecentPlaceSearch,
 } from "@/lib/place-search-history";
+import { useAppLocation } from "@/lib/location";
 import { theme } from "@/theme";
 
 type ScreenMode = "form" | "search";
@@ -63,6 +64,7 @@ function isExactSearchMatch(place: PlaceSuggestion, query: string) {
 export default function GroupRideDestinationScreen() {
   const router = useRouter();
   const inputRef = useRef<TextInput>(null);
+  const { currentLocation } = useAppLocation();
 
   const [mode, setMode] = useState<ScreenMode>("form");
   const [activeField, setActiveField] = useState<ActiveField>("pickup");
@@ -74,6 +76,14 @@ export default function GroupRideDestinationScreen() {
   const [recentPlaces, setRecentPlaces] = useState<PlaceSuggestion[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [isDestinationEditing, setIsDestinationEditing] = useState(false);
+
+  useEffect(() => {
+    if (!currentLocation?.address || pickupValue.trim().length > 0) {
+      return;
+    }
+
+    setPickupValue(currentLocation.address);
+  }, [currentLocation?.address, pickupValue]);
 
   useEffect(() => {
     if (mode !== "search") return;
