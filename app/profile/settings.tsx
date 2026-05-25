@@ -46,6 +46,17 @@ const supportOptions = [
   },
 ] satisfies SettingOption[];
 
+const referralOptions = [
+  {
+    id: "referrals",
+    icon: "card-giftcard",
+    title: "Referral rewards",
+    subtitle: "Share your code and track ride cashback.",
+    type: "navigation",
+    route: "/growth/referral",
+  },
+] satisfies SettingOption[];
+
 type SettingsProfile = {
   initials: string;
   name: string;
@@ -268,6 +279,10 @@ function SettingsScreenBody({
       router.push("/profile/security-pin");
       return;
     }
+    if (id === "referrals") {
+      router.push("/growth/referral");
+      return;
+    }
     if (id === "logout") {
       if (isLoggingOut) {
         return;
@@ -352,6 +367,18 @@ function SettingsScreenBody({
             </AppText>
           </View>
           {renderRows(accountSettings)}
+
+          <View style={styles.fullDivider} />
+
+          <View style={styles.sectionLabel}>
+            <AppText variant="monoSmall" color={theme.colors.muted}>
+              REFERRALS
+            </AppText>
+            <AppText variant="bodySmall" color={theme.colors.muted}>
+              Invite riders and earn ride-only cashback.
+            </AppText>
+          </View>
+          {renderRows(referralOptions)}
 
           <View style={styles.fullDivider} />
 
