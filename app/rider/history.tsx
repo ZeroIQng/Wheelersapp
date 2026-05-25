@@ -82,8 +82,7 @@ export default function RiderHistoryScreen() {
     activeTab === "history" ? isLoading : isLoadingScheduled;
   const isCurrentTabError =
     activeTab === "history" ? error : scheduledError;
-  const showEmptyFab =
-    visibleRides.length === 0 && !isCurrentTabLoading && !isCurrentTabError;
+  const showRideFab = !isCurrentTabLoading && !isCurrentTabError;
 
   useEffect(() => {
     setActiveTab(requestedTab);
@@ -260,30 +259,10 @@ export default function RiderHistoryScreen() {
             </AppCard>
           ))}
 
-          {visibleRides.length > 0 ? (
-            <View style={styles.listFabDock}>
-              <Pressable
-                onPress={() =>
-                  router.push(
-                    activeTab === "scheduled"
-                      ? "/schedule-ride"
-                      : "/destination-search",
-                  )
-                }
-                style={styles.fab}
-              >
-                <MaterialIcons
-                  color={theme.colors.offWhite}
-                  name="add"
-                  size={20}
-                />
-              </Pressable>
-            </View>
-          ) : null}
         </View>
       </AppScreen>
 
-      {showEmptyFab ? (
+      {showRideFab ? (
         <Pressable
           onPress={() =>
             router.push(
@@ -293,7 +272,7 @@ export default function RiderHistoryScreen() {
             )
           }
           style={[
-            styles.emptyScreenFab,
+            styles.screenFab,
             {
               bottom: Math.max(0, insets.bottom - theme.spacing.lg),
               right: theme.spacing.sm,
@@ -415,22 +394,7 @@ const styles = StyleSheet.create({
     lineHeight: 28,
     textAlign: "center",
   },
-  listFabDock: {
-    alignItems: "flex-end",
-    marginTop: theme.spacing.xs,
-  },
-  fab: {
-    width: 44,
-    height: 44,
-    borderRadius: theme.radius.pill,
-    borderWidth: theme.borders.thick,
-    borderColor: theme.colors.black,
-    backgroundColor: theme.colors.orange,
-    alignItems: "center",
-    justifyContent: "center",
-    ...theme.shadows.card,
-  },
-  emptyScreenFab: {
+  screenFab: {
     position: "absolute",
     zIndex: 10,
     width: 44,

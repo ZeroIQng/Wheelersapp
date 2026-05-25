@@ -1,5 +1,5 @@
-import { useLocalSearchParams, useRouter } from "expo-router";
 import { usePrivy } from "@privy-io/expo";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -24,9 +24,13 @@ import { BackArrow } from "@/components/back-arrow";
 import { LiveMap } from "@/components/live-map";
 import { FloatingView } from "@/components/motion";
 import { getAccessTokenWithRetry } from "@/lib/access-token";
-import { createIdempotencyKey } from "@/lib/idempotency";
-import { getRideEstimate, isBackendConfigured, type RideEstimateResponse } from "@/lib/api";
+import {
+  getRideEstimate,
+  isBackendConfigured,
+  type RideEstimateResponse,
+} from "@/lib/api";
 import { resolvePlaceQuery } from "@/lib/google-places";
+import { createIdempotencyKey } from "@/lib/idempotency";
 import {
   buildInstantRideEstimate,
   parseRideEstimateParam,
@@ -44,13 +48,13 @@ import { theme } from "@/theme";
 const { height } = Dimensions.get("window");
 type RideTier = "basic" | "premium";
 
-function getLiveEstimateFareNgn(
-  estimate: RideEstimateResponse,
-): number | null {
-  if (typeof estimate.fareEstimateNgn === "number" && Number.isFinite(estimate.fareEstimateNgn)) {
+function getLiveEstimateFareNgn(estimate: RideEstimateResponse): number | null {
+  if (
+    typeof estimate.fareEstimateNgn === "number" &&
+    Number.isFinite(estimate.fareEstimateNgn)
+  ) {
     return estimate.fareEstimateNgn;
   }
-
   return null;
 }
 
@@ -73,35 +77,24 @@ function parseScheduledAtParam(
   value: string | string[] | undefined,
 ): string | null {
   const raw = Array.isArray(value) ? value[0] : value;
-  if (typeof raw !== "string" || raw.trim().length === 0) {
-    return null;
-  }
-
+  if (typeof raw !== "string" || raw.trim().length === 0) return null;
   const parsed = new Date(raw);
-  if (Number.isNaN(parsed.getTime())) {
-    return null;
-  }
-
+  if (Number.isNaN(parsed.getTime())) return null;
   return parsed.toISOString();
 }
 
 function formatScheduledAt(value: string): string {
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "your selected time";
-  }
-
+  if (Number.isNaN(date.getTime())) return "your selected time";
   const dayLabel = new Intl.DateTimeFormat("en-US", {
     weekday: "short",
     month: "short",
     day: "numeric",
   }).format(date);
-
   const timeLabel = new Intl.DateTimeFormat("en-US", {
     hour: "numeric",
     minute: "2-digit",
   }).format(date);
-
   return `${dayLabel}, ${timeLabel}`;
 }
 
@@ -118,7 +111,9 @@ function CarArtwork({
         <View style={[styles.evBody, { backgroundColor: accentColor }]}>
           <View style={styles.evCabin} />
           <View style={styles.evWindow} />
-          <View style={[styles.evBolt, { backgroundColor: theme.colors.white }]} />
+          <View
+            style={[styles.evBolt, { backgroundColor: theme.colors.white }]}
+          />
           <View style={[styles.evLight, styles.evHeadlight]} />
           <View style={[styles.evLight, styles.evTaillight]} />
         </View>
@@ -130,7 +125,9 @@ function CarArtwork({
         </View>
       </View>
       <View style={[styles.rideTierBadge, { backgroundColor: highlightColor }]}>
-        <AppText variant="monoSmall">{accentColor === theme.colors.orange ? "B" : "P"}</AppText>
+        <AppText variant="monoSmall">
+          {accentColor === theme.colors.orange ? "B" : "P"}
+        </AppText>
       </View>
     </View>
   );
@@ -161,10 +158,13 @@ export default function RideSelectionScreen() {
   const [liveEstimate, setLiveEstimate] = useState<RideEstimateResponse | null>(
     initialEstimate ?? fallbackEstimate,
   );
+  const [isEstimateLoading, setIsEstimateLoading] = useState(
+    () => isBackendConfigured() && !hasResolvedLiveEstimate(initialEstimate),
+  );
+  const [isExpanded, setIsExpanded] = useState(true);
   const [selectedRideTier, setSelectedRideTier] = useState<RideTier>("basic");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const scheduledRideIdempotencyKeyRef = useRef<string | null>(null);
-  const collapsedSheetOffset = 320;
   const sheetOffset = useSharedValue(0);
   const serializedItinerary = serializeRideItinerary(itinerary);
   const scheduledAt = useMemo(
@@ -174,44 +174,46 @@ export default function RideSelectionScreen() {
 
   useEffect(() => {
     setLiveEstimate(initialEstimate ?? fallbackEstimate);
+    setIsEstimateLoading(
+      isBackendConfigured() && !hasResolvedLiveEstimate(initialEstimate),
+    );
   }, [fallbackEstimate, initialEstimate]);
 
-  const SHEET_MIN_HEIGHT = 300;
+  const SHEET_MIN_HEIGHT = 260;
   const routeFitPadding = {
     top: 88,
     right: 56,
-    bottom: SHEET_MIN_HEIGHT + 44,
+    bottom: SHEET_MIN_HEIGHT + 36,
     left: 56,
   };
 
   const expandSheet = () => {
+    setIsExpanded(true);
     sheetOffset.value = withTiming(0, { duration: 220 });
   };
 
   const collapseSheet = () => {
-    sheetOffset.value = withTiming(collapsedSheetOffset, { duration: 220 });
+    setIsExpanded(false);
+    sheetOffset.value = withTiming(0, { duration: 220 });
   };
 
-  const sheetPanResponder = useRef(
+  // Pan responder ONLY for the handle pill — does not interfere with ScrollView
+  const handlePanResponder = useRef(
     PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: (_, gestureState) =>
-        Math.abs(gestureState.dy) > 10 &&
-        Math.abs(gestureState.dy) > Math.abs(gestureState.dx),
+        Math.abs(gestureState.dy) > 5,
       onPanResponderRelease: (_, gestureState) => {
-        if (gestureState.dy < -30) {
+        if (gestureState.dy < -20) {
           expandSheet();
-          return;
-        }
-        if (gestureState.dy > 30) {
+        } else if (gestureState.dy > 20) {
           collapseSheet();
         }
       },
       onPanResponderTerminate: (_, gestureState) => {
-        if (gestureState.dy < -30) {
+        if (gestureState.dy < -20) {
           expandSheet();
-          return;
-        }
-        if (gestureState.dy > 30) {
+        } else if (gestureState.dy > 20) {
           collapseSheet();
         }
       },
@@ -227,30 +229,32 @@ export default function RideSelectionScreen() {
 
     async function loadEstimate(): Promise<void> {
       if (!isBackendConfigured() || !isReady || !user) {
-        if (!cancelled) {
+        if (!cancelled) setIsEstimateLoading(false);
+        if (!cancelled)
           setLiveEstimate((current) => current ?? fallbackEstimate);
-        }
         return;
       }
 
       const destinationLabel = itinerary.stops[itinerary.stops.length - 1];
       if (!destinationLabel) {
-        if (!cancelled) {
+        if (!cancelled) setIsEstimateLoading(false);
+        if (!cancelled)
           setLiveEstimate((current) => current ?? fallbackEstimate);
-        }
         return;
       }
 
       try {
+        setIsEstimateLoading(true);
         const accessToken = await getAccessTokenWithRetry(getAccessToken);
-        if (!accessToken) {
+        if (!accessToken)
           throw new Error("Could not get an access token for ride estimate.");
-        }
 
         const [pickup, destination, ...stops] = await Promise.all([
           resolvePlaceQuery(itinerary.pickup),
           resolvePlaceQuery(destinationLabel),
-          ...itinerary.stops.slice(0, -1).map((stop) => resolvePlaceQuery(stop)),
+          ...itinerary.stops
+            .slice(0, -1)
+            .map((stop) => resolvePlaceQuery(stop)),
         ]);
 
         const response = await getRideEstimate({
@@ -259,28 +263,33 @@ export default function RideSelectionScreen() {
           destination,
           stops,
         });
-
         if (!cancelled) {
           setLiveEstimate(response);
+          setIsEstimateLoading(false);
         }
       } catch (loadError) {
         void loadError;
-      } finally {
-        // no-op
+        if (!cancelled) setIsEstimateLoading(false);
       }
     }
 
     void loadEstimate();
-
     return () => {
       cancelled = true;
     };
   }, [fallbackEstimate, getAccessToken, isReady, itinerary, user]);
 
-  const resolvedEstimate = hasResolvedLiveEstimate(liveEstimate) ? liveEstimate : null;
-  const liveEstimateFareNgn = liveEstimate ? getLiveEstimateFareNgn(liveEstimate) : null;
+  const resolvedEstimate = hasResolvedLiveEstimate(liveEstimate)
+    ? liveEstimate
+    : null;
+  const liveEstimateFareNgn = liveEstimate
+    ? getLiveEstimateFareNgn(liveEstimate)
+    : null;
   const baseFareNgn =
-    liveEstimateFareNgn !== null ? liveEstimateFareNgn : instantPreview.priceNgn;
+    liveEstimateFareNgn !== null
+      ? liveEstimateFareNgn
+      : instantPreview.priceNgn;
+
   const rideOptions = useMemo(
     () => [
       {
@@ -305,26 +314,30 @@ export default function RideSelectionScreen() {
         accentColor: "#1F2948",
         badgeColor: "#DDE7FF",
         etaMinutes: resolvedEstimate
-          ? Math.max(1, Math.ceil(resolvedEstimate.plannedDurationSeconds / 60) - 1)
+          ? Math.max(
+              1,
+              Math.ceil(resolvedEstimate.plannedDurationSeconds / 60) - 1,
+            )
           : Math.max(1, instantPreview.etaMinutes - 1),
         fareNgn: Math.round(baseFareNgn * 1.24),
       },
     ],
     [baseFareNgn, instantPreview.etaMinutes, resolvedEstimate, scheduledAt],
   );
+
   const selectedRideOption =
-    rideOptions.find((option) => option.id === selectedRideTier) ?? rideOptions[0];
+    rideOptions.find((option) => option.id === selectedRideTier) ??
+    rideOptions[0];
+  const hasLiveFare = Boolean(resolvedEstimate && liveEstimateFareNgn !== null);
+  const isFareResolving = isEstimateLoading && !hasLiveFare;
   const displayEtaLabel = `${selectedRideOption.etaMinutes} min trip`;
   const displayDistanceLabel = resolvedEstimate
     ? `${resolvedEstimate.plannedDistanceKm.toFixed(1)} km route`
     : instantPreview.distanceLabel;
-  const displayFareLabel = formatNgn(selectedRideOption.fareNgn);
+  const displayFareLabel = isFareResolving
+    ? "Estimating"
+    : formatNgn(selectedRideOption.fareNgn);
   const scheduleSummary = scheduledAt ? formatScheduledAt(scheduledAt) : null;
-  const routeNote = scheduledAt
-    ? `This route will be scheduled for ${scheduleSummary ?? "your selected time"}.`
-    : resolvedEstimate
-      ? `${selectedRideOption.label} live estimate for this route.`
-      : `${selectedRideOption.label} preview. Final live quote will refresh automatically.`;
   const canBookRide = !isSubmitting;
 
   useEffect(() => {
@@ -334,41 +347,38 @@ export default function RideSelectionScreen() {
   const handleEditRoute = () => {
     router.push({
       pathname: "/destination-search",
-      params: {
-        itinerary: serializedItinerary,
-      },
+      params: { itinerary: serializedItinerary },
     });
   };
 
   const handleBookRide = async () => {
     if (scheduledAt) {
       setIsSubmitting(true);
-
       try {
         if (!isBackendConfigured() || !isReady || !user) {
-          throw new Error("Wheelers backend is not configured for scheduled rides.");
+          throw new Error(
+            "Wheelers backend is not configured for scheduled rides.",
+          );
         }
-
         const destinationLabel = itinerary.stops[itinerary.stops.length - 1];
-        if (!destinationLabel) {
+        if (!destinationLabel)
           throw new Error("Select a destination before scheduling this ride.");
-        }
 
         const accessToken = await getAccessTokenWithRetry(getAccessToken);
-        if (!accessToken) {
-          throw new Error("Could not get an access token to schedule this ride.");
-        }
+        if (!accessToken)
+          throw new Error(
+            "Could not get an access token to schedule this ride.",
+          );
 
         const pickup =
           liveEstimate?.pickup ?? (await resolvePlaceQuery(itinerary.pickup));
         const destination =
-          liveEstimate?.destination ?? (await resolvePlaceQuery(destinationLabel));
+          liveEstimate?.destination ??
+          (await resolvePlaceQuery(destinationLabel));
         const stops =
           liveEstimate?.stops ??
           (await Promise.all(
-            itinerary.stops
-              .slice(0, -1)
-              .map((stop) => resolvePlaceQuery(stop)),
+            itinerary.stops.slice(0, -1).map((stop) => resolvePlaceQuery(stop)),
           ));
 
         await submitScheduledRide({
@@ -376,9 +386,8 @@ export default function RideSelectionScreen() {
           scheduledFor: scheduledAt,
           idempotencyKey:
             scheduledRideIdempotencyKeyRef.current ??
-            (scheduledRideIdempotencyKeyRef.current = createIdempotencyKey(
-              "scheduled-ride",
-            )),
+            (scheduledRideIdempotencyKeyRef.current =
+              createIdempotencyKey("scheduled-ride")),
           pickup,
           destination,
           stops,
@@ -400,7 +409,6 @@ export default function RideSelectionScreen() {
       } finally {
         setIsSubmitting(false);
       }
-
       return;
     }
 
@@ -444,9 +452,6 @@ export default function RideSelectionScreen() {
 
           <FloatingView style={styles.priceBadge} distance={6}>
             <View style={styles.priceBadgeInner}>
-              <AppText variant="bodySmall" color={theme.colors.muted}>
-                {resolvedEstimate ? "Backend fare preview" : "Estimated fare"}
-              </AppText>
               <AppText variant="monoLarge">{displayFareLabel}</AppText>
             </View>
           </FloatingView>
@@ -454,137 +459,208 @@ export default function RideSelectionScreen() {
       </View>
 
       <Animated.View
-        style={[styles.sheet, sheetAnimatedStyle]}
-        {...sheetPanResponder.panHandlers}
+        style={[
+          styles.sheet,
+          isExpanded ? styles.sheetExpanded : styles.sheetCollapsed,
+          sheetAnimatedStyle,
+        ]}
       >
-        <Pressable onPress={expandSheet} style={styles.handleArea}>
+        {/* Handle pill — only this area controls drag expand/collapse */}
+        <View style={styles.handleArea} {...handlePanResponder.panHandlers}>
           <View style={styles.handle} />
-        </Pressable>
+        </View>
 
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          contentContainerStyle={styles.sheetScrollContent}
-        >
-          <View style={styles.sheetHeader}>
-            <View>
-              <AppText variant="monoSmall" color={theme.colors.orange}>
-                {scheduledAt ? "SCHEDULED RIDE" : "RIDE OPTION"}
-              </AppText>
-              <AppText variant="h1">Wheeler</AppText>
-              <AppText variant="bodySmall" color={theme.colors.muted}>
-                {scheduledAt
-                  ? "Choose the ride feel you want for this scheduled trip."
-                  : "Pick the ride style that fits this route best."}
-              </AppText>
-            </View>
-            <View style={styles.rideIcon}>
-              <CarArtwork
-                accentColor={selectedRideOption.accentColor}
-                highlightColor={selectedRideOption.badgeColor}
-              />
-            </View>
-          </View>
-
-          <View style={styles.rideOptionsList}>
-            {rideOptions.map((option) => {
-              const selected = option.id === selectedRideTier;
-              return (
-                <Pressable
-                  key={option.id}
-                  onPress={() => setSelectedRideTier(option.id)}
-                  style={[
-                    styles.rideOptionCard,
-                    selected ? styles.rideOptionCardSelected : null,
-                  ]}
-                >
-                  <View style={styles.rideOptionLeft}>
-                    <View
-                      style={[
-                        styles.rideOptionIconShell,
-                        selected ? styles.rideOptionIconShellSelected : null,
-                      ]}
-                    >
-                      <CarArtwork
-                        accentColor={option.accentColor}
-                        highlightColor={option.badgeColor}
-                      />
-                    </View>
-                    <View style={styles.rideOptionCopy}>
-                      <View style={styles.rideOptionTitleRow}>
-                        <AppText variant="h3">{option.label}</AppText>
-                        {selected ? (
-                          <View style={styles.selectedBadge}>
-                            <AppText
-                              variant="monoSmall"
-                              color={theme.colors.offWhite}
-                            >
-                              Selected
-                            </AppText>
-                          </View>
-                        ) : null}
-                      </View>
-                      <AppText variant="bodySmall" color={theme.colors.muted}>
-                        {option.subtitle}
-                      </AppText>
-                      <View style={styles.metricRow}>
-                        <MetricPill label={`${option.etaMinutes} min`} />
-                        <MetricPill label={displayDistanceLabel} muted />
-                      </View>
-                    </View>
-                  </View>
-                  <View style={styles.rideOptionPrice}>
-                    <AppText variant="monoSmall" color={theme.colors.muted}>
-                      NGN
-                    </AppText>
-                    <AppText variant="h3">
-                      {formatCompactNgn(option.fareNgn)}
-                    </AppText>
-                  </View>
-                </Pressable>
-              );
-            })}
-          </View>
-
-          <View style={styles.routeBox}>
-            <View style={styles.routeBoxHeader}>
-              <AppText variant="monoSmall" color={theme.colors.muted}>
-                ROUTE
-              </AppText>
-              <Pressable onPress={handleEditRoute} style={styles.editRouteButton}>
+        {isExpanded ? (
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={styles.sheetScrollContent}
+          >
+            <View style={styles.sheetHeader}>
+              <View style={styles.sheetHeaderText}>
                 <AppText variant="monoSmall" color={theme.colors.orange}>
-                  Edit route
+                  {scheduledAt ? "SCHEDULED RIDE" : "RIDE OPTION"}
                 </AppText>
-              </Pressable>
-            </View>
-            {routeRows.map((row, index) => (
-              <View key={row.id}>
-                <RouteRow
-                  kind={row.kind}
-                  label={row.label}
-                  value={row.value}
-                />
-                {index < routeRows.length - 1 ? (
-                  <View style={styles.routeDivider} />
-                ) : null}
+                <AppText variant="h3">Wheeler</AppText>
+                <AppText variant="bodySmall" color={theme.colors.muted}>
+                  {scheduledAt
+                    ? `Scheduled for ${scheduleSummary ?? "your selected time"}`
+                    : "Choose your ride style for this route."}
+                </AppText>
               </View>
-            ))}
-          </View>
+              <View style={styles.rideIcon}>
+                <CarArtwork
+                  accentColor={selectedRideOption.accentColor}
+                  highlightColor={selectedRideOption.badgeColor}
+                />
+              </View>
+            </View>
 
-          <AppButton
-            title={
-              scheduledAt
-                ? isSubmitting
-                  ? `Scheduling ${selectedRideOption.label}...`
-                  : `Schedule ${selectedRideOption.label}`
-                : `Book ${selectedRideOption.label}`
-            }
-            onPress={handleBookRide}
-            disabled={!canBookRide}
-          />
-        </ScrollView>
+            <RideOptionList
+              rideOptions={rideOptions}
+              selectedRideTier={selectedRideTier}
+              setSelectedRideTier={setSelectedRideTier}
+              displayDistanceLabel={displayDistanceLabel}
+              isFareResolving={isFareResolving}
+            />
+
+            <View style={styles.routeBox}>
+              <View style={styles.routeBoxHeader}>
+                <AppText variant="monoSmall" color={theme.colors.muted}>
+                  ROUTE
+                </AppText>
+                <Pressable
+                  onPress={handleEditRoute}
+                  style={styles.editRouteButton}
+                >
+                  <AppText variant="monoSmall" color={theme.colors.orange}>
+                    Edit route
+                  </AppText>
+                </Pressable>
+              </View>
+              {routeRows.map((row, index) => (
+                <View key={row.id}>
+                  <RouteRow
+                    kind={row.kind}
+                    label={row.label}
+                    value={row.value}
+                  />
+                  {index < routeRows.length - 1 ? (
+                    <View style={styles.routeDivider} />
+                  ) : null}
+                </View>
+              ))}
+            </View>
+
+            <AppButton
+              title={
+                scheduledAt
+                  ? isSubmitting
+                    ? `Scheduling ${selectedRideOption.label}...`
+                    : `Schedule ${selectedRideOption.label}`
+                  : `Book ${selectedRideOption.label}`
+              }
+              onPress={handleBookRide}
+              disabled={!canBookRide}
+            />
+          </ScrollView>
+        ) : (
+          <View style={styles.collapsedSheetContent}>
+            <RideOptionList
+              rideOptions={rideOptions}
+              selectedRideTier={selectedRideTier}
+              setSelectedRideTier={setSelectedRideTier}
+              displayDistanceLabel={displayDistanceLabel}
+              isFareResolving={isFareResolving}
+            />
+
+            <AppButton
+              title={
+                scheduledAt
+                  ? isSubmitting
+                    ? `Scheduling ${selectedRideOption.label}...`
+                    : `Schedule ${selectedRideOption.label}`
+                  : `Book ${selectedRideOption.label}`
+              }
+              onPress={handleBookRide}
+              disabled={!canBookRide}
+            />
+          </View>
+        )}
       </Animated.View>
     </AppScreen>
+  );
+}
+
+function RideOptionList({
+  rideOptions,
+  selectedRideTier,
+  setSelectedRideTier,
+  displayDistanceLabel,
+  isFareResolving,
+}: {
+  rideOptions: Array<{
+    id: RideTier;
+    label: string;
+    subtitle: string;
+    accentColor: string;
+    badgeColor: string;
+    etaMinutes: number;
+    fareNgn: number;
+  }>;
+  selectedRideTier: RideTier;
+  setSelectedRideTier: (tier: RideTier) => void;
+  displayDistanceLabel: string;
+  isFareResolving: boolean;
+}) {
+  return (
+    <View style={styles.rideOptionsList}>
+      {rideOptions.map((option) => {
+        const selected = option.id === selectedRideTier;
+        return (
+          <Pressable
+            key={option.id}
+            onPress={() => setSelectedRideTier(option.id)}
+            style={[
+              styles.rideOptionCard,
+              selected ? styles.rideOptionCardSelected : null,
+            ]}
+          >
+            <View style={styles.rideOptionLeft}>
+              <View
+                style={[
+                  styles.rideOptionIconShell,
+                  selected ? styles.rideOptionIconShellSelected : null,
+                ]}
+              >
+                <CarArtwork
+                  accentColor={option.accentColor}
+                  highlightColor={option.badgeColor}
+                />
+              </View>
+              <View style={styles.rideOptionCopy}>
+                <View style={styles.rideOptionTitleRow}>
+                  <AppText variant="h3">{option.label}</AppText>
+                  {selected ? (
+                    <View style={styles.selectedBadge}>
+                      <AppText
+                        variant="monoSmall"
+                        color={theme.colors.offWhite}
+                      >
+                        Selected
+                      </AppText>
+                    </View>
+                  ) : null}
+                </View>
+                <AppText variant="bodySmall" color={theme.colors.muted}>
+                  {option.subtitle}
+                </AppText>
+                <View style={styles.metricRow}>
+                  <MetricPill label={`${option.etaMinutes} min`} />
+                  <MetricPill label={displayDistanceLabel} muted />
+                </View>
+              </View>
+            </View>
+            <View style={styles.rideOptionPrice}>
+              {isFareResolving ? (
+                <AppText variant="bodySmall" color={theme.colors.muted}>
+                  Estimating
+                </AppText>
+              ) : (
+                <>
+                  <AppText variant="monoSmall" color={theme.colors.muted}>
+                    NGN
+                  </AppText>
+                  <AppText variant="h3">
+                    {formatCompactNgn(option.fareNgn)}
+                  </AppText>
+                </>
+              )}
+            </View>
+          </Pressable>
+        );
+      })}
+    </View>
   );
 }
 
@@ -673,7 +749,6 @@ const styles = StyleSheet.create({
     borderRadius: theme.radius.md,
     paddingHorizontal: theme.spacing.md,
     paddingVertical: theme.spacing.sm,
-    gap: 2,
     ...theme.shadows.card,
   },
   sheet: {
@@ -687,18 +762,28 @@ const styles = StyleSheet.create({
     borderWidth: theme.borders.thick,
     borderBottomWidth: 0,
     borderColor: theme.colors.black,
-    paddingHorizontal: theme.spacing.md,
-    paddingTop: theme.spacing.xs,
-    paddingBottom: theme.spacing.sm,
-    minHeight: 300,
+    paddingHorizontal: theme.spacing.xs,
+    paddingTop: 2,
+    paddingBottom: theme.spacing.xs,
+  },
+  sheetExpanded: {
+    minHeight: 260,
+    maxHeight: "76%",
+  },
+  sheetCollapsed: {
+    minHeight: 0,
   },
   sheetScrollContent: {
     gap: theme.spacing.xs,
-    paddingBottom: theme.spacing.sm,
+    paddingBottom: theme.spacing.md,
+  },
+  collapsedSheetContent: {
+    gap: theme.spacing.xs,
+    paddingBottom: theme.spacing.xs,
   },
   handleArea: {
     alignItems: "center",
-    paddingVertical: 4,
+    paddingVertical: theme.spacing.xs,
   },
   handle: {
     width: 56,
@@ -710,10 +795,14 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    gap: theme.spacing.xs,
+  },
+  sheetHeaderText: {
+    flex: 1,
   },
   rideIcon: {
-    width: 64,
-    height: 54,
+    width: 50,
+    height: 42,
     borderRadius: theme.radius.pill,
     borderWidth: theme.borders.thick,
     borderColor: theme.colors.black,
@@ -730,8 +819,8 @@ const styles = StyleSheet.create({
     borderWidth: theme.borders.thick,
     borderColor: theme.colors.black,
     borderRadius: theme.radius.lg,
-    paddingHorizontal: theme.spacing.sm,
-    paddingVertical: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.xs,
+    paddingVertical: theme.spacing.xs,
     ...theme.shadows.card,
   },
   rideOptionCardSelected: {
@@ -741,11 +830,11 @@ const styles = StyleSheet.create({
   rideOptionLeft: {
     flexDirection: "row",
     alignItems: "center",
-    gap: theme.spacing.sm,
+    gap: theme.spacing.xs,
   },
   rideOptionIconShell: {
-    width: 72,
-    height: 52,
+    width: 64,
+    height: 46,
     borderRadius: theme.radius.md,
     backgroundColor: theme.colors.offWhite,
     alignItems: "center",
@@ -759,12 +848,12 @@ const styles = StyleSheet.create({
   },
   rideOptionCopy: {
     flex: 1,
-    gap: 4,
+    gap: 2,
   },
   rideOptionTitleRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: theme.spacing.sm,
+    gap: theme.spacing.xs,
   },
   selectedBadge: {
     borderRadius: theme.radius.pill,
@@ -791,10 +880,10 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.white,
   },
   rideOptionPrice: {
-    minWidth: 76,
+    minWidth: 68,
     alignItems: "flex-end",
     justifyContent: "center",
-    gap: 2,
+    gap: 1,
   },
   routeBox: {
     backgroundColor: theme.colors.white,
@@ -812,7 +901,8 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   editRouteButton: {
-    paddingVertical: 4,
+    paddingHorizontal: theme.spacing.xs,
+    paddingVertical: 6,
   },
   routeRow: {
     flexDirection: "row",
@@ -849,8 +939,8 @@ const styles = StyleSheet.create({
   },
   vehicleArtwork: {
     position: "relative",
-    width: 52,
-    height: 36,
+    width: 46,
+    height: 32,
   },
   rideTierBadge: {
     position: "absolute",
@@ -866,26 +956,26 @@ const styles = StyleSheet.create({
   },
   evWrap: {
     position: "relative",
-    width: 52,
-    height: 34,
+    width: 46,
+    height: 30,
     marginTop: 2,
   },
   evBody: {
     position: "absolute",
-    left: 5,
-    right: 4,
-    bottom: 7,
-    height: 18,
+    left: 4,
+    right: 3,
+    bottom: 6,
+    height: 16,
     borderWidth: theme.borders.thick,
     borderColor: theme.colors.black,
     borderRadius: 10,
   },
   evCabin: {
     position: "absolute",
-    left: 10,
-    top: -9,
-    width: 21,
-    height: 11,
+    left: 9,
+    top: -8,
+    width: 18,
+    height: 10,
     borderWidth: theme.borders.thick,
     borderBottomWidth: 0,
     borderColor: theme.colors.black,
@@ -895,10 +985,10 @@ const styles = StyleSheet.create({
   },
   evWindow: {
     position: "absolute",
-    left: 14,
-    top: -6,
-    width: 14,
-    height: 6,
+    left: 12,
+    top: -5,
+    width: 12,
+    height: 5,
     borderRadius: 4,
     backgroundColor: "#D9F3FF",
     borderWidth: 1.5,
@@ -907,17 +997,17 @@ const styles = StyleSheet.create({
   evBolt: {
     position: "absolute",
     top: 4,
-    left: 23,
-    width: 5,
-    height: 8,
+    left: 20,
+    width: 4,
+    height: 7,
     transform: [{ skewX: "-18deg" }],
     borderRadius: 1,
   },
   evLight: {
     position: "absolute",
     top: 5,
-    width: 4,
-    height: 6,
+    width: 3,
+    height: 5,
     borderRadius: 3,
     borderWidth: 1,
     borderColor: theme.colors.black,
@@ -933,8 +1023,8 @@ const styles = StyleSheet.create({
   evWheel: {
     position: "absolute",
     bottom: 0,
-    width: 12,
-    height: 12,
+    width: 10,
+    height: 10,
     borderWidth: theme.borders.regular,
     borderColor: theme.colors.black,
     borderRadius: theme.radius.pill,
@@ -943,14 +1033,14 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   evWheelLeft: {
-    left: 10,
+    left: 9,
   },
   evWheelRight: {
-    right: 7,
+    right: 6,
   },
   evWheelHub: {
-    width: 4,
-    height: 4,
+    width: 3,
+    height: 3,
     borderRadius: theme.radius.pill,
     backgroundColor: theme.colors.white,
   },

@@ -303,7 +303,7 @@ export default function GroupRideSelectionScreen() {
             </View>
             <View style={styles.priceBlock}>
               <AppText variant="monoSmall" color="rgba(255,255,255,0.6)">
-                USDT
+                NGN
               </AppText>
               <AppText variant="h2" color={theme.colors.offWhite}>
                 {typeof request?.fareEstimateUsdt === "number"

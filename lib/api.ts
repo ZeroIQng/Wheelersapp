@@ -190,7 +190,9 @@ export interface RiderHistoryRide {
   pickupAddress: string;
   destAddress: string;
   fareEstimateUsdt: number | null;
+  fareEstimateNgn?: number | null;
   fareFinalUsdt: number | null;
+  fareFinalNgn?: number | null;
   distanceKm: number | null;
   durationSeconds: number | null;
   cancelReason: string | null;

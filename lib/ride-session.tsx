@@ -102,6 +102,16 @@ const accessTokenRetryAttempts = 6;
 const accessTokenRetryDelayMs = 250;
 const reconnectDelayMs = 1500;
 
+function buildRideSessionConnectionError(wsBaseUrl: string): Error {
+  return new Error(
+    [
+      'Could not connect to the live ride session.',
+      `WebSocket URL: ${wsBaseUrl}.`,
+      'Check that the API gateway is running, reachable from this device, and accepting /ws connections.',
+    ].join(' '),
+  );
+}
+
 const defaultContext: RideSessionContextValue = {
   isConfigured: false,
   connectionState: 'disconnected',
@@ -521,6 +531,7 @@ export function RideSessionProvider({ children }: { children: ReactNode }) {
 
       const socketUrl = new URL(wsBaseUrl);
       socketUrl.searchParams.set('accessToken', accessToken);
+      const connectionError = buildRideSessionConnectionError(wsBaseUrl);
 
       return await new Promise<WebSocket>((resolve, reject) => {
         const socket = new WebSocket(socketUrl.toString());
@@ -555,12 +566,19 @@ export function RideSessionProvider({ children }: { children: ReactNode }) {
 
           settled = true;
           setConnectionState('disconnected');
-          reject(new Error('Could not connect to the live ride session.'));
+          setError(connectionError.message);
+          reject(connectionError);
         };
 
         socket.onclose = () => {
           socketRef.current = null;
           setConnectionState('disconnected');
+          if (!settled) {
+            settled = true;
+            setError(connectionError.message);
+            reject(connectionError);
+            return;
+          }
           scheduleReconnect();
         };
       });
@@ -637,7 +655,6 @@ export function RideSessionProvider({ children }: { children: ReactNode }) {
             ? requestError.message
             : 'Could not request this ride.';
         setError(message);
-        throw requestError;
       }
     },
     [sendEnvelope, setRideState, user],

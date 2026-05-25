@@ -263,10 +263,6 @@ function formatHomeBalance(amountNgn: number | undefined): string {
   return rounded.toLocaleString("en-NG");
 }
 
-// How far the sheet travels upward when fully expanded.
-// Falls back to this constant until history measures itself.
-const EXPAND_OFFSET_FALLBACK = 140;
-
 export default function RiderHomeScreen() {
   const router = useRouter();
   const { permissionState, requestLocationAccess } = useAppLocation();
@@ -284,9 +280,8 @@ export default function RiderHomeScreen() {
     number | null
   >(null);
 
-  // expandProgress: 0 = default (Image 2 — heading + cards + search visible)
-  //                 1 = fully expanded (whole sheet slid upward, history revealed)
-  // The sheet ALWAYS starts at 0. Swiping up moves it toward 1.
+  // expandProgress: 0 = default (heading + cards + search visible)
+  //                 1 = history revealed inside the same anchored sheet
   // There is NO collapse state below Image 2.
   const expandProgress = useSharedValue(0);
 
@@ -352,19 +347,12 @@ export default function RiderHomeScreen() {
     }),
   ).current;
 
-  // Sheet slides UP as expandProgress goes 0→1.
-  // The upward travel distance equals the history panel height (or fallback).
+  // Keep the sheet anchored to the bottom; only the history content expands.
   const bottomSheetAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [
-      {
-        translateY:
-          -(expandProgress.value *
-            (historyMeasuredHeight ?? EXPAND_OFFSET_FALLBACK)),
-      },
-    ],
+    transform: [{ translateY: 0 }],
   }));
 
-  // History fades + grows in as the sheet expands upward
+  // History fades + grows in without exposing the map below the sheet.
   const historyAnimatedStyle = useAnimatedStyle(() => ({
     height:
       historyMeasuredHeight == null
