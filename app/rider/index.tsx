@@ -272,6 +272,7 @@ export default function RiderHomeScreen() {
     useRiderHistory(3);
   const { overview } = useWalletOverview();
   const historyPreview = historyItems.slice(0, 2);
+  const hasHistoryPreview = historyPreview.length > 0;
 
   // Large enough that map always fills behind the sheet regardless of sheet height
   const mapFillHeight = 800;
@@ -280,9 +281,8 @@ export default function RiderHomeScreen() {
     number | null
   >(null);
 
-  // expandProgress: 0 = default (heading + cards + search visible)
-  //                 1 = history revealed inside the same anchored sheet
-  // There is NO collapse state below Image 2.
+  // expandProgress: 0 = no-history/default home (cars + search only)
+  //                 1 = history-default home (cars + search + history)
   const expandProgress = useSharedValue(0);
 
   const historyExistsRef = useRef(false);
@@ -314,12 +314,17 @@ export default function RiderHomeScreen() {
 
   useEffect(() => {
     if (isLoadingHistory) return;
-    historyExistsRef.current = historyPreview.length > 0;
-    if (historyPreview.length > 0) {
-      // Auto-expand when history arrives so user sees it immediately
-      expandProgress.value = withTiming(1, { duration: 220 });
+
+    historyExistsRef.current = hasHistoryPreview;
+    if (!hasHistoryPreview) {
+      setHistoryMeasuredHeight(null);
+      expandProgress.value = withTiming(0, { duration: 180 });
+      return;
     }
-  }, [historyPreview.length, expandProgress, isLoadingHistory]);
+
+    // History is the default home state when there is ride history.
+    expandProgress.value = withTiming(1, { duration: 220 });
+  }, [hasHistoryPreview, expandProgress, isLoadingHistory]);
 
   // Capture-phase PanResponder on the whole sheet.
   // Vertical swipes are claimed by the sheet; taps pass through to Pressable children.
@@ -519,7 +524,7 @@ export default function RiderHomeScreen() {
         </Pressable>
 
         {/* History — lives inside the sheet, animates height as sheet expands */}
-        {historyPreview.length > 0 ? (
+        {hasHistoryPreview ? (
           <Animated.View style={historyAnimatedStyle}>
             <RevealView delay={180}>
               <View
