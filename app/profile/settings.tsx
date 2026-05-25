@@ -399,21 +399,18 @@ function ReferralSettingsCard({ onPress }: { onPress: () => void }) {
         <MaterialIcons
           color={theme.colors.black}
           name="card-giftcard"
-          size={22}
+          size={19}
         />
       </View>
       <View style={styles.referralCopy}>
-        <AppText variant="monoSmall" color={theme.colors.orange}>
-          REFERRALS
-        </AppText>
-        <AppText variant="h3">Invite and earn ride cashback</AppText>
+        <AppText variant="bodyMedium">Referral rewards</AppText>
         <AppText variant="bodySmall" color={theme.colors.muted}>
-          Share your code, track rewards, and copy your referral link.
+          Share your code and track ride cashback.
         </AppText>
       </View>
       <View style={styles.referralAction}>
-        <AppText variant="label" color={theme.colors.offWhite}>
-          Open
+        <AppText variant="h3" color={theme.colors.orange}>
+          ›
         </AppText>
       </View>
     </Pressable>
@@ -463,43 +460,30 @@ const styles = StyleSheet.create({
   referralCard: {
     flexDirection: "row",
     alignItems: "center",
-    gap: theme.spacing.sm,
-    marginHorizontal: theme.spacing.md,
-    marginVertical: theme.spacing.sm,
-    padding: theme.spacing.md,
-    borderWidth: theme.borders.thick,
-    borderColor: theme.colors.black,
-    borderRadius: theme.radius.md,
-    backgroundColor: "#FFF4EA",
-    ...theme.shadows.card,
+    gap: theme.spacing.md,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.sm,
+    backgroundColor: theme.colors.white,
   },
   referralCardPressed: {
-    transform: [{ translateX: 2 }, { translateY: 2 }],
-    shadowOpacity: 0,
-    elevation: 0,
+    opacity: 0.75,
   },
   referralIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: theme.radius.pill,
+    width: 38,
+    height: 38,
+    borderRadius: theme.radii.sm,
     borderWidth: theme.borders.thick,
     borderColor: theme.colors.black,
-    backgroundColor: theme.colors.white,
+    backgroundColor: theme.colors.orangeLight,
     alignItems: "center",
     justifyContent: "center",
-    ...theme.shadows.subtle,
+    ...theme.shadows.card,
   },
   referralCopy: {
     flex: 1,
-    gap: 3,
+    gap: 2,
   },
   referralAction: {
-    minHeight: 38,
-    paddingHorizontal: theme.spacing.sm,
-    borderWidth: theme.borders.thick,
-    borderColor: theme.colors.black,
-    borderRadius: theme.radius.sm,
-    backgroundColor: theme.colors.orange,
     alignItems: "center",
     justifyContent: "center",
   },
