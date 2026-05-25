@@ -278,6 +278,8 @@ export interface GroupRideFaceVerificationSummary {
   failureReason: string | null;
 }
 
+export type GroupRideGenderPreference = "any" | "women_only" | "men_only";
+
 export interface GroupRideMatchRequest {
   id: string;
   userId: string;
@@ -297,6 +299,7 @@ export interface GroupRideMatchRequest {
   plannedDistanceKm: number | null;
   plannedDurationSeconds: number | null;
   fareEstimateUsdt: number | null;
+  genderPreference: GroupRideGenderPreference;
   paymentMethod: "wallet_balance" | "smart_account";
   readyForMatchAt: string | null;
   matchingStartedAt: string | null;
@@ -1160,6 +1163,7 @@ export async function createGroupRideMatchRequest(input: {
   pickup: RideEstimateWaypoint;
   destination: RideEstimateWaypoint;
   stops?: RideEstimateWaypoint[];
+  genderPreference?: GroupRideGenderPreference;
   paymentMethod?: "wallet_balance" | "smart_account";
 }): Promise<{
   item: GroupRideMatchRequest;

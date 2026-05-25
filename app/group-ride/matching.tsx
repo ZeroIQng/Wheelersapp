@@ -26,6 +26,7 @@ import {
   createGroupRideFaceUploadUrl,
   createGroupRideMatchRequest,
   getGroupRideMatchRequest,
+  type GroupRideGenderPreference,
   type GroupRideMatchRequest,
 } from "@/lib/api";
 import {
@@ -101,12 +102,17 @@ async function uploadFaceImage(uploadUrl: string, uri: string, mimeType: string)
 export default function GroupRideMatchingScreen() {
   const router = useRouter();
   const { getAccessToken, isReady, user } = usePrivy();
-  const params = useLocalSearchParams<{ pickup?: string; destination?: string }>();
+  const params = useLocalSearchParams<{
+    pickup?: string;
+    destination?: string;
+    genderPreference?: string;
+  }>();
   const [requestId, setRequestId] = useState<string | null>(null);
   const [matchStatus, setMatchStatus] = useState<GroupRideMatchRequest["status"] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const lastErrorAlertRef = useRef<string | null>(null);
   const createRequestIdempotencyKeyRef = useRef<string | null>(null);
+  const genderPreference = normalizeGenderPreference(params.genderPreference);
 
   // Pulse rings
   const ring1 = useSharedValue(0);
@@ -271,6 +277,7 @@ export default function GroupRideMatchingScreen() {
           pickup,
           destination,
           stops: [],
+          genderPreference,
           paymentMethod: "wallet_balance",
         });
 
@@ -325,7 +332,15 @@ export default function GroupRideMatchingScreen() {
         clearTimeout(pollTimer);
       }
     };
-  }, [getAccessToken, isReady, params.destination, params.pickup, router, user]);
+  }, [
+    genderPreference,
+    getAccessToken,
+    isReady,
+    params.destination,
+    params.pickup,
+    router,
+    user,
+  ]);
 
   const ring1Style = useAnimatedStyle(() => ({
     opacity: 1 - ring1.value,
@@ -459,7 +474,7 @@ export default function GroupRideMatchingScreen() {
           <View style={styles.infoCopy}>
             <AppText variant="bodyMedium" color={theme.colors.offWhite}>Face-verified riders only</AppText>
             <AppText variant="bodySmall" color={theme.colors.muted}>
-              Your verification is uploaded before matching begins.
+              {`Matching preference: ${formatGenderPreference(genderPreference)}.`}
             </AppText>
           </View>
         </View>
@@ -475,6 +490,23 @@ export default function GroupRideMatchingScreen() {
       ) : null}
     </AppScreen>
   );
+}
+
+function normalizeGenderPreference(
+  value: string | string[] | undefined,
+): GroupRideGenderPreference {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (raw === "women_only" || raw === "men_only" || raw === "any") {
+    return raw;
+  }
+
+  return "any";
+}
+
+function formatGenderPreference(value: GroupRideGenderPreference): string {
+  if (value === "women_only") return "Women only";
+  if (value === "men_only") return "Men only";
+  return "Any verified rider";
 }
 
 const RADAR_SIZE = 260;

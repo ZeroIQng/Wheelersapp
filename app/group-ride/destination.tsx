@@ -1,5 +1,5 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -15,6 +15,7 @@ import { AppButton } from "@/components/app-button";
 import { AppScreen } from "@/components/app-screen";
 import { AppText } from "@/components/app-text";
 import { BackArrow } from "@/components/back-arrow";
+import type { GroupRideGenderPreference } from "@/lib/api";
 import {
   fetchGooglePlaceSuggestions,
   isGoogleMapsConfigured,
@@ -32,6 +33,17 @@ type ActiveField = "pickup" | "destination";
 
 const SEARCH_DEBOUNCE_MS = 280;
 const FORM_HISTORY_PREVIEW_LIMIT = 4;
+
+function normalizeGenderPreference(
+  value: string | string[] | undefined,
+): GroupRideGenderPreference {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (raw === "women_only" || raw === "men_only" || raw === "any") {
+    return raw;
+  }
+
+  return "any";
+}
 
 function formatSuggestionValue(item: { title: string; subtitle: string }) {
   return item.subtitle ? `${item.title}, ${item.subtitle}` : item.title;
@@ -63,6 +75,7 @@ function isExactSearchMatch(place: PlaceSuggestion, query: string) {
 
 export default function GroupRideDestinationScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ genderPreference?: string }>();
   const inputRef = useRef<TextInput>(null);
   const { currentLocation } = useAppLocation();
 
@@ -76,6 +89,7 @@ export default function GroupRideDestinationScreen() {
   const [recentPlaces, setRecentPlaces] = useState<PlaceSuggestion[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [isDestinationEditing, setIsDestinationEditing] = useState(false);
+  const genderPreference = normalizeGenderPreference(params.genderPreference);
 
   useEffect(() => {
     if (!currentLocation?.address || pickupValue.trim().length > 0) {
@@ -242,7 +256,7 @@ export default function GroupRideDestinationScreen() {
   const handleConfirm = () => {
     router.push({
       pathname: "/group-ride/matching",
-      params: { pickup: pickupValue, destination: destinationValue },
+      params: { pickup: pickupValue, destination: destinationValue, genderPreference },
     });
   };
 

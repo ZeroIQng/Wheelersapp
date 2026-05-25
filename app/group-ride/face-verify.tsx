@@ -397,7 +397,7 @@ export default function FaceVerifyScreen() {
       if (sampleTimerRef.current) clearInterval(sampleTimerRef.current);
 
       setTimeout(() => {
-        router.replace("/group-ride/destination");
+        router.replace("/group-ride/gender");
       }, 2000);
     }, HOLD_MS);
   }, [router]);
