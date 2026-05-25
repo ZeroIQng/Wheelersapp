@@ -97,6 +97,33 @@ interface CurrentProfileResponse {
   user: BackendUser;
 }
 
+export interface ReferralSummaryResponse {
+  code: string;
+  availableCashbackNgn: number;
+  frozenCashbackNgn: number;
+  reservedCashbackNgn?: number;
+  usedCashbackNgn: number;
+  pendingReferrals: number;
+  qualifiedReferrals: number;
+  expiredNoRideReferrals: number;
+  closedReferrals: number;
+}
+
+export interface ApplyReferralCodeResponse {
+  referral: {
+    id: string;
+    referrerId: string;
+    status: string;
+    appliedAt: string;
+    expiresAt: string;
+    closesAt: string;
+  };
+  unlockedCashback: {
+    id: string;
+    amountNgn: number;
+  } | null;
+}
+
 interface SendPhoneOtpInput {
   accessToken: string;
   phone: string;
@@ -737,6 +764,29 @@ export async function getCurrentProfile(input: {
     accessToken: input.accessToken,
     fallbackError: "Could not load your profile.",
   });
+}
+
+export async function getReferralSummary(input: {
+  accessToken: string;
+}): Promise<ReferralSummaryResponse> {
+  return getJson<ReferralSummaryResponse>("/referrals/me", {
+    accessToken: input.accessToken,
+    fallbackError: "Could not load your referral code.",
+  });
+}
+
+export async function applyReferralCode(input: {
+  accessToken: string;
+  code: string;
+}): Promise<ApplyReferralCodeResponse> {
+  return postJson<ApplyReferralCodeResponse>(
+    "/referrals/apply",
+    { code: input.code },
+    {
+      accessToken: input.accessToken,
+      fallbackError: "Could not apply this referral code.",
+    },
+  );
 }
 
 export async function updateCurrentProfile(input: {
