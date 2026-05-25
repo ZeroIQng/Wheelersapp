@@ -7,6 +7,7 @@ import {
   Dimensions,
   PanResponder,
   Pressable,
+  ScrollView,
   StyleSheet,
   View,
 } from "react-native";
@@ -41,6 +42,7 @@ import { submitScheduledRide } from "@/lib/scheduled-rides";
 import { theme } from "@/theme";
 
 const { height } = Dimensions.get("window");
+type RideTier = "basic" | "premium";
 
 function getLiveEstimateFareNgn(
   estimate: RideEstimateResponse,
@@ -54,6 +56,10 @@ function getLiveEstimateFareNgn(
 
 function formatNgn(value: number): string {
   return `NGN ${Math.round(value).toLocaleString("en-NG")}`;
+}
+
+function formatCompactNgn(value: number): string {
+  return Math.round(value).toLocaleString("en-NG");
 }
 
 function hasResolvedLiveEstimate(
@@ -99,6 +105,37 @@ function formatScheduledAt(value: string): string {
   return `${dayLabel}, ${timeLabel}`;
 }
 
+function CarArtwork({
+  accentColor,
+  highlightColor,
+}: {
+  accentColor: string;
+  highlightColor: string;
+}) {
+  return (
+    <View style={styles.vehicleArtwork}>
+      <View style={styles.evWrap}>
+        <View style={[styles.evBody, { backgroundColor: accentColor }]}>
+          <View style={styles.evCabin} />
+          <View style={styles.evWindow} />
+          <View style={[styles.evBolt, { backgroundColor: theme.colors.white }]} />
+          <View style={[styles.evLight, styles.evHeadlight]} />
+          <View style={[styles.evLight, styles.evTaillight]} />
+        </View>
+        <View style={[styles.evWheel, styles.evWheelLeft]}>
+          <View style={styles.evWheelHub} />
+        </View>
+        <View style={[styles.evWheel, styles.evWheelRight]}>
+          <View style={styles.evWheelHub} />
+        </View>
+      </View>
+      <View style={[styles.rideTierBadge, { backgroundColor: highlightColor }]}>
+        <AppText variant="monoSmall">{accentColor === theme.colors.orange ? "B" : "P"}</AppText>
+      </View>
+    </View>
+  );
+}
+
 export default function RideSelectionScreen() {
   const router = useRouter();
   const { getAccessToken, isReady, user } = usePrivy();
@@ -124,9 +161,10 @@ export default function RideSelectionScreen() {
   const [liveEstimate, setLiveEstimate] = useState<RideEstimateResponse | null>(
     initialEstimate ?? fallbackEstimate,
   );
+  const [selectedRideTier, setSelectedRideTier] = useState<RideTier>("basic");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const scheduledRideIdempotencyKeyRef = useRef<string | null>(null);
-  const collapsedSheetOffset = 196;
+  const collapsedSheetOffset = 320;
   const sheetOffset = useSharedValue(0);
   const serializedItinerary = serializeRideItinerary(itinerary);
   const scheduledAt = useMemo(
@@ -138,11 +176,11 @@ export default function RideSelectionScreen() {
     setLiveEstimate(initialEstimate ?? fallbackEstimate);
   }, [fallbackEstimate, initialEstimate]);
 
-  const SHEET_MIN_HEIGHT = 470;
+  const SHEET_MIN_HEIGHT = 300;
   const routeFitPadding = {
     top: 88,
     right: 56,
-    bottom: SHEET_MIN_HEIGHT + 56,
+    bottom: SHEET_MIN_HEIGHT + 44,
     left: 56,
   };
 
@@ -241,22 +279,52 @@ export default function RideSelectionScreen() {
 
   const resolvedEstimate = hasResolvedLiveEstimate(liveEstimate) ? liveEstimate : null;
   const liveEstimateFareNgn = liveEstimate ? getLiveEstimateFareNgn(liveEstimate) : null;
-  const displayEtaLabel = resolvedEstimate
-    ? `${Math.max(1, Math.ceil(resolvedEstimate.plannedDurationSeconds / 60))} min trip`
-    : `${instantPreview.etaMinutes} min trip`;
+  const baseFareNgn =
+    liveEstimateFareNgn !== null ? liveEstimateFareNgn : instantPreview.priceNgn;
+  const rideOptions = useMemo(
+    () => [
+      {
+        id: "basic" as const,
+        label: "Basic",
+        subtitle: scheduledAt
+          ? "Reliable everyday ride for your scheduled trip"
+          : "Affordable everyday ride for this route",
+        accentColor: theme.colors.orange,
+        badgeColor: "#FFD7BF",
+        etaMinutes: resolvedEstimate
+          ? Math.max(1, Math.ceil(resolvedEstimate.plannedDurationSeconds / 60))
+          : instantPreview.etaMinutes,
+        fareNgn: baseFareNgn,
+      },
+      {
+        id: "premium" as const,
+        label: "Premium",
+        subtitle: scheduledAt
+          ? "Polished ride with a more premium feel"
+          : "Extra-comfort option with a cleaner premium feel",
+        accentColor: "#1F2948",
+        badgeColor: "#DDE7FF",
+        etaMinutes: resolvedEstimate
+          ? Math.max(1, Math.ceil(resolvedEstimate.plannedDurationSeconds / 60) - 1)
+          : Math.max(1, instantPreview.etaMinutes - 1),
+        fareNgn: Math.round(baseFareNgn * 1.24),
+      },
+    ],
+    [baseFareNgn, instantPreview.etaMinutes, resolvedEstimate, scheduledAt],
+  );
+  const selectedRideOption =
+    rideOptions.find((option) => option.id === selectedRideTier) ?? rideOptions[0];
+  const displayEtaLabel = `${selectedRideOption.etaMinutes} min trip`;
   const displayDistanceLabel = resolvedEstimate
     ? `${resolvedEstimate.plannedDistanceKm.toFixed(1)} km route`
     : instantPreview.distanceLabel;
-  const displayFareLabel =
-    liveEstimateFareNgn !== null
-      ? formatNgn(liveEstimateFareNgn)
-      : formatNgn(instantPreview.priceNgn);
+  const displayFareLabel = formatNgn(selectedRideOption.fareNgn);
   const scheduleSummary = scheduledAt ? formatScheduledAt(scheduledAt) : null;
   const routeNote = scheduledAt
     ? `This route will be scheduled for ${scheduleSummary ?? "your selected time"}.`
     : resolvedEstimate
-      ? "Live estimate for this route."
-      : "Instant route preview. Final live quote will refresh automatically.";
+      ? `${selectedRideOption.label} live estimate for this route.`
+      : `${selectedRideOption.label} preview. Final live quote will refresh automatically.`;
   const canBookRide = !isSubmitting;
 
   useEffect(() => {
@@ -393,84 +461,128 @@ export default function RideSelectionScreen() {
           <View style={styles.handle} />
         </Pressable>
 
-        <View style={styles.sheetHeader}>
-          <View>
-            <AppText variant="monoSmall" color={theme.colors.orange}>
-              {scheduledAt ? "SCHEDULED RIDE" : "RIDE OPTION"}
-            </AppText>
-            <AppText variant="h1">Wheeler</AppText>
-            <AppText variant="bodySmall" color={theme.colors.muted}>
-              {scheduledAt
-                ? "Reserve this bike ride ahead of time."
-                : "Fast bike ride with multi-stop routing"}
-            </AppText>
-          </View>
-          <View style={styles.rideIcon}>
-            <AppText style={styles.rideEmoji}>🛵</AppText>
-          </View>
-        </View>
-
-        <Pressable onPress={expandSheet} style={styles.rideCard}>
-          <View style={styles.rideCardMain}>
-            <View style={styles.rideCopy}>
-              <View style={styles.metricRow}>
-                <MetricPill label={displayEtaLabel} />
-                <MetricPill label={displayDistanceLabel} muted />
-              </View>
-              { <AppText variant="h3">Wheeler</AppText> }
-              <AppText variant="bodySmall" color={theme.colors.muted}>
-              {routeNote}
-              </AppText>
-            </View>
-            <View style={styles.priceBlock}>
-              <AppText variant="monoSmall" color={theme.colors.offWhite}>
-                NGN
-              </AppText>
-              <AppText variant="h2" color={theme.colors.offWhite}>
-                {liveEstimateFareNgn !== null
-                  ? Math.round(liveEstimateFareNgn).toLocaleString("en-NG")
-                  : "--"}
-              </AppText>
-            </View>
-          </View>
-        </Pressable>
-
-        <View style={styles.routeBox}>
-          <View style={styles.routeBoxHeader}>
-            <AppText variant="monoSmall" color={theme.colors.muted}>
-              ROUTE
-            </AppText>
-            <Pressable onPress={handleEditRoute} style={styles.editRouteButton}>
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={styles.sheetScrollContent}
+        >
+          <View style={styles.sheetHeader}>
+            <View>
               <AppText variant="monoSmall" color={theme.colors.orange}>
-                Edit route
+                {scheduledAt ? "SCHEDULED RIDE" : "RIDE OPTION"}
               </AppText>
-            </Pressable>
-          </View>
-          {routeRows.map((row, index) => (
-            <View key={row.id}>
-              <RouteRow
-                kind={row.kind}
-                label={row.label}
-                value={row.value}
-              />
-              {index < routeRows.length - 1 ? (
-                <View style={styles.routeDivider} />
-              ) : null}
+              <AppText variant="h1">Wheeler</AppText>
+              <AppText variant="bodySmall" color={theme.colors.muted}>
+                {scheduledAt
+                  ? "Choose the ride feel you want for this scheduled trip."
+                  : "Pick the ride style that fits this route best."}
+              </AppText>
             </View>
-          ))}
-        </View>
+            <View style={styles.rideIcon}>
+              <CarArtwork
+                accentColor={selectedRideOption.accentColor}
+                highlightColor={selectedRideOption.badgeColor}
+              />
+            </View>
+          </View>
 
-        <AppButton
-          title={
-            scheduledAt
-              ? isSubmitting
-                ? "Scheduling Wheeler..."
-                : "Schedule Wheeler"
-              : "Book Wheeler"
-          }
-          onPress={handleBookRide}
-          disabled={!canBookRide}
-        />
+          <View style={styles.rideOptionsList}>
+            {rideOptions.map((option) => {
+              const selected = option.id === selectedRideTier;
+              return (
+                <Pressable
+                  key={option.id}
+                  onPress={() => setSelectedRideTier(option.id)}
+                  style={[
+                    styles.rideOptionCard,
+                    selected ? styles.rideOptionCardSelected : null,
+                  ]}
+                >
+                  <View style={styles.rideOptionLeft}>
+                    <View
+                      style={[
+                        styles.rideOptionIconShell,
+                        selected ? styles.rideOptionIconShellSelected : null,
+                      ]}
+                    >
+                      <CarArtwork
+                        accentColor={option.accentColor}
+                        highlightColor={option.badgeColor}
+                      />
+                    </View>
+                    <View style={styles.rideOptionCopy}>
+                      <View style={styles.rideOptionTitleRow}>
+                        <AppText variant="h3">{option.label}</AppText>
+                        {selected ? (
+                          <View style={styles.selectedBadge}>
+                            <AppText
+                              variant="monoSmall"
+                              color={theme.colors.offWhite}
+                            >
+                              Selected
+                            </AppText>
+                          </View>
+                        ) : null}
+                      </View>
+                      <AppText variant="bodySmall" color={theme.colors.muted}>
+                        {option.subtitle}
+                      </AppText>
+                      <View style={styles.metricRow}>
+                        <MetricPill label={`${option.etaMinutes} min`} />
+                        <MetricPill label={displayDistanceLabel} muted />
+                      </View>
+                    </View>
+                  </View>
+                  <View style={styles.rideOptionPrice}>
+                    <AppText variant="monoSmall" color={theme.colors.muted}>
+                      NGN
+                    </AppText>
+                    <AppText variant="h3">
+                      {formatCompactNgn(option.fareNgn)}
+                    </AppText>
+                  </View>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          <View style={styles.routeBox}>
+            <View style={styles.routeBoxHeader}>
+              <AppText variant="monoSmall" color={theme.colors.muted}>
+                ROUTE
+              </AppText>
+              <Pressable onPress={handleEditRoute} style={styles.editRouteButton}>
+                <AppText variant="monoSmall" color={theme.colors.orange}>
+                  Edit route
+                </AppText>
+              </Pressable>
+            </View>
+            {routeRows.map((row, index) => (
+              <View key={row.id}>
+                <RouteRow
+                  kind={row.kind}
+                  label={row.label}
+                  value={row.value}
+                />
+                {index < routeRows.length - 1 ? (
+                  <View style={styles.routeDivider} />
+                ) : null}
+              </View>
+            ))}
+          </View>
+
+          <AppButton
+            title={
+              scheduledAt
+                ? isSubmitting
+                  ? `Scheduling ${selectedRideOption.label}...`
+                  : `Schedule ${selectedRideOption.label}`
+                : `Book ${selectedRideOption.label}`
+            }
+            onPress={handleBookRide}
+            disabled={!canBookRide}
+          />
+        </ScrollView>
       </Animated.View>
     </AppScreen>
   );
@@ -552,7 +664,7 @@ const styles = StyleSheet.create({
   priceBadge: {
     position: "absolute",
     right: theme.spacing.gutter,
-    bottom: 306,
+    bottom: 264,
   },
   priceBadgeInner: {
     backgroundColor: theme.colors.white,
@@ -575,15 +687,18 @@ const styles = StyleSheet.create({
     borderWidth: theme.borders.thick,
     borderBottomWidth: 0,
     borderColor: theme.colors.black,
-    paddingHorizontal: theme.spacing.gutter,
-    paddingTop: theme.spacing.sm,
-    paddingBottom: theme.spacing.xl,
-    gap: theme.spacing.md,
-    minHeight: 470,
+    paddingHorizontal: theme.spacing.md,
+    paddingTop: theme.spacing.xs,
+    paddingBottom: theme.spacing.sm,
+    minHeight: 300,
+  },
+  sheetScrollContent: {
+    gap: theme.spacing.xs,
+    paddingBottom: theme.spacing.sm,
   },
   handleArea: {
     alignItems: "center",
-    paddingVertical: theme.spacing.xs,
+    paddingVertical: 4,
   },
   handle: {
     width: 56,
@@ -597,47 +712,77 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   rideIcon: {
-    width: 62,
-    height: 62,
+    width: 64,
+    height: 54,
     borderRadius: theme.radius.pill,
     borderWidth: theme.borders.thick,
     borderColor: theme.colors.black,
-    backgroundColor: theme.colors.orangeLight,
+    backgroundColor: theme.colors.white,
     alignItems: "center",
     justifyContent: "center",
     ...theme.shadows.card,
   },
-  rideEmoji: {
-    fontSize: 28,
+  rideOptionsList: {
+    gap: theme.spacing.xs,
   },
-  rideCard: {
-    backgroundColor: theme.colors.orange,
+  rideOptionCard: {
+    backgroundColor: theme.colors.white,
     borderWidth: theme.borders.thick,
     borderColor: theme.colors.black,
     borderRadius: theme.radius.lg,
-    padding: theme.spacing.md,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.sm,
     ...theme.shadows.card,
   },
-  rideCardMain: {
+  rideOptionCardSelected: {
+    backgroundColor: "#FFF7F1",
+    borderColor: theme.colors.orange,
+  },
+  rideOptionLeft: {
     flexDirection: "row",
     alignItems: "center",
-    gap: theme.spacing.md,
+    gap: theme.spacing.sm,
   },
-  rideCopy: {
+  rideOptionIconShell: {
+    width: 72,
+    height: 52,
+    borderRadius: theme.radius.md,
+    backgroundColor: theme.colors.offWhite,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: theme.borders.regular,
+    borderColor: theme.colors.borderLight,
+  },
+  rideOptionIconShellSelected: {
+    backgroundColor: "#FFF0E4",
+    borderColor: theme.colors.orange,
+  },
+  rideOptionCopy: {
     flex: 1,
-    gap: theme.spacing.xs,
+    gap: 4,
+  },
+  rideOptionTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing.sm,
+  },
+  selectedBadge: {
+    borderRadius: theme.radius.pill,
+    backgroundColor: theme.colors.black,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
   },
   metricRow: {
     flexDirection: "row",
-    gap: theme.spacing.sm,
-    marginBottom: theme.spacing.xs,
+    flexWrap: "wrap",
+    gap: theme.spacing.xs,
   },
   metricPill: {
     borderWidth: theme.borders.regular,
     borderColor: theme.colors.black,
     borderRadius: theme.radius.pill,
-    paddingHorizontal: theme.spacing.sm,
-    paddingVertical: 5,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
   },
   metricPillAccent: {
     backgroundColor: "#FFD1B5",
@@ -645,25 +790,20 @@ const styles = StyleSheet.create({
   metricPillMuted: {
     backgroundColor: theme.colors.white,
   },
-  priceBlock: {
-    minWidth: 118,
-    alignSelf: "stretch",
-    borderWidth: theme.borders.regular,
-    borderColor: theme.colors.black,
-    borderRadius: theme.radius.md,
-    backgroundColor: "rgba(13,13,13,0.18)",
-    paddingHorizontal: theme.spacing.sm,
-    paddingVertical: theme.spacing.sm,
+  rideOptionPrice: {
+    minWidth: 76,
     alignItems: "flex-end",
     justifyContent: "center",
+    gap: 2,
   },
   routeBox: {
     backgroundColor: theme.colors.white,
     borderWidth: theme.borders.thick,
     borderColor: theme.colors.black,
     borderRadius: theme.radius.lg,
-    padding: theme.spacing.md,
-    gap: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.sm,
+    gap: theme.spacing.xs,
     ...theme.shadows.card,
   },
   routeBoxHeader: {
@@ -705,6 +845,113 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: theme.colors.borderLight,
     marginLeft: 22,
-    marginVertical: theme.spacing.sm,
+    marginVertical: theme.spacing.xs,
+  },
+  vehicleArtwork: {
+    position: "relative",
+    width: 52,
+    height: 36,
+  },
+  rideTierBadge: {
+    position: "absolute",
+    right: -4,
+    bottom: -4,
+    width: 20,
+    height: 20,
+    borderWidth: theme.borders.regular,
+    borderColor: theme.colors.black,
+    borderRadius: theme.radius.pill,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  evWrap: {
+    position: "relative",
+    width: 52,
+    height: 34,
+    marginTop: 2,
+  },
+  evBody: {
+    position: "absolute",
+    left: 5,
+    right: 4,
+    bottom: 7,
+    height: 18,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    borderRadius: 10,
+  },
+  evCabin: {
+    position: "absolute",
+    left: 10,
+    top: -9,
+    width: 21,
+    height: 11,
+    borderWidth: theme.borders.thick,
+    borderBottomWidth: 0,
+    borderColor: theme.colors.black,
+    borderTopLeftRadius: 10,
+    borderTopRightRadius: 8,
+    backgroundColor: theme.colors.white,
+  },
+  evWindow: {
+    position: "absolute",
+    left: 14,
+    top: -6,
+    width: 14,
+    height: 6,
+    borderRadius: 4,
+    backgroundColor: "#D9F3FF",
+    borderWidth: 1.5,
+    borderColor: theme.colors.black,
+  },
+  evBolt: {
+    position: "absolute",
+    top: 4,
+    left: 23,
+    width: 5,
+    height: 8,
+    transform: [{ skewX: "-18deg" }],
+    borderRadius: 1,
+  },
+  evLight: {
+    position: "absolute",
+    top: 5,
+    width: 4,
+    height: 6,
+    borderRadius: 3,
+    borderWidth: 1,
+    borderColor: theme.colors.black,
+  },
+  evHeadlight: {
+    right: 2,
+    backgroundColor: "#FFF4CC",
+  },
+  evTaillight: {
+    left: 2,
+    backgroundColor: "#FFC4C4",
+  },
+  evWheel: {
+    position: "absolute",
+    bottom: 0,
+    width: 12,
+    height: 12,
+    borderWidth: theme.borders.regular,
+    borderColor: theme.colors.black,
+    borderRadius: theme.radius.pill,
+    backgroundColor: theme.colors.black,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  evWheelLeft: {
+    left: 10,
+  },
+  evWheelRight: {
+    right: 7,
+  },
+  evWheelHub: {
+    width: 4,
+    height: 4,
+    borderRadius: theme.radius.pill,
+    backgroundColor: theme.colors.white,
   },
 });

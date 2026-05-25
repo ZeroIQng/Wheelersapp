@@ -249,6 +249,13 @@ function SettingsScreenBody({
   );
 
   async function handleRowPress(id: string, route?: string) {
+    if (id === "customer-support") {
+      Alert.alert(
+        "Coming soon",
+        "Customer support chat will be available here soon.",
+      );
+      return;
+    }
     if (route) {
       router.push(route as Href);
       return;
