@@ -18,7 +18,11 @@ import { AppScreen } from "@/components/app-screen";
 import { AppText } from "@/components/app-text";
 import { BackArrow } from "@/components/back-arrow";
 import { getAccessTokenWithRetry } from "@/lib/access-token";
-import { getRideEstimate, isBackendConfigured } from "@/lib/api";
+import {
+  applyReferralCode,
+  getRideEstimate,
+  isBackendConfigured,
+} from "@/lib/api";
 import {
   fetchGooglePlaceSuggestions,
   isGoogleMapsConfigured,
@@ -167,6 +171,10 @@ export default function DestinationSearchScreen() {
   const [isSubmittingRoute, setIsSubmittingRoute] = useState(false);
   const [prefetchedEstimate, setPrefetchedEstimate] =
     useState<RideEstimateResponse | null>(null);
+  const [referralCode, setReferralCode] = useState("");
+  const [isApplyingReferral, setIsApplyingReferral] = useState(false);
+  const [referralMessage, setReferralMessage] = useState<string | null>(null);
+  const [referralApplied, setReferralApplied] = useState(false);
   const estimateRequestRef = useRef(0);
 
   const destinationValue = routeStops[routeStops.length - 1] ?? "";
@@ -418,6 +426,49 @@ export default function DestinationSearchScreen() {
 
   const clearStop = (index: number) => {
     handleStopChange(index, "");
+  };
+
+  const handleReferralCodeChange = (value: string) => {
+    setReferralCode(value.toUpperCase().replace(/[^A-Z0-9]/g, ""));
+    setReferralMessage(null);
+  };
+
+  const handleApplyReferralCode = async () => {
+    const code = referralCode.trim();
+    if (!code || referralApplied || isApplyingReferral) {
+      return;
+    }
+
+    if (!isBackendConfigured() || !isReady || !user) {
+      setReferralMessage("Sign in first to apply a referral code.");
+      return;
+    }
+
+    setIsApplyingReferral(true);
+    setReferralMessage(null);
+
+    try {
+      const accessToken = await getAccessTokenWithRetry(getAccessToken);
+      if (!accessToken) {
+        throw new Error("Sign in again to apply this code.");
+      }
+
+      const result = await applyReferralCode({ accessToken, code });
+      setReferralApplied(true);
+      setReferralMessage(
+        result.unlockedCashback
+          ? `Code applied. NGN ${Math.round(result.unlockedCashback.amountNgn).toLocaleString("en-NG")} cashback unlocked.`
+          : "Code applied. Your referral is now linked.",
+      );
+    } catch (error) {
+      setReferralMessage(
+        error instanceof Error
+          ? error.message
+          : "Could not apply this referral code.",
+      );
+    } finally {
+      setIsApplyingReferral(false);
+    }
   };
 
   const itinerary = useMemo<RideItinerary>(
@@ -712,6 +763,17 @@ export default function DestinationSearchScreen() {
                   </View>
                 </Pressable>
               </View>
+
+              {flowMode === "booking" ? (
+                <ReferralCodeCard
+                  applied={referralApplied}
+                  code={referralCode}
+                  isApplying={isApplyingReferral}
+                  message={referralMessage}
+                  onApply={handleApplyReferralCode}
+                  onChangeCode={handleReferralCodeChange}
+                />
+              ) : null}
 
               {shouldShowIdleHistory ? (
                 <View style={styles.historySection}>
@@ -1056,6 +1118,85 @@ function PlaceResultRow({
         </AppText>
       </View>
     </Pressable>
+  );
+}
+
+function ReferralCodeCard({
+  applied,
+  code,
+  isApplying,
+  message,
+  onApply,
+  onChangeCode,
+}: {
+  applied: boolean;
+  code: string;
+  isApplying: boolean;
+  message: string | null;
+  onApply: () => void;
+  onChangeCode: (value: string) => void;
+}) {
+  const canApply = code.trim().length > 0 && !applied && !isApplying;
+
+  return (
+    <View style={styles.referralCard}>
+      <View style={styles.referralHeader}>
+        <View style={styles.referralIcon}>
+          <MaterialIcons
+            color={theme.colors.black}
+            name="card-giftcard"
+            size={18}
+          />
+        </View>
+        <View style={styles.referralCopy}>
+          <AppText variant="bodyMedium">Referral code</AppText>
+          <AppText variant="bodySmall" color={theme.colors.muted}>
+            Optional. Add a friend's code once after onboarding.
+          </AppText>
+        </View>
+      </View>
+
+      <View style={styles.referralInputRow}>
+        <TextInput
+          autoCapitalize="characters"
+          editable={!applied && !isApplying}
+          onChangeText={onChangeCode}
+          placeholder="WHLXXXXXX"
+          placeholderTextColor="#A59B92"
+          style={styles.referralInput}
+          value={code}
+        />
+        {code.length > 0 && !applied ? (
+          <Pressable
+            onPress={() => onChangeCode("")}
+            style={styles.inlineClearButton}
+          >
+            <MaterialIcons color={theme.colors.black} name="close" size={15} />
+          </Pressable>
+        ) : null}
+        <Pressable
+          disabled={!canApply}
+          onPress={onApply}
+          style={[
+            styles.referralApplyButton,
+            !canApply ? styles.referralApplyButtonDisabled : null,
+          ]}
+        >
+          <AppText variant="label" color={theme.colors.offWhite}>
+            {applied ? "Applied" : isApplying ? "Applying" : "Apply"}
+          </AppText>
+        </Pressable>
+      </View>
+
+      {message ? (
+        <AppText
+          variant="bodySmall"
+          color={applied ? theme.colors.green : theme.colors.danger}
+        >
+          {message}
+        </AppText>
+      ) : null}
+    </View>
   );
 }
 
@@ -1424,6 +1565,65 @@ const styles = StyleSheet.create({
   },
   historySection: {
     gap: theme.spacing.sm,
+  },
+  referralCard: {
+    gap: theme.spacing.sm,
+    padding: theme.spacing.md,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    borderRadius: theme.radius.md,
+    backgroundColor: "#FFF4EA",
+    ...theme.shadows.card,
+  },
+  referralHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing.sm,
+  },
+  referralIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: theme.radius.pill,
+    borderWidth: theme.borders.regular,
+    borderColor: theme.colors.black,
+    backgroundColor: theme.colors.white,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  referralCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  referralInputRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing.xs,
+  },
+  referralInput: {
+    flex: 1,
+    minHeight: 44,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    borderRadius: theme.radius.sm,
+    backgroundColor: theme.colors.white,
+    paddingHorizontal: theme.spacing.sm,
+    fontFamily: theme.fonts.body,
+    fontSize: 14,
+    color: theme.colors.black,
+  },
+  referralApplyButton: {
+    minHeight: 44,
+    paddingHorizontal: theme.spacing.md,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    borderRadius: theme.radius.sm,
+    backgroundColor: theme.colors.orange,
+    alignItems: "center",
+    justifyContent: "center",
+    ...theme.shadows.subtle,
+  },
+  referralApplyButtonDisabled: {
+    opacity: 0.45,
   },
   sectionHeading: {
     gap: 2,
