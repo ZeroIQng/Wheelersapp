@@ -1,8 +1,9 @@
+import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { usePrivy } from "@privy-io/expo";
 import { Href, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useState } from "react";
-import { Alert, StyleSheet, View } from "react-native";
+import { Alert, Pressable, StyleSheet, View } from "react-native";
 
 import { AppCard } from "@/components/app-card";
 import { AppScreen } from "@/components/app-screen";
@@ -43,17 +44,6 @@ const supportOptions = [
     subtitle: "Start a live chat with the Wheelers support team.",
     type: "navigation",
     route: "/support/chat",
-  },
-] satisfies SettingOption[];
-
-const referralOptions = [
-  {
-    id: "referrals",
-    icon: "card-giftcard",
-    title: "Referral rewards",
-    subtitle: "Share your code and track ride cashback.",
-    type: "navigation",
-    route: "/growth/referral",
   },
 ] satisfies SettingOption[];
 
@@ -361,26 +351,16 @@ function SettingsScreenBody({
 
           <View style={styles.fullDivider} />
 
+          <ReferralSettingsCard onPress={() => router.push("/growth/referral")} />
+
+          <View style={styles.fullDivider} />
+
           <View style={styles.sectionLabel}>
             <AppText variant="monoSmall" color={theme.colors.muted}>
               ACCOUNT
             </AppText>
           </View>
           {renderRows(accountSettings)}
-
-          <View style={styles.fullDivider} />
-
-          <View style={styles.sectionLabel}>
-            <AppText variant="monoSmall" color={theme.colors.muted}>
-              REFERRALS
-            </AppText>
-            <AppText variant="bodySmall" color={theme.colors.muted}>
-              Invite riders and earn ride-only cashback.
-            </AppText>
-          </View>
-          {renderRows(referralOptions)}
-
-          <View style={styles.fullDivider} />
 
           <View style={styles.sectionLabel}>
             <AppText variant="monoSmall" color={theme.colors.muted}>
@@ -403,6 +383,40 @@ function SettingsScreenBody({
         </AppCard>
       </View>
     </AppScreen>
+  );
+}
+
+function ReferralSettingsCard({ onPress }: { onPress: () => void }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.referralCard,
+        pressed ? styles.referralCardPressed : null,
+      ]}
+    >
+      <View style={styles.referralIcon}>
+        <MaterialIcons
+          color={theme.colors.black}
+          name="card-giftcard"
+          size={22}
+        />
+      </View>
+      <View style={styles.referralCopy}>
+        <AppText variant="monoSmall" color={theme.colors.orange}>
+          REFERRALS
+        </AppText>
+        <AppText variant="h3">Invite and earn ride cashback</AppText>
+        <AppText variant="bodySmall" color={theme.colors.muted}>
+          Share your code, track rewards, and copy your referral link.
+        </AppText>
+      </View>
+      <View style={styles.referralAction}>
+        <AppText variant="label" color={theme.colors.offWhite}>
+          Open
+        </AppText>
+      </View>
+    </Pressable>
   );
 }
 
@@ -445,6 +459,49 @@ const styles = StyleSheet.create({
   profileCopy: {
     flex: 1,
     gap: 3,
+  },
+  referralCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing.sm,
+    marginHorizontal: theme.spacing.md,
+    marginVertical: theme.spacing.sm,
+    padding: theme.spacing.md,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    borderRadius: theme.radius.md,
+    backgroundColor: "#FFF4EA",
+    ...theme.shadows.card,
+  },
+  referralCardPressed: {
+    transform: [{ translateX: 2 }, { translateY: 2 }],
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  referralIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: theme.radius.pill,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    backgroundColor: theme.colors.white,
+    alignItems: "center",
+    justifyContent: "center",
+    ...theme.shadows.subtle,
+  },
+  referralCopy: {
+    flex: 1,
+    gap: 3,
+  },
+  referralAction: {
+    minHeight: 38,
+    paddingHorizontal: theme.spacing.sm,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    borderRadius: theme.radius.sm,
+    backgroundColor: theme.colors.orange,
+    alignItems: "center",
+    justifyContent: "center",
   },
   sectionLabel: {
     gap: 2,
