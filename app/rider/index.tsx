@@ -288,6 +288,12 @@ export default function RiderHomeScreen() {
   const historyExistsRef = useRef(false);
   const notificationPromptedRef = useRef(false);
 
+  useEffect(() => {
+    if (!hasHistoryPreview) return;
+    historyExistsRef.current = true;
+    expandProgress.value = 1;
+  }, [expandProgress, hasHistoryPreview]);
+
   // Swipe down — return to default position, hide history
   const collapseSheet = () => {
     expandProgress.value = withTiming(0, { duration: 220 });
@@ -530,9 +536,7 @@ export default function RiderHomeScreen() {
               <View
                 style={styles.historyPanel}
                 onLayout={({ nativeEvent }) => {
-                  if (historyMeasuredHeight == null) {
-                    setHistoryMeasuredHeight(nativeEvent.layout.height);
-                  }
+                  setHistoryMeasuredHeight(nativeEvent.layout.height);
                 }}
               >
                 <View style={styles.historyHeader}>
@@ -564,10 +568,13 @@ export default function RiderHomeScreen() {
                             />
                           </View>
                           <View style={styles.historyCopy}>
-                            <AppText variant="bodyMedium">{ride.title}</AppText>
+                            <AppText variant="bodyMedium" numberOfLines={1}>
+                              {ride.title}
+                            </AppText>
                             <AppText
                               variant="bodySmall"
                               color={theme.colors.muted}
+                              numberOfLines={1}
                             >
                               {ride.meta}
                             </AppText>
@@ -575,6 +582,7 @@ export default function RiderHomeScreen() {
                           <AppText
                             variant="monoSmall"
                             color={theme.colors.orange}
+                            style={styles.historyFare}
                           >
                             {ride.fare}
                           </AppText>
@@ -798,7 +806,7 @@ const styles = StyleSheet.create({
   // ── History ────────────────────────────────────────────────────────
   historyPanel: {
     gap: theme.spacing.sm,
-    paddingBottom: theme.spacing.xs,
+    paddingBottom: theme.spacing.sm,
   },
   historyHeader: {
     flexDirection: "row",
@@ -811,8 +819,9 @@ const styles = StyleSheet.create({
   historyCard: {
     flexDirection: "row",
     alignItems: "center",
-    gap: theme.spacing.sm,
-    paddingVertical: theme.spacing.sm,
+    gap: theme.spacing.xs,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.xs,
     backgroundColor: theme.colors.offWhite,
   },
   historyIcon: {
@@ -828,6 +837,12 @@ const styles = StyleSheet.create({
   historyCopy: {
     flex: 1,
     gap: 2,
+    minWidth: 0,
+  },
+  historyFare: {
+    flexShrink: 0,
+    maxWidth: 86,
+    textAlign: "right",
   },
 
   // ── Vehicle / artwork helpers ──────────────────────────────────────
