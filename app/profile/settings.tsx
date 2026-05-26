@@ -51,8 +51,6 @@ type SettingsProfile = {
   initials: string;
   name: string;
   email: string;
-  username: string | null;
-  phone: string | null;
   verificationState: string;
 };
 
@@ -100,20 +98,14 @@ function deriveInitials(name: string): string {
 function buildProfile(input?: {
   name?: string | null;
   email?: string | null;
-  username?: string | null;
-  phone?: string | null;
 }): SettingsProfile {
   const email = input?.email?.trim() || "";
   const name = input?.name?.trim() || (email ? deriveNameFromEmail(email) : "");
-  const username = input?.username?.trim() || null;
-  const phone = input?.phone?.trim() || null;
 
   return {
     initials: deriveInitials(name),
     name,
     email,
-    username,
-    phone,
     verificationState: "Verified account",
   };
 }
@@ -186,8 +178,6 @@ function PrivySettingsScreen() {
         buildProfile({
           name: response.user.name ?? getPrivyName(user),
           email: response.user.email ?? getPrivyEmail(user),
-          username: response.user.username,
-          phone: response.user.phone,
         }),
       );
     } catch {
@@ -348,16 +338,6 @@ function SettingsScreenBody({
               <AppText variant="bodySmall" color={theme.colors.muted}>
                 {profile.email}
               </AppText>
-              {profile.username ? (
-                <AppText variant="caption" color={theme.colors.muted}>
-                  @{profile.username}
-                </AppText>
-              ) : null}
-              {profile.phone ? (
-                <AppText variant="caption" color={theme.colors.muted}>
-                  {profile.phone}
-                </AppText>
-              ) : null}
               <AppText variant="caption" color={theme.colors.orange}>
                 {profile.verificationState}
               </AppText>
