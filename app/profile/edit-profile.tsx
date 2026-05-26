@@ -21,7 +21,7 @@ function normalizeUsernameInput(value: string): string {
 export default function EditProfileScreen() {
   const router = useRouter();
   const { getAccessToken, isReady, user } = usePrivy();
-  const fallbackEmail = user ? getPrivyEmail(user) ?? "Not available" : "Not available";
+  const fallbackEmail = user ? getPrivyEmail(user) ?? "" : "";
   const fallbackName = user ? getPrivyName(user) ?? "" : "";
   const [username, setUsername] = useState("");
   const [fullName, setFullName] = useState("");
@@ -86,12 +86,7 @@ export default function EditProfileScreen() {
     const trimmedEmail = email.trim().toLowerCase();
     const trimmedPhone = phone.trim();
 
-    if (!trimmedUsername) {
-      Alert.alert("Username required", "Enter a username to continue.");
-      return;
-    }
-
-    if (!/^[a-z0-9_]{3,24}$/.test(trimmedUsername)) {
+    if (trimmedUsername && !/^[a-z0-9_]{3,24}$/.test(trimmedUsername)) {
       Alert.alert(
         "Invalid username",
         "Username must be 3-24 characters and use only lowercase letters, numbers, or underscores.",
@@ -104,7 +99,7 @@ export default function EditProfileScreen() {
       return;
     }
 
-    if (trimmedPhone && trimmedPhone.length < 7) {
+    if (trimmedPhone && (trimmedPhone.length < 7 || trimmedPhone.length > 24)) {
       Alert.alert("Invalid phone number", "Enter a valid phone number to continue.");
       return;
     }
@@ -120,7 +115,7 @@ export default function EditProfileScreen() {
     try {
       await updateCurrentProfile({
         accessToken,
-        username: trimmedUsername,
+        username: trimmedUsername || undefined,
         email: trimmedEmail || undefined,
         phone: trimmedPhone || undefined,
       });
@@ -201,7 +196,7 @@ export default function EditProfileScreen() {
           <AppText variant="bodySmall" color={theme.colors.muted}>
             Full name
           </AppText>
-          <AppText variant="bodyMedium">{fullName || "Not available"}</AppText>
+          <AppText variant="bodyMedium">{fullName}</AppText>
         </View>
 
         <AppButton
