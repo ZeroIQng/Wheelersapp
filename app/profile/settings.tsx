@@ -1,8 +1,9 @@
+import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { usePrivy } from "@privy-io/expo";
 import { Href, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useState } from "react";
-import { Alert, StyleSheet, View } from "react-native";
+import { Alert, Pressable, StyleSheet, View } from "react-native";
 
 import { AppCard } from "@/components/app-card";
 import { AppScreen } from "@/components/app-screen";
@@ -268,6 +269,10 @@ function SettingsScreenBody({
       router.push("/profile/security-pin");
       return;
     }
+    if (id === "referrals") {
+      router.push("/growth/referral");
+      return;
+    }
     if (id === "logout") {
       if (isLoggingOut) {
         return;
@@ -346,14 +351,16 @@ function SettingsScreenBody({
 
           <View style={styles.fullDivider} />
 
+          <ReferralSettingsCard onPress={() => router.push("/growth/referral")} />
+
+          <View style={styles.fullDivider} />
+
           <View style={styles.sectionLabel}>
             <AppText variant="monoSmall" color={theme.colors.muted}>
               ACCOUNT
             </AppText>
           </View>
           {renderRows(accountSettings)}
-
-          <View style={styles.fullDivider} />
 
           <View style={styles.sectionLabel}>
             <AppText variant="monoSmall" color={theme.colors.muted}>
@@ -376,6 +383,37 @@ function SettingsScreenBody({
         </AppCard>
       </View>
     </AppScreen>
+  );
+}
+
+function ReferralSettingsCard({ onPress }: { onPress: () => void }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.referralCard,
+        pressed ? styles.referralCardPressed : null,
+      ]}
+    >
+      <View style={styles.referralIcon}>
+        <MaterialIcons
+          color={theme.colors.black}
+          name="card-giftcard"
+          size={19}
+        />
+      </View>
+      <View style={styles.referralCopy}>
+        <AppText variant="bodyMedium">Referral rewards</AppText>
+        <AppText variant="bodySmall" color={theme.colors.muted}>
+          Share your code and track ride cashback.
+        </AppText>
+      </View>
+      <View style={styles.referralAction}>
+        <AppText variant="h3" color={theme.colors.orange}>
+          ›
+        </AppText>
+      </View>
+    </Pressable>
   );
 }
 
@@ -418,6 +456,36 @@ const styles = StyleSheet.create({
   profileCopy: {
     flex: 1,
     gap: 3,
+  },
+  referralCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing.md,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.sm,
+    backgroundColor: theme.colors.white,
+  },
+  referralCardPressed: {
+    opacity: 0.75,
+  },
+  referralIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: theme.radii.sm,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    backgroundColor: theme.colors.orangeLight,
+    alignItems: "center",
+    justifyContent: "center",
+    ...theme.shadows.card,
+  },
+  referralCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  referralAction: {
+    alignItems: "center",
+    justifyContent: "center",
   },
   sectionLabel: {
     gap: 2,

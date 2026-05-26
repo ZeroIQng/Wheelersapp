@@ -97,6 +97,33 @@ interface CurrentProfileResponse {
   user: BackendUser;
 }
 
+export interface ReferralSummaryResponse {
+  code: string;
+  availableCashbackNgn: number;
+  frozenCashbackNgn: number;
+  reservedCashbackNgn?: number;
+  usedCashbackNgn: number;
+  pendingReferrals: number;
+  qualifiedReferrals: number;
+  expiredNoRideReferrals: number;
+  closedReferrals: number;
+}
+
+export interface ApplyReferralCodeResponse {
+  referral: {
+    id: string;
+    referrerId: string;
+    status: string;
+    appliedAt: string;
+    expiresAt: string;
+    closesAt: string;
+  };
+  unlockedCashback: {
+    id: string;
+    amountNgn: number;
+  } | null;
+}
+
 interface SendPhoneOtpInput {
   accessToken: string;
   phone: string;
@@ -251,6 +278,8 @@ export interface GroupRideFaceVerificationSummary {
   failureReason: string | null;
 }
 
+export type GroupRideGenderPreference = "any" | "women_only" | "men_only";
+
 export interface GroupRideMatchRequest {
   id: string;
   userId: string;
@@ -270,6 +299,7 @@ export interface GroupRideMatchRequest {
   plannedDistanceKm: number | null;
   plannedDurationSeconds: number | null;
   fareEstimateUsdt: number | null;
+  genderPreference: GroupRideGenderPreference;
   paymentMethod: "wallet_balance" | "smart_account";
   readyForMatchAt: string | null;
   matchingStartedAt: string | null;
@@ -739,6 +769,29 @@ export async function getCurrentProfile(input: {
   });
 }
 
+export async function getReferralSummary(input: {
+  accessToken: string;
+}): Promise<ReferralSummaryResponse> {
+  return getJson<ReferralSummaryResponse>("/referrals/me", {
+    accessToken: input.accessToken,
+    fallbackError: "Could not load your referral code.",
+  });
+}
+
+export async function applyReferralCode(input: {
+  accessToken: string;
+  code: string;
+}): Promise<ApplyReferralCodeResponse> {
+  return postJson<ApplyReferralCodeResponse>(
+    "/referrals/apply",
+    { code: input.code },
+    {
+      accessToken: input.accessToken,
+      fallbackError: "Could not apply this referral code.",
+    },
+  );
+}
+
 export async function updateCurrentProfile(input: {
   accessToken: string;
   username?: string;
@@ -1110,6 +1163,7 @@ export async function createGroupRideMatchRequest(input: {
   pickup: RideEstimateWaypoint;
   destination: RideEstimateWaypoint;
   stops?: RideEstimateWaypoint[];
+  genderPreference?: GroupRideGenderPreference;
   paymentMethod?: "wallet_balance" | "smart_account";
 }): Promise<{
   item: GroupRideMatchRequest;

@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   Animated,
   Pressable,
+  ScrollView,
   StyleSheet,
   View,
 } from "react-native";
@@ -136,7 +137,6 @@ export default function RiderHistoryScreen() {
     <>
       <AppScreen
         backgroundColor={theme.colors.offWhite}
-        scroll
         contentStyle={styles.container}
       >
         <StatusBar style="dark" backgroundColor={theme.colors.offWhite} />
@@ -177,89 +177,96 @@ export default function RiderHistoryScreen() {
           })}
         </View>
 
-        <View style={styles.list}>
-          {activeTab === "history" && isLoading && visibleRides.length === 0 ? (
-            <AppText variant="bodySmall" color={theme.colors.muted}>
-              Loading ride history...
-            </AppText>
-          ) : null}
+        <ScrollView
+          style={styles.listScroller}
+          contentContainerStyle={styles.list}
+          bounces
+          alwaysBounceVertical={visibleRides.length > 0}
+          decelerationRate="fast"
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+            {activeTab === "history" && isLoading && visibleRides.length === 0 ? (
+              <AppText variant="bodySmall" color={theme.colors.muted}>
+                Loading ride history...
+              </AppText>
+            ) : null}
 
-          {activeTab === "history" && error ? (
-            <AppText variant="bodySmall" color={theme.colors.muted}>
-              {error}
-            </AppText>
-          ) : null}
+            {activeTab === "history" && error ? (
+              <AppText variant="bodySmall" color={theme.colors.muted}>
+                {error}
+              </AppText>
+            ) : null}
 
-          {activeTab === "scheduled" && isLoadingScheduled && visibleRides.length === 0 ? (
-            <AppText variant="bodySmall" color={theme.colors.muted}>
-              Loading scheduled rides...
-            </AppText>
-          ) : null}
+            {activeTab === "scheduled" && isLoadingScheduled && visibleRides.length === 0 ? (
+              <AppText variant="bodySmall" color={theme.colors.muted}>
+                Loading scheduled rides...
+              </AppText>
+            ) : null}
 
-          {activeTab === "scheduled" && scheduledError ? (
-            <AppText variant="bodySmall" color={theme.colors.muted}>
-              {scheduledError}
-            </AppText>
-          ) : null}
+            {activeTab === "scheduled" && scheduledError ? (
+              <AppText variant="bodySmall" color={theme.colors.muted}>
+                {scheduledError}
+              </AppText>
+            ) : null}
 
-          {activeTab === "history" &&
-          !isLoading &&
-          !error &&
-          visibleRides.length === 0 ? (
-            <EmptyRideState
-              title="No rides yet"
-              subtitle="Your completed trips will show up here with fares, timing, and every route you finish."
-              icon="directions-car"
-            />
-          ) : null}
+            {activeTab === "history" &&
+            !isLoading &&
+            !error &&
+            visibleRides.length === 0 ? (
+              <EmptyRideState
+                title="No rides yet"
+                subtitle="Your completed trips will show up here with fares, timing, and every route you finish."
+                icon="directions-car"
+              />
+            ) : null}
 
-          {activeTab === "scheduled" &&
-          !isLoadingScheduled &&
-          !scheduledError &&
-          visibleRides.length === 0 ? (
-            <EmptyRideState
-              title="No scheduled rides"
-              subtitle="Plan airport runs, early pickups, and later trips here so this page never feels empty again."
-              icon="calendar-month"
-            />
-          ) : null}
+            {activeTab === "scheduled" &&
+            !isLoadingScheduled &&
+            !scheduledError &&
+            visibleRides.length === 0 ? (
+              <EmptyRideState
+                title="No scheduled rides"
+                subtitle="Plan airport runs, early pickups, and later trips here so this page never feels empty again."
+                icon="calendar-month"
+              />
+            ) : null}
 
-          {visibleRides.map((ride) => (
-            <AppCard key={ride.id} style={styles.card}>
-              <View style={styles.iconWrap}>
-                <MaterialIcons
-                  name={ride.icon as keyof typeof MaterialIcons.glyphMap}
-                  size={20}
-                  color={theme.colors.black}
-                />
-              </View>
-              <View style={styles.copy}>
-                <AppText variant="bodyMedium">{ride.title}</AppText>
-                <AppText variant="bodySmall" color={theme.colors.muted}>
-                  {ride.meta}
-                </AppText>
-              </View>
-              <View style={styles.meta}>
-                <AppText variant="mono" color={theme.colors.orange}>
-                  {ride.fare}
-                </AppText>
-                <AppText variant="bodySmall" color={theme.colors.muted}>
-                  {ride.statusLabel}
-                </AppText>
-                {activeTab === "scheduled" ? (
-                  <Pressable
-                    onPress={() => void cancelItem(ride.id, "rider_cancelled_schedule")}
-                  >
-                    <AppText variant="monoSmall" color={theme.colors.danger}>
-                      Cancel
-                    </AppText>
-                  </Pressable>
-                ) : null}
-              </View>
-            </AppCard>
-          ))}
-
-        </View>
+            {visibleRides.map((ride) => (
+              <AppCard key={ride.id} style={styles.card}>
+                <View style={styles.iconWrap}>
+                  <MaterialIcons
+                    name={ride.icon as keyof typeof MaterialIcons.glyphMap}
+                    size={20}
+                    color={theme.colors.black}
+                  />
+                </View>
+                <View style={styles.copy}>
+                  <AppText variant="bodyMedium">{ride.title}</AppText>
+                  <AppText variant="bodySmall" color={theme.colors.muted}>
+                    {ride.meta}
+                  </AppText>
+                </View>
+                <View style={styles.meta}>
+                  <AppText variant="mono" color={theme.colors.orange}>
+                    {ride.fare}
+                  </AppText>
+                  <AppText variant="bodySmall" color={theme.colors.muted}>
+                    {ride.statusLabel}
+                  </AppText>
+                  {activeTab === "scheduled" ? (
+                    <Pressable
+                      onPress={() => void cancelItem(ride.id, "rider_cancelled_schedule")}
+                    >
+                      <AppText variant="monoSmall" color={theme.colors.danger}>
+                        Cancel
+                      </AppText>
+                    </Pressable>
+                  ) : null}
+                </View>
+              </AppCard>
+            ))}
+        </ScrollView>
       </AppScreen>
 
       {showRideFab ? (
@@ -322,6 +329,7 @@ export default function RiderHistoryScreen() {
 
 const styles = StyleSheet.create({
   container: {
+    flex: 1,
     gap: theme.spacing.lg,
     paddingTop: theme.spacing.lg,
   },
@@ -355,10 +363,15 @@ const styles = StyleSheet.create({
   tabIndicatorActive: {
     backgroundColor: theme.colors.orange,
   },
-  list: {
+  listScroller: {
     flex: 1,
+    marginHorizontal: -theme.layout.screenPadding,
+    paddingHorizontal: theme.layout.screenPadding,
+  },
+  list: {
+    flexGrow: 1,
     gap: theme.spacing.sm,
-    paddingBottom: 68,
+    paddingBottom: 92,
   },
   emptyState: {
     position: "relative",

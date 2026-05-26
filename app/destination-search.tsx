@@ -6,7 +6,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Keyboard,
-  PanResponder,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -19,7 +18,11 @@ import { AppScreen } from "@/components/app-screen";
 import { AppText } from "@/components/app-text";
 import { BackArrow } from "@/components/back-arrow";
 import { getAccessTokenWithRetry } from "@/lib/access-token";
-import { getRideEstimate, isBackendConfigured } from "@/lib/api";
+import {
+  applyReferralCode,
+  getRideEstimate,
+  isBackendConfigured,
+} from "@/lib/api";
 import {
   fetchGooglePlaceSuggestions,
   isGoogleMapsConfigured,
@@ -39,7 +42,6 @@ import {
   DEFAULT_DESTINATION_LABEL,
   DEFAULT_PICKUP_LABEL,
   MAX_ADDITIONAL_STOPS,
-  moveRouteStop,
   parseRideItineraryParam,
   serializeRideItinerary,
   type RideItinerary,
@@ -55,7 +57,6 @@ type ActiveField =
 type ScreenMode = "form" | "search";
 type FlowMode = "booking" | "trip-edit";
 
-const DRAG_SWAP_THRESHOLD = 88;
 const SEARCH_DEBOUNCE_MS = 280;
 const FORM_HISTORY_PREVIEW_LIMIT = 3;
 
@@ -167,10 +168,13 @@ export default function DestinationSearchScreen() {
   const [isSearching, setIsSearching] = useState(false);
   // Which field is currently being edited inline in form mode
   const [activeRouteIndex, setActiveRouteIndex] = useState<number | null>(null);
-  const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
   const [isSubmittingRoute, setIsSubmittingRoute] = useState(false);
   const [prefetchedEstimate, setPrefetchedEstimate] =
     useState<RideEstimateResponse | null>(null);
+  const [referralCode, setReferralCode] = useState("");
+  const [isApplyingReferral, setIsApplyingReferral] = useState(false);
+  const [referralMessage, setReferralMessage] = useState<string | null>(null);
+  const [referralApplied, setReferralApplied] = useState(false);
   const estimateRequestRef = useRef(0);
 
   const destinationValue = routeStops[routeStops.length - 1] ?? "";
@@ -394,16 +398,8 @@ export default function DestinationSearchScreen() {
     setRouteStops((current) => current.filter((_, i) => i !== index));
   };
 
-  const handleReorderStop = (index: number, dy: number) => {
-    const offset = Math.round(dy / DRAG_SWAP_THRESHOLD);
-    if (offset === 0) return;
-    setActiveRouteIndex(null);
-    setSearchQuery("");
-    setRouteStops((current) => {
-      const lastMovableIndex = current.length - 2;
-      const nextIndex = Math.max(0, Math.min(lastMovableIndex, index + offset));
-      return moveRouteStop(current, index, nextIndex);
-    });
+  const clearPickup = () => {
+    setPickupValue("");
   };
 
   // Destination inline edit
@@ -416,12 +412,63 @@ export default function DestinationSearchScreen() {
     setSearchQuery(value);
   };
 
+  const clearDestination = () => {
+    handleDestinationChange("");
+  };
+
   // Stop inline edit
   const handleStopChange = (index: number, value: string) => {
     setRouteStops((current) =>
       current.map((stop, i) => (i === index ? value : stop)),
     );
     setSearchQuery(value);
+  };
+
+  const clearStop = (index: number) => {
+    handleStopChange(index, "");
+  };
+
+  const handleReferralCodeChange = (value: string) => {
+    setReferralCode(value.toUpperCase().replace(/[^A-Z0-9]/g, ""));
+    setReferralMessage(null);
+  };
+
+  const handleApplyReferralCode = async () => {
+    const code = referralCode.trim();
+    if (!code || referralApplied || isApplyingReferral) {
+      return;
+    }
+
+    if (!isBackendConfigured() || !isReady || !user) {
+      setReferralMessage("Sign in first to apply a referral code.");
+      return;
+    }
+
+    setIsApplyingReferral(true);
+    setReferralMessage(null);
+
+    try {
+      const accessToken = await getAccessTokenWithRetry(getAccessToken);
+      if (!accessToken) {
+        throw new Error("Sign in again to apply this code.");
+      }
+
+      const result = await applyReferralCode({ accessToken, code });
+      setReferralApplied(true);
+      setReferralMessage(
+        result.unlockedCashback
+          ? `Code applied. NGN ${Math.round(result.unlockedCashback.amountNgn).toLocaleString("en-NG")} cashback unlocked.`
+          : "Code applied. Your referral is now linked.",
+      );
+    } catch (error) {
+      setReferralMessage(
+        error instanceof Error
+          ? error.message
+          : "Could not apply this referral code.",
+      );
+    } finally {
+      setIsApplyingReferral(false);
+    }
   };
 
   const itinerary = useMemo<RideItinerary>(
@@ -645,6 +692,7 @@ export default function DestinationSearchScreen() {
                   color={theme.colors.green}
                   label="Pickup"
                   marker="circle"
+                  onClear={clearPickup}
                   onPress={() => openSearch({ type: "pickup" })}
                   value={pickupValue}
                 />
@@ -657,10 +705,10 @@ export default function DestinationSearchScreen() {
                         dense={isCondensedForm}
                         compact={isUltraCondensedForm}
                         isEditing={activeRouteIndex === index}
-                        isDragging={draggingIndex === index}
                         key={`route-stop-${index}`}
                         label={`Stop ${index + 1}`}
                         onChangeText={(value) => handleStopChange(index, value)}
+                        onClear={() => clearStop(index)}
                         onFocus={() => {
                           setActiveRouteIndex(index);
                           setSearchQuery("");
@@ -669,9 +717,6 @@ export default function DestinationSearchScreen() {
                           });
                         }}
                         onRemove={() => handleRemoveStop(index)}
-                        onReorder={(dy) => handleReorderStop(index, dy)}
-                        onReorderEnd={() => setDraggingIndex(null)}
-                        onReorderStart={() => setDraggingIndex(index)}
                         onSubmitEditing={() => setActiveRouteIndex(null)}
                         value={stop}
                       />
@@ -683,6 +728,7 @@ export default function DestinationSearchScreen() {
                   dense={isCondensedForm}
                   compact={isUltraCondensedForm}
                   isEditing={activeRouteIndex === routeStops.length - 1}
+                  onClear={clearDestination}
                   onChangeText={handleDestinationChange}
                   onFocus={() => {
                     setActiveRouteIndex(routeStops.length - 1);
@@ -717,6 +763,17 @@ export default function DestinationSearchScreen() {
                   </View>
                 </Pressable>
               </View>
+
+              {flowMode === "booking" ? (
+                <ReferralCodeCard
+                  applied={referralApplied}
+                  code={referralCode}
+                  isApplying={isApplyingReferral}
+                  message={referralMessage}
+                  onApply={handleApplyReferralCode}
+                  onChangeCode={handleReferralCodeChange}
+                />
+              ) : null}
 
               {shouldShowIdleHistory ? (
                 <View style={styles.historySection}>
@@ -829,6 +886,18 @@ export default function DestinationSearchScreen() {
                   style={styles.searchInput}
                   value={searchQuery}
                 />
+                {searchQuery.length > 0 ? (
+                  <Pressable
+                    onPress={() => setSearchQuery("")}
+                    style={styles.inlineClearButton}
+                  >
+                    <MaterialIcons
+                      color={theme.colors.black}
+                      name="close"
+                      size={15}
+                    />
+                  </Pressable>
+                ) : null}
               </View>
             </View>
 
@@ -963,6 +1032,7 @@ type SearchTriggerFieldProps = {
   color: string;
   label: string;
   marker: "circle" | "square";
+  onClear: () => void;
   onPress: () => void;
   value: string;
 };
@@ -973,9 +1043,12 @@ function SearchTriggerField({
   color,
   label,
   marker,
+  onClear,
   onPress,
   value,
 }: SearchTriggerFieldProps) {
+  const hasValue = value.trim().length > 0;
+
   return (
     <View style={[styles.triggerFieldBlock, dense ? styles.triggerFieldBlockDense : null]}>
       <AppText
@@ -988,8 +1061,7 @@ function SearchTriggerField({
       >
         {label}
       </AppText>
-      <Pressable
-        onPress={onPress}
+      <View
         style={[
           styles.triggerField,
           dense ? styles.triggerFieldDense : null,
@@ -1002,14 +1074,21 @@ function SearchTriggerField({
             { backgroundColor: color },
           ]}
         />
-        <AppText numberOfLines={1} variant="body" style={styles.triggerText}>
-          {value || (
-            <AppText variant="body" color={theme.colors.muted}>
-              Where from?
-            </AppText>
-          )}
-        </AppText>
-      </Pressable>
+        <Pressable onPress={onPress} style={styles.triggerPressArea}>
+          <AppText numberOfLines={1} variant="body" style={styles.triggerText}>
+            {value || (
+              <AppText variant="body" color={theme.colors.muted}>
+                Where from?
+              </AppText>
+            )}
+          </AppText>
+        </Pressable>
+        {hasValue ? (
+          <Pressable onPress={onClear} style={styles.inlineClearButton}>
+            <MaterialIcons color={theme.colors.black} name="close" size={15} />
+          </Pressable>
+        ) : null}
+      </View>
     </View>
   );
 }
@@ -1042,10 +1121,90 @@ function PlaceResultRow({
   );
 }
 
+function ReferralCodeCard({
+  applied,
+  code,
+  isApplying,
+  message,
+  onApply,
+  onChangeCode,
+}: {
+  applied: boolean;
+  code: string;
+  isApplying: boolean;
+  message: string | null;
+  onApply: () => void;
+  onChangeCode: (value: string) => void;
+}) {
+  const canApply = code.trim().length > 0 && !applied && !isApplying;
+
+  return (
+    <View style={styles.referralCard}>
+      <View style={styles.referralHeader}>
+        <View style={styles.referralIcon}>
+          <MaterialIcons
+            color={theme.colors.black}
+            name="card-giftcard"
+            size={18}
+          />
+        </View>
+        <View style={styles.referralCopy}>
+          <AppText variant="bodyMedium">Referral code</AppText>
+          <AppText variant="bodySmall" color={theme.colors.muted}>
+            Optional. Add a friend's code once after onboarding.
+          </AppText>
+        </View>
+      </View>
+
+      <View style={styles.referralInputRow}>
+        <TextInput
+          autoCapitalize="characters"
+          editable={!applied && !isApplying}
+          onChangeText={onChangeCode}
+          placeholder="WHLXXXXXX"
+          placeholderTextColor="#A59B92"
+          style={styles.referralInput}
+          value={code}
+        />
+        {code.length > 0 && !applied ? (
+          <Pressable
+            onPress={() => onChangeCode("")}
+            style={styles.inlineClearButton}
+          >
+            <MaterialIcons color={theme.colors.black} name="close" size={15} />
+          </Pressable>
+        ) : null}
+        <Pressable
+          disabled={!canApply}
+          onPress={onApply}
+          style={[
+            styles.referralApplyButton,
+            !canApply ? styles.referralApplyButtonDisabled : null,
+          ]}
+        >
+          <AppText variant="label" color={theme.colors.offWhite}>
+            {applied ? "Applied" : isApplying ? "Applying" : "Apply"}
+          </AppText>
+        </Pressable>
+      </View>
+
+      {message ? (
+        <AppText
+          variant="bodySmall"
+          color={applied ? theme.colors.green : theme.colors.danger}
+        >
+          {message}
+        </AppText>
+      ) : null}
+    </View>
+  );
+}
+
 function DestinationField({
   dense,
   compact,
   isEditing,
+  onClear,
   onChangeText,
   onFocus,
   onSubmitEditing,
@@ -1054,11 +1213,14 @@ function DestinationField({
   dense?: boolean;
   compact?: boolean;
   isEditing: boolean;
+  onClear: () => void;
   onChangeText: (value: string) => void;
   onFocus: () => void;
   onSubmitEditing: () => void;
   value: string;
 }) {
+  const hasValue = value.trim().length > 0;
+
   return (
     <View style={[styles.triggerFieldBlock, dense ? styles.triggerFieldBlockDense : null]}>
       <AppText
@@ -1089,6 +1251,11 @@ function DestinationField({
           style={styles.destinationInput}
           value={value}
         />
+        {hasValue ? (
+          <Pressable onPress={onClear} style={styles.inlineClearButton}>
+            <MaterialIcons color={theme.colors.black} name="close" size={15} />
+          </Pressable>
+        ) : null}
       </View>
     </View>
   );
@@ -1099,14 +1266,11 @@ type StopRouteFieldProps = {
   dense?: boolean;
   compact?: boolean;
   isEditing: boolean;
-  isDragging: boolean;
   label: string;
   onChangeText: (value: string) => void;
+  onClear: () => void;
   onFocus: () => void;
   onRemove: () => void;
-  onReorder: (dy: number) => void;
-  onReorderEnd: () => void;
-  onReorderStart: () => void;
   onSubmitEditing: () => void;
   value: string;
 };
@@ -1116,32 +1280,15 @@ function StopRouteField({
   dense,
   compact,
   isEditing,
-  isDragging,
   label,
   onChangeText,
+  onClear,
   onFocus,
   onRemove,
-  onReorder,
-  onReorderEnd,
-  onReorderStart,
   onSubmitEditing,
   value,
 }: StopRouteFieldProps) {
-  const panResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onStartShouldSetPanResponder: () => true,
-        onMoveShouldSetPanResponder: (_, gestureState) =>
-          Math.abs(gestureState.dy) > 4,
-        onPanResponderGrant: onReorderStart,
-        onPanResponderRelease: (_, gestureState) => {
-          onReorder(gestureState.dy);
-          onReorderEnd();
-        },
-        onPanResponderTerminate: onReorderEnd,
-      }),
-    [onReorder, onReorderEnd, onReorderStart],
-  );
+  const hasValue = value.trim().length > 0;
 
   return (
     <View style={[styles.triggerFieldBlock, dense ? styles.triggerFieldBlockDense : null]}>
@@ -1156,10 +1303,7 @@ function StopRouteField({
         {label}
       </AppText>
       <View
-        style={[
-          styles.stopFieldRow,
-          isDragging ? styles.stopFieldRowDragging : null,
-        ]}
+        style={styles.stopFieldRow}
       >
         <View
           style={[
@@ -1181,14 +1325,11 @@ function StopRouteField({
             style={styles.destinationInput}
             value={value}
           />
-          <View
-            {...panResponder.panHandlers}
-            style={[styles.inlineDragButton, styles.dragButton]}
-          >
-            <AppText variant="monoSmall" color={theme.colors.black}>
-              =
-            </AppText>
-          </View>
+          {hasValue ? (
+            <Pressable onPress={onClear} style={styles.inlineClearButton}>
+              <MaterialIcons color={theme.colors.black} name="close" size={15} />
+            </Pressable>
+          ) : null}
         </View>
 
         {canRemove ? (
@@ -1339,6 +1480,21 @@ const styles = StyleSheet.create({
   triggerText: {
     flex: 1,
   },
+  triggerPressArea: {
+    flex: 1,
+    minWidth: 0,
+  },
+  inlineClearButton: {
+    width: 26,
+    height: 26,
+    borderRadius: theme.radius.pill,
+    borderWidth: theme.borders.regular,
+    borderColor: theme.colors.black,
+    backgroundColor: theme.colors.white,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
   markerCircle: {
     width: 8,
     height: 8,
@@ -1409,6 +1565,65 @@ const styles = StyleSheet.create({
   },
   historySection: {
     gap: theme.spacing.sm,
+  },
+  referralCard: {
+    gap: theme.spacing.sm,
+    padding: theme.spacing.md,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    borderRadius: theme.radius.md,
+    backgroundColor: "#FFF4EA",
+    ...theme.shadows.card,
+  },
+  referralHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing.sm,
+  },
+  referralIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: theme.radius.pill,
+    borderWidth: theme.borders.regular,
+    borderColor: theme.colors.black,
+    backgroundColor: theme.colors.white,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  referralCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  referralInputRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing.xs,
+  },
+  referralInput: {
+    flex: 1,
+    minHeight: 44,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    borderRadius: theme.radius.sm,
+    backgroundColor: theme.colors.white,
+    paddingHorizontal: theme.spacing.sm,
+    fontFamily: theme.fonts.body,
+    fontSize: 14,
+    color: theme.colors.black,
+  },
+  referralApplyButton: {
+    minHeight: 44,
+    paddingHorizontal: theme.spacing.md,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    borderRadius: theme.radius.sm,
+    backgroundColor: theme.colors.orange,
+    alignItems: "center",
+    justifyContent: "center",
+    ...theme.shadows.subtle,
+  },
+  referralApplyButtonDisabled: {
+    opacity: 0.45,
   },
   sectionHeading: {
     gap: 2,

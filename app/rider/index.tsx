@@ -272,6 +272,7 @@ export default function RiderHomeScreen() {
     useRiderHistory(3);
   const { overview } = useWalletOverview();
   const historyPreview = historyItems.slice(0, 2);
+  const hasHistoryPreview = historyPreview.length > 0;
 
   // Large enough that map always fills behind the sheet regardless of sheet height
   const mapFillHeight = 800;
@@ -280,13 +281,18 @@ export default function RiderHomeScreen() {
     number | null
   >(null);
 
-  // expandProgress: 0 = default (heading + cards + search visible)
-  //                 1 = history revealed inside the same anchored sheet
-  // There is NO collapse state below Image 2.
+  // expandProgress: 0 = no-history/default home (cars + search only)
+  //                 1 = history-default home (cars + search + history)
   const expandProgress = useSharedValue(0);
 
   const historyExistsRef = useRef(false);
   const notificationPromptedRef = useRef(false);
+
+  useEffect(() => {
+    if (!hasHistoryPreview) return;
+    historyExistsRef.current = true;
+    expandProgress.value = 1;
+  }, [expandProgress, hasHistoryPreview]);
 
   // Swipe down — return to default position, hide history
   const collapseSheet = () => {
@@ -314,12 +320,17 @@ export default function RiderHomeScreen() {
 
   useEffect(() => {
     if (isLoadingHistory) return;
-    historyExistsRef.current = historyPreview.length > 0;
-    if (historyPreview.length > 0) {
-      // Auto-expand when history arrives so user sees it immediately
-      expandProgress.value = withTiming(1, { duration: 220 });
+
+    historyExistsRef.current = hasHistoryPreview;
+    if (!hasHistoryPreview) {
+      setHistoryMeasuredHeight(null);
+      expandProgress.value = withTiming(0, { duration: 180 });
+      return;
     }
-  }, [historyPreview.length, expandProgress, isLoadingHistory]);
+
+    // History is the default home state when there is ride history.
+    expandProgress.value = withTiming(1, { duration: 220 });
+  }, [hasHistoryPreview, expandProgress, isLoadingHistory]);
 
   // Capture-phase PanResponder on the whole sheet.
   // Vertical swipes are claimed by the sheet; taps pass through to Pressable children.
@@ -519,15 +530,13 @@ export default function RiderHomeScreen() {
         </Pressable>
 
         {/* History — lives inside the sheet, animates height as sheet expands */}
-        {historyPreview.length > 0 ? (
+        {hasHistoryPreview ? (
           <Animated.View style={historyAnimatedStyle}>
             <RevealView delay={180}>
               <View
                 style={styles.historyPanel}
                 onLayout={({ nativeEvent }) => {
-                  if (historyMeasuredHeight == null) {
-                    setHistoryMeasuredHeight(nativeEvent.layout.height);
-                  }
+                  setHistoryMeasuredHeight(nativeEvent.layout.height);
                 }}
               >
                 <View style={styles.historyHeader}>
@@ -559,10 +568,13 @@ export default function RiderHomeScreen() {
                             />
                           </View>
                           <View style={styles.historyCopy}>
-                            <AppText variant="bodyMedium">{ride.title}</AppText>
+                            <AppText variant="bodyMedium" numberOfLines={1}>
+                              {ride.title}
+                            </AppText>
                             <AppText
                               variant="bodySmall"
                               color={theme.colors.muted}
+                              numberOfLines={1}
                             >
                               {ride.meta}
                             </AppText>
@@ -570,6 +582,7 @@ export default function RiderHomeScreen() {
                           <AppText
                             variant="monoSmall"
                             color={theme.colors.orange}
+                            style={styles.historyFare}
                           >
                             {ride.fare}
                           </AppText>
@@ -793,7 +806,7 @@ const styles = StyleSheet.create({
   // ── History ────────────────────────────────────────────────────────
   historyPanel: {
     gap: theme.spacing.sm,
-    paddingBottom: theme.spacing.xs,
+    paddingBottom: theme.spacing.sm,
   },
   historyHeader: {
     flexDirection: "row",
@@ -806,8 +819,9 @@ const styles = StyleSheet.create({
   historyCard: {
     flexDirection: "row",
     alignItems: "center",
-    gap: theme.spacing.sm,
-    paddingVertical: theme.spacing.sm,
+    gap: theme.spacing.xs,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.xs,
     backgroundColor: theme.colors.offWhite,
   },
   historyIcon: {
@@ -823,6 +837,12 @@ const styles = StyleSheet.create({
   historyCopy: {
     flex: 1,
     gap: 2,
+    minWidth: 0,
+  },
+  historyFare: {
+    flexShrink: 0,
+    maxWidth: 86,
+    textAlign: "right",
   },
 
   // ── Vehicle / artwork helpers ──────────────────────────────────────

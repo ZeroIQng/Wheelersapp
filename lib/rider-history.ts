@@ -23,6 +23,8 @@ type UseRiderHistoryResult = {
   error: string | null;
 };
 
+let cachedRiderHistoryItems: RiderHistoryListItem[] = [];
+
 function shortenAddress(value: string): string {
   const [firstSegment] = value.split(",");
   const trimmed = firstSegment?.trim();
@@ -101,7 +103,9 @@ function mapRideItem(ride: RiderHistoryRide): RiderHistoryListItem {
 
 export function useRiderHistory(limit = 20): UseRiderHistoryResult {
   const { getAccessToken, isReady, user } = usePrivy();
-  const [items, setItems] = useState<RiderHistoryListItem[]>([]);
+  const [items, setItems] = useState<RiderHistoryListItem[]>(() =>
+    cachedRiderHistoryItems.slice(0, limit),
+  );
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -111,6 +115,7 @@ export function useRiderHistory(limit = 20): UseRiderHistoryResult {
     async function load(): Promise<void> {
       if (!isBackendConfigured() || !isReady || !user) {
         if (!cancelled) {
+          cachedRiderHistoryItems = [];
           setItems([]);
           setIsLoading(false);
         }
@@ -132,11 +137,12 @@ export function useRiderHistory(limit = 20): UseRiderHistoryResult {
         });
 
         if (!cancelled) {
-          setItems(response.items.map(mapRideItem));
+          const nextItems = response.items.map(mapRideItem);
+          cachedRiderHistoryItems = nextItems;
+          setItems(nextItems.slice(0, limit));
         }
       } catch (loadError) {
         if (!cancelled) {
-          setItems([]);
           setError(
             loadError instanceof Error
               ? loadError.message
