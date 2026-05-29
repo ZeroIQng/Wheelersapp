@@ -3,7 +3,7 @@ import { usePrivy } from "@privy-io/expo";
 import * as Clipboard from "expo-clipboard";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useMemo, useState } from "react";
-import { Alert, Pressable, Share, StyleSheet, View } from "react-native";
+import { Alert, Share, StyleSheet, View } from "react-native";
 
 import { AppButton } from "@/components/app-button";
 import { AppCard } from "@/components/app-card";
@@ -118,7 +118,7 @@ export default function ReferralScreen() {
         <View style={styles.headerCopy}>
           <AppText variant="screenTitle">Referral rewards</AppText>
           <AppText variant="bodySmall" color={theme.colors.muted}>
-            Share your code. Cashback is earned as ride discounts, not wallet
+            Share your code. Cashback can only be used for rides within the App
             cash.
           </AppText>
         </View>
@@ -228,7 +228,11 @@ function RuleRow({ text }: { text: string }) {
   return (
     <View style={styles.ruleRow}>
       <View style={styles.ruleDot} />
-      <AppText variant="bodySmall" color={theme.colors.muted} style={styles.ruleText}>
+      <AppText
+        variant="bodySmall"
+        color={theme.colors.muted}
+        style={styles.ruleText}
+      >
         {text}
       </AppText>
     </View>

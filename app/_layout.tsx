@@ -7,7 +7,18 @@ import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
-import { useColorScheme } from "react-native";
+import { Text, TextInput, useColorScheme } from "react-native";
+
+// Cap Dynamic Type scaling globally so layouts don't break on devices
+// with large accessibility text (especially smaller screens like iPhone 14).
+(Text as any).defaultProps = {
+  ...(Text as any).defaultProps,
+  maxFontSizeMultiplier: 1.2,
+};
+(TextInput as any).defaultProps = {
+  ...(TextInput as any).defaultProps,
+  maxFontSizeMultiplier: 1.2,
+};
 
 import { AppLockOverlay, AppLockProvider } from "@/lib/app-lock";
 import { LocationProvider } from "@/lib/location";

@@ -287,14 +287,27 @@ export default function FaceVerifyScreen() {
         return;
       }
 
+      // Already granted — go straight to camera
       if (permission?.granted) {
         setState("idle");
         return;
       }
 
+      // Still loading permission status
+      if (!permission) return;
+
+      // Not yet determined — automatically request permission
+      if (permission.canAskAgain) {
+        setState("requesting");
+        const result = await requestPermission();
+        setState(result.granted ? "idle" : "denied");
+        return;
+      }
+
+      // Permanently denied
       setState("denied");
     })();
-  }, [isSimulator, permission?.granted, requestPermission]);
+  }, [isSimulator, permission, requestPermission]);
 
   // ── Voice prompt on state change ──────────────────────────────────────────
   useEffect(() => {

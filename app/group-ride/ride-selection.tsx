@@ -38,7 +38,7 @@ function formatUsdt(value: number | null | undefined): string {
     return "Pending";
   }
 
-  return `${value.toFixed(2)} USDT`;
+  return `${value.toFixed(2)} NGN`;
 }
 
 function formatMinutes(value: number | null | undefined): string {
