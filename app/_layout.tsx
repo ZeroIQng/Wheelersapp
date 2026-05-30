@@ -40,12 +40,6 @@ export default function RootLayout() {
     Shrikhand_400Regular: require("../assets/fonts/Shrikhand-Regular.ttf"),
   });
 
-  useEffect(() => {
-    if (loaded) {
-      SplashScreen.hideAsync();
-    }
-  }, [loaded]);
-
   if (!loaded) {
     return null;
   }

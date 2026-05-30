@@ -2,6 +2,7 @@ import { usePrivy, type User } from "@privy-io/expo";
 import { useRouter } from "expo-router";
 import { useEffect, useRef } from "react";
 import { StatusBar } from "expo-status-bar";
+import * as NativeSplash from "expo-splash-screen";
 import { Pressable, StyleSheet, View } from "react-native";
 import Animated, {
   Easing,
@@ -217,6 +218,11 @@ function PrivyAwareSplashScreen() {
 function SplashShell({ onContinue }: { onContinue: () => void }) {
   const floatY = useSharedValue(0);
   const spin = useSharedValue(0);
+
+  useEffect(() => {
+    // Hide the native splash now that the custom splash is visible
+    NativeSplash.hideAsync();
+  }, []);
 
   useEffect(() => {
     floatY.value = withRepeat(
