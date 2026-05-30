@@ -15,9 +15,15 @@ type UseWalletOverviewResult = {
   refresh: () => Promise<void>;
 };
 
+let cachedWalletOverview: WalletOverviewResponse | null = null;
+let cachedWalletOverviewAt = 0;
+const WALLET_CACHE_TTL_MS = 30_000;
+
 export function useWalletOverview(): UseWalletOverviewResult {
   const { getAccessToken, isReady, user } = usePrivy();
-  const [overview, setOverview] = useState<WalletOverviewResponse | null>(null);
+  const [overview, setOverview] = useState<WalletOverviewResponse | null>(
+    () => cachedWalletOverview,
+  );
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -25,6 +31,15 @@ export function useWalletOverview(): UseWalletOverviewResult {
     if (!isBackendConfigured() || !isReady || !user) {
       setOverview(null);
       setIsLoading(false);
+      return;
+    }
+
+    // Return cached if fresh
+    if (
+      cachedWalletOverview &&
+      Date.now() - cachedWalletOverviewAt < WALLET_CACHE_TTL_MS
+    ) {
+      setOverview(cachedWalletOverview);
       return;
     }
 
@@ -38,9 +53,11 @@ export function useWalletOverview(): UseWalletOverviewResult {
       }
 
       const response = await getWalletOverview({ accessToken });
+      cachedWalletOverview = response;
+      cachedWalletOverviewAt = Date.now();
       setOverview(response);
     } catch (loadError) {
-      setOverview(null);
+      setOverview(cachedWalletOverview);
       setError(
         loadError instanceof Error
           ? loadError.message

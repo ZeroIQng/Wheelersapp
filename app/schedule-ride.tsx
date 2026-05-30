@@ -1166,11 +1166,13 @@ export default function ScheduleRideScreen() {
       cancelled = true;
       clearTimeout(timeout);
     };
+    // Use serialized string to avoid object-reference re-fires
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     getAccessToken,
     hasCompleteRoute,
     isReady,
-    itinerary,
+    serializedItinerary,
     user,
   ]);
 
