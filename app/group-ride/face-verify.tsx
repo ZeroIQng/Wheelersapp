@@ -1,5 +1,4 @@
 import { CameraView, useCameraPermissions } from "expo-camera";
-import Constants from "expo-constants";
 import { useRouter } from "expo-router";
 import * as Speech from "expo-speech";
 import { StatusBar } from "expo-status-bar";
@@ -272,7 +271,7 @@ export default function FaceVerifyScreen() {
   const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sampleTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const stateRef = useRef<VerifyState>("requesting");
-  const isSimulator = !Constants.isDevice;
+  const isSimulator = false; // expo-constants no longer provides isDevice; camera permission flow handles unavailable cameras gracefully
 
   // Keep stateRef in sync so callbacks always see latest state
   useEffect(() => {
