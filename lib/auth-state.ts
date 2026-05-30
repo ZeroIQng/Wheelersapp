@@ -151,6 +151,7 @@ export async function markStoredOnboardingComplete(): Promise<StoredAuthState | 
 }
 
 export async function clearStoredAuthState(): Promise<void> {
+  clearCachedAccessToken();
   await SecureStore.deleteItemAsync(AUTH_STATE_KEY);
 }
 
