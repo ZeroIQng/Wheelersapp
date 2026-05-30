@@ -3,7 +3,7 @@ import { useRouter } from "expo-router";
 import * as Speech from "expo-speech";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Linking, StyleSheet, View } from "react-native";
+import { Dimensions, Linking, StyleSheet, View } from "react-native";
 import Animated, {
   Easing,
   FadeIn,
@@ -15,6 +15,13 @@ import Animated, {
   withSequence,
   withTiming,
 } from "react-native-reanimated";
+import Svg, {
+  Defs,
+  Ellipse,
+  Mask,
+  Path,
+  Rect,
+} from "react-native-svg";
 
 import { AppButton } from "@/components/app-button";
 import { AppText } from "@/components/app-text";
@@ -22,31 +29,45 @@ import { BackArrow } from "@/components/back-arrow";
 import { setGroupRideFaceCapture } from "@/lib/group-ride-draft";
 import { theme } from "@/theme";
 
+const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type VerifyState =
   | "requesting"    // waiting for permission result
   | "denied"        // camera permission denied
-  | "idle"          // camera ready, waiting for face
+  | "scanning"      // camera ready, actively looking for face
   | "too-dark"      // environment too dark
-  | "hold"          // face in frame — holding for capture
-  | "processing"    // analysing captured image
+  | "detected"      // face detected — holding for capture
+  | "processing"    // capturing final image
   | "verified"      // done
   | "failed";       // too many failures
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
-const HOLD_MS = 2400;           // ms face must be in frame before capture
-const SAMPLE_INTERVAL_MS = 800; // how often to sample brightness from a snapshot
-const DARK_THRESHOLD = 55;      // 0-255 avg pixel brightness — below = too dark
-const VOICE_GAP_MS = 3800;      // min ms between voice prompts
+const HOLD_MS = 2400;                     // ms face must stay detected before capture
+const SAMPLE_INTERVAL_MS = 1000;          // how often to sample a snapshot
+const DARK_THRESHOLD = 55;                // 0-255 avg brightness — below = too dark
+const VOICE_GAP_MS = 4000;               // min ms between voice prompts
+const FACE_DETECTED_THRESHOLD = 65;       // faceScore to transition → detected
+const FACE_LOST_THRESHOLD = 45;           // faceScore below which face is "lost"
+const CAPTURE_THRESHOLD = 60;             // faceScore needed for final capture
+const CONSECUTIVE_DETECTIONS_NEEDED = 2;  // frames before transitioning to detected
+const MAX_FAILURES = 5;                   // failures before "failed" state
+const SCORE_WINDOW_SIZE = 3;              // rolling window for temporal smoothing
+
+// ─── Oval dimensions ─────────────────────────────────────────────────────────
+
+const OVAL_W = 300;
+const OVAL_H = 400;
+const OVAL_TOP = 150;                     // distance from top of screen
 
 // ─── Voice ────────────────────────────────────────────────────────────────────
 
 const PROMPTS: Partial<Record<VerifyState, string>> = {
-  idle:        "Place your face inside the oval frame",
+  scanning:    "Position your face inside the oval frame",
   "too-dark":  "It's too dark. Please move to a brighter area",
-  hold:        "Perfect. Hold still",
+  detected:    "Face detected. Hold still",
   processing:  "Almost done. Verifying your face",
   verified:    "Verification complete. Welcome.",
   failed:      "Verification failed. Please try again.",
@@ -65,55 +86,237 @@ function speak(state: VerifyState) {
   Speech.speak(text, { language: "en-NG", pitch: 1.0, rate: 0.9 });
 }
 
-// ─── Pixel brightness analyser ────────────────────────────────────────────────
-// Takes an image uri from a snapshot, loads it and samples average brightness.
-// We use a simple approach: create an Image component off-screen at tiny size,
-// then use the image pixel average from a canvas (web) or rely on the photo
-// base64 luminance calculation.
-//
-// On native: we take the picture at very low quality/size, then read the
-// base64 and sample every Nth byte from the RGB channels.
+// ─── Face presence analyser ──────────────────────────────────────────────────
+// Analyses JPEG base64 byte stream for face-like characteristics.
+// This is a heuristic over compressed data — not pixel-perfect but good enough
+// for frontend gating. The backend does the real identity verification.
 
-async function getAverageBrightness(base64: string): Promise<number> {
+type AnalysisResult = {
+  brightness: number;
+  faceScore: number;
+};
+
+function analyzeFacePresence(base64: string): AnalysisResult {
   try {
-    // base64 JPEG — sample bytes to estimate brightness
-    // JPEG base64: decode to bytes, walk through every ~200th byte
-    // Rough heuristic — not pixel-perfect but good enough for dark detection
     const raw = atob(base64);
     const len = raw.length;
-    let sum = 0;
-    let count = 0;
-    const step = Math.max(1, Math.floor(len / 400));
-    for (let i = 0; i < len; i += step) {
-      sum += raw.charCodeAt(i);
-      count++;
+
+    if (len < 800) return { brightness: 128, faceScore: 0 };
+
+    // Skip JPEG header (~600 bytes of metadata)
+    const dataStart = Math.min(600, Math.floor(len * 0.05));
+    const dataLen = len - dataStart;
+
+    // Divide data into a conceptual 20x20 grid (400 cells)
+    const GRID = 20;
+    const cellSize = Math.max(1, Math.floor(dataLen / (GRID * GRID)));
+
+    // Build grid of average byte values
+    const grid: number[][] = [];
+    for (let row = 0; row < GRID; row++) {
+      grid[row] = [];
+      for (let col = 0; col < GRID; col++) {
+        const cellStart = dataStart + (row * GRID + col) * cellSize;
+        let sum = 0;
+        const samples = Math.min(cellSize, 8);
+        const step = Math.max(1, Math.floor(cellSize / samples));
+        for (let i = 0; i < samples && cellStart + i * step < len; i++) {
+          sum += raw.charCodeAt(cellStart + i * step);
+        }
+        grid[row][col] = sum / samples;
+      }
     }
-    // Normalise: charCode is 0-255, this is a byte-level average
-    return count > 0 ? sum / count : 128;
+
+    // Overall brightness
+    let totalSum = 0;
+    let totalCount = 0;
+    for (let r = 0; r < GRID; r++) {
+      for (let c = 0; c < GRID; c++) {
+        totalSum += grid[r][c];
+        totalCount++;
+      }
+    }
+    const brightness = totalSum / totalCount;
+
+    // Center region (roughly where the oval is): rows 4-15, cols 5-14
+    const centerRows = { start: 4, end: 16 };
+    const centerCols = { start: 5, end: 15 };
+
+    // Edge region: everything outside center
+    let centerSum = 0, centerCount = 0;
+    let edgeSum = 0, edgeCount = 0;
+    const centerValues: number[] = [];
+    const edgeValues: number[] = [];
+
+    for (let r = 0; r < GRID; r++) {
+      for (let c = 0; c < GRID; c++) {
+        const v = grid[r][c];
+        const inCenter = r >= centerRows.start && r < centerRows.end &&
+                         c >= centerCols.start && c < centerCols.end;
+        if (inCenter) {
+          centerSum += v;
+          centerCount++;
+          centerValues.push(v);
+        } else {
+          edgeSum += v;
+          edgeCount++;
+          edgeValues.push(v);
+        }
+      }
+    }
+
+    const centerAvg = centerCount > 0 ? centerSum / centerCount : 128;
+    const edgeAvg = edgeCount > 0 ? edgeSum / edgeCount : 128;
+
+    // 1. Center vs edge difference (face makes center different from background)
+    const centerEdgeDiff = Math.abs(centerAvg - edgeAvg);
+    const diffScore = Math.min(25, (centerEdgeDiff / 20) * 25);
+
+    // 2. Center contrast (standard deviation — faces have high variance)
+    const centerMean = centerAvg;
+    let varianceSum = 0;
+    for (const v of centerValues) {
+      varianceSum += (v - centerMean) ** 2;
+    }
+    const centerStdDev = Math.sqrt(varianceSum / Math.max(1, centerValues.length));
+    const contrastScore = Math.min(25, (centerStdDev / 35) * 25);
+
+    // 3. Symmetry — compare left half vs right half of center
+    let symmetryDiffSum = 0;
+    let symmetryCount = 0;
+    const centerW = centerCols.end - centerCols.start;
+    const halfW = Math.floor(centerW / 2);
+    for (let r = centerRows.start; r < centerRows.end; r++) {
+      for (let c = 0; c < halfW; c++) {
+        const left = grid[r][centerCols.start + c];
+        const right = grid[r][centerCols.end - 1 - c];
+        symmetryDiffSum += Math.abs(left - right);
+        symmetryCount++;
+      }
+    }
+    const avgSymmetryDiff = symmetryCount > 0 ? symmetryDiffSum / symmetryCount : 128;
+    const symmetryRatio = Math.max(0, 1 - avgSymmetryDiff / 80);
+    const symmetryScore = symmetryRatio * 20;
+
+    // 4. Texture — how much variation exists in center (faces have texture)
+    let uniqueBuckets = new Set<number>();
+    for (const v of centerValues) {
+      uniqueBuckets.add(Math.floor(v / 16)); // 16 buckets of 16 values each
+    }
+    const textureRatio = uniqueBuckets.size / 16;
+    const textureScore = Math.min(20, textureRatio * 20);
+
+    // 5. Brightness range check — center should be 60-200
+    const brightnessInRange = centerAvg >= 60 && centerAvg <= 200;
+    const brightnessScore = brightnessInRange ? 10 : 0;
+
+    // Composite face score
+    let faceScore = diffScore + contrastScore + symmetryScore + textureScore + brightnessScore;
+
+    // Anti-spoofing: penalise extremely uniform center (flat printout)
+    if (centerStdDev < 12) {
+      faceScore *= 0.4;
+    }
+
+    // Clamp
+    faceScore = Math.max(0, Math.min(100, Math.round(faceScore)));
+
+    return { brightness, faceScore };
   } catch {
-    return 128; // assume OK if we can't read
+    return { brightness: 128, faceScore: 0 };
   }
 }
 
-// ─── Oval frame ───────────────────────────────────────────────────────────────
+// Temporal smoothing — rolling median
+function getSmoothedScore(scores: number[]): number {
+  if (scores.length === 0) return 0;
+  const sorted = [...scores].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0
+    ? (sorted[mid - 1] + sorted[mid]) / 2
+    : sorted[mid];
+}
+
+// ─── SVG Oval frame with white guide markers ─────────────────────────────────
+
+const SVG_PAD = 24;
+const SVG_W = OVAL_W + SVG_PAD * 2;
+const SVG_H = OVAL_H + SVG_PAD * 2;
+const CX = SVG_W / 2;
+const CY = SVG_H / 2;
+const RX = OVAL_W / 2;
+const RY = OVAL_H / 2;
+
+// Helper: point on ellipse at angle t (radians)
+function ellipsePoint(t: number): [number, number] {
+  return [CX + RX * Math.cos(t), CY + RY * Math.sin(t)];
+}
+
+// Build arc path between two angles
+function arcPath(startAngle: number, endAngle: number): string {
+  const [x1, y1] = ellipsePoint(startAngle);
+  const [x2, y2] = ellipsePoint(endAngle);
+  // SVG arc: A rx ry x-rotation large-arc-flag sweep-flag x y
+  const largeArc = Math.abs(endAngle - startAngle) > Math.PI ? 1 : 0;
+  return `M ${x1} ${y1} A ${RX} ${RY} 0 ${largeArc} 1 ${x2} ${y2}`;
+}
+
+// Guide marker arcs — ~30 degrees each at cardinal positions
+const DEG = Math.PI / 180;
+const GUIDE_SPAN = 20 * DEG; // 20 degrees each side of cardinal
+const topArc = arcPath(-90 * DEG - GUIDE_SPAN, -90 * DEG + GUIDE_SPAN);
+const bottomArc = arcPath(90 * DEG - GUIDE_SPAN, 90 * DEG + GUIDE_SPAN);
+const leftArc = arcPath(180 * DEG - GUIDE_SPAN, 180 * DEG + GUIDE_SPAN);
+const rightArc = arcPath(-GUIDE_SPAN, GUIDE_SPAN);
+
+// ─── Oval overlay (dark everywhere EXCEPT the oval cutout) ──────────────────
+
+const OVERLAY_CX = SCREEN_W / 2;
+const OVERLAY_CY = OVAL_TOP + OVAL_H / 2;
+const OVERLAY_RX = OVAL_W / 2;
+const OVERLAY_RY = OVAL_H / 2;
+
+function OvalOverlay() {
+  return (
+    <View style={StyleSheet.absoluteFill} pointerEvents="none">
+      <Svg width={SCREEN_W} height={SCREEN_H}>
+        <Defs>
+          <Mask id="ovalMask">
+            {/* White = visible (dark overlay shows), black = hidden (oval cutout) */}
+            <Rect x={0} y={0} width={SCREEN_W} height={SCREEN_H} fill="white" />
+            <Ellipse cx={OVERLAY_CX} cy={OVERLAY_CY} rx={OVERLAY_RX} ry={OVERLAY_RY} fill="black" />
+          </Mask>
+        </Defs>
+        <Rect
+          x={0}
+          y={0}
+          width={SCREEN_W}
+          height={SCREEN_H}
+          fill="rgba(13,13,13,0.78)"
+          mask="url(#ovalMask)"
+        />
+      </Svg>
+    </View>
+  );
+}
 
 function OvalFrame({ state }: { state: VerifyState }) {
   const scale = useSharedValue(1);
   const glowOpacity = useSharedValue(0);
 
   useEffect(() => {
-    if (state === "hold" || state === "processing") {
+    if (state === "detected" || state === "processing") {
       scale.value = withRepeat(
         withSequence(
-          withTiming(1.025, { duration: 420, easing: Easing.inOut(Easing.ease) }),
-          withTiming(1.0, { duration: 420, easing: Easing.inOut(Easing.ease) }),
+          withTiming(1.02, { duration: 500, easing: Easing.inOut(Easing.ease) }),
+          withTiming(1.0, { duration: 500, easing: Easing.inOut(Easing.ease) }),
         ),
         -1,
         false,
       );
       glowOpacity.value = withTiming(1, { duration: 300 });
     } else if (state === "verified") {
-      scale.value = withTiming(1.04, { duration: 280 });
+      scale.value = withTiming(1.03, { duration: 280 });
       glowOpacity.value = withTiming(1, { duration: 200 });
     } else {
       scale.value = withTiming(1, { duration: 220 });
@@ -128,14 +331,14 @@ function OvalFrame({ state }: { state: VerifyState }) {
     opacity: glowOpacity.value,
   }));
 
-  const borderColor =
-    state === "verified"   ? theme.colors.green
-    : state === "hold" || state === "processing" ? theme.colors.green
+  const strokeColor =
+    state === "verified" ? theme.colors.green
+    : state === "detected" || state === "processing" ? theme.colors.green
     : state === "too-dark" ? theme.colors.danger
-    : theme.colors.white;
+    : "rgba(255,255,255,0.5)";
 
   const glowColor =
-    state === "verified" || state === "hold" || state === "processing"
+    state === "verified" || state === "detected" || state === "processing"
       ? theme.colors.green
       : "transparent";
 
@@ -146,29 +349,132 @@ function OvalFrame({ state }: { state: VerifyState }) {
         style={[styles.ovalGlow, glowStyle, { borderColor: glowColor }]}
         pointerEvents="none"
       />
-      {/* Oval border */}
-      <View style={[styles.oval, { borderColor }]}>
-        {/* Corner tick marks — OPay / Face ID style */}
-        <View style={[styles.tick, styles.tickTL, { borderColor }]} />
-        <View style={[styles.tick, styles.tickTR, { borderColor }]} />
-        <View style={[styles.tick, styles.tickBL, { borderColor }]} />
-        <View style={[styles.tick, styles.tickBR, { borderColor }]} />
-      </View>
+      {/* SVG oval + guide markers */}
+      <Svg width={SVG_W} height={SVG_H} viewBox={`0 0 ${SVG_W} ${SVG_H}`}>
+        {/* Main oval border */}
+        <Ellipse
+          cx={CX}
+          cy={CY}
+          rx={RX}
+          ry={RY}
+          stroke={strokeColor}
+          strokeWidth={2.5}
+          fill="none"
+        />
+        {/* White guide markers at cardinal positions */}
+        <Path d={topArc} stroke={theme.colors.white} strokeWidth={4.5} fill="none" strokeLinecap="round" />
+        <Path d={bottomArc} stroke={theme.colors.white} strokeWidth={4.5} fill="none" strokeLinecap="round" />
+        <Path d={leftArc} stroke={theme.colors.white} strokeWidth={4.5} fill="none" strokeLinecap="round" />
+        <Path d={rightArc} stroke={theme.colors.white} strokeWidth={4.5} fill="none" strokeLinecap="round" />
+      </Svg>
     </Animated.View>
   );
 }
 
-// ─── Scanning line (animates when hold / processing) ─────────────────────────
+// ─── Step progress (green completion steps) ─────────────────────────────────
 
-function ScanLine({ active }: { active: boolean }) {
+type StepStatus = "pending" | "active" | "done";
+
+const STEPS = [
+  { key: "face", label: "Face found" },
+  { key: "hold", label: "Hold steady" },
+  { key: "capture", label: "Capturing" },
+  { key: "verify", label: "Verified" },
+] as const;
+
+function getStepStatuses(state: VerifyState): StepStatus[] {
+  switch (state) {
+    case "requesting":
+    case "denied":
+    case "scanning":
+    case "too-dark":
+      return ["pending", "pending", "pending", "pending"];
+    case "detected":
+      return ["done", "active", "pending", "pending"];
+    case "processing":
+      return ["done", "done", "active", "pending"];
+    case "verified":
+      return ["done", "done", "done", "done"];
+    case "failed":
+      return ["pending", "pending", "pending", "pending"];
+    default:
+      return ["pending", "pending", "pending", "pending"];
+  }
+}
+
+function StepProgress({ state }: { state: VerifyState }) {
+  const statuses = getStepStatuses(state);
+
+  return (
+    <View style={styles.stepsRow}>
+      {STEPS.map((step, i) => {
+        const status = statuses[i];
+        const isDone = status === "done";
+        const isActive = status === "active";
+
+        const dotBg = isDone
+          ? theme.colors.green
+          : isActive
+            ? theme.colors.green
+            : "rgba(255,255,255,0.18)";
+        const dotBorder = isDone || isActive
+          ? theme.colors.green
+          : "rgba(255,255,255,0.25)";
+        const labelColor = isDone
+          ? theme.colors.green
+          : isActive
+            ? theme.colors.white
+            : "rgba(255,255,255,0.35)";
+
+        return (
+          <View key={step.key} style={styles.stepItem}>
+            <View style={styles.stepDotRow}>
+              {/* Connector line before (skip first) */}
+              {i > 0 && (
+                <View
+                  style={[
+                    styles.stepConnector,
+                    { backgroundColor: isDone ? theme.colors.green : "rgba(255,255,255,0.12)" },
+                  ]}
+                />
+              )}
+              <View
+                style={[
+                  styles.stepDot,
+                  { backgroundColor: dotBg, borderColor: dotBorder },
+                  isActive && styles.stepDotActive,
+                ]}
+              >
+                {isDone && (
+                  <AppText variant="monoSmall" color={theme.colors.white} style={{ fontSize: 10, lineHeight: 14 }}>
+                    {"\u2713"}
+                  </AppText>
+                )}
+              </View>
+            </View>
+            <AppText variant="monoSmall" color={labelColor} style={styles.stepLabel}>
+              {step.label}
+            </AppText>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+// ─── Scanning line (animates during scanning / detected / processing) ───────
+
+function ScanLine({ state }: { state: VerifyState }) {
   const y = useSharedValue(0);
+  const active = state === "scanning" || state === "detected" || state === "processing";
+  const speed = state === "detected" || state === "processing" ? 1200 : 2200;
 
   useEffect(() => {
     if (active) {
       y.value = 0;
       y.value = withRepeat(
         withTiming(OVAL_H - 6, {
-          duration: 1800,
+          duration: speed,
           easing: Easing.inOut(Easing.ease),
         }),
         -1,
@@ -177,7 +483,12 @@ function ScanLine({ active }: { active: boolean }) {
     } else {
       y.value = withTiming(0, { duration: 200 });
     }
-  }, [active, y]);
+  }, [active, speed, y]);
+
+  const lineColor =
+    state === "detected" || state === "processing"
+      ? theme.colors.green
+      : "rgba(255,255,255,0.5)";
 
   const lineStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: y.value }],
@@ -185,7 +496,10 @@ function ScanLine({ active }: { active: boolean }) {
   }));
 
   return (
-    <Animated.View style={[styles.scanLine, lineStyle]} pointerEvents="none" />
+    <Animated.View
+      style={[styles.scanLine, lineStyle, { backgroundColor: lineColor }]}
+      pointerEvents="none"
+    />
   );
 }
 
@@ -219,14 +533,14 @@ function HoldProgress({ active }: { active: boolean }) {
 type BadgeCfg = { label: string; bg: string; color: string };
 
 const BADGE: Record<VerifyState, BadgeCfg> = {
-  requesting:  { label: "Starting camera…",          bg: "rgba(13,13,13,0.55)",     color: theme.colors.white },
+  requesting:  { label: "Starting camera\u2026",          bg: "rgba(13,13,13,0.55)",     color: theme.colors.white },
   denied:      { label: "Camera access denied",       bg: theme.colors.dangerLight,  color: theme.colors.danger },
-  idle:        { label: "Place face in frame",        bg: "rgba(13,13,13,0.55)",     color: theme.colors.white },
-  "too-dark":  { label: "Too dark — move to light",  bg: theme.colors.dangerLight,  color: theme.colors.danger },
-  hold:        { label: "Hold still…",               bg: "rgba(0,196,140,0.18)",    color: theme.colors.green },
-  processing:  { label: "Verifying…",                bg: "rgba(0,196,140,0.18)",    color: theme.colors.green },
-  verified:    { label: "Verified  ✓",               bg: theme.colors.successLight, color: theme.colors.green },
-  failed:      { label: "Verification failed",       bg: theme.colors.dangerLight,  color: theme.colors.danger },
+  scanning:    { label: "Looking for face\u2026",         bg: "rgba(13,13,13,0.55)",     color: theme.colors.white },
+  "too-dark":  { label: "Too dark \u2014 move to light",  bg: theme.colors.dangerLight,  color: theme.colors.danger },
+  detected:    { label: "Hold still\u2026",               bg: "rgba(0,196,140,0.18)",    color: theme.colors.green },
+  processing:  { label: "Capturing\u2026",                bg: "rgba(0,196,140,0.18)",    color: theme.colors.green },
+  verified:    { label: "Verified  \u2713",               bg: theme.colors.successLight, color: theme.colors.green },
+  failed:      { label: "Verification failed",        bg: theme.colors.dangerLight,  color: theme.colors.danger },
 };
 
 function StatusBadge({ state }: { state: VerifyState }) {
@@ -248,30 +562,31 @@ function StatusBadge({ state }: { state: VerifyState }) {
 // ─── Hint text ────────────────────────────────────────────────────────────────
 
 const HINT: Record<VerifyState, string> = {
-  requesting:  "Requesting camera access…",
+  requesting:  "Requesting camera access\u2026",
   denied:      "Camera permission is required. Tap below to grant access.",
-  idle:        "Make sure your face is well-lit and centred in the oval.",
+  scanning:    "Make sure your face is well-lit and centred in the oval.",
   "too-dark":  "Move to a well-lit room or face a window. Avoid back-lighting.",
-  hold:        "Face detected. Keep looking at the camera.",
-  processing:  "Analysing your face. Please wait.",
+  detected:    "Face detected. Keep looking at the camera.",
+  processing:  "Capturing your face. Please wait.",
   verified:    "Identity confirmed. Taking you to the next step.",
-  failed:      "Too many failed attempts. Please go back and try again.",
+  failed:      "Could not detect a face. Please go back and try again.",
 };
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
-
-const OVAL_W = 224;
-const OVAL_H = 296;
 
 export default function FaceVerifyScreen() {
   const router = useRouter();
   const [permission, requestPermission] = useCameraPermissions();
   const [state, setState] = useState<VerifyState>("requesting");
   const cameraRef = useRef<InstanceType<typeof CameraView>>(null);
-  const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sampleTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const stateRef = useRef<VerifyState>("requesting");
-  const isSimulator = false; // expo-constants no longer provides isDevice; camera permission flow handles unavailable cameras gracefully
+
+  // Face detection refs
+  const consecutiveDetections = useRef(0);
+  const holdStartTime = useRef(0);
+  const recentScores = useRef<number[]>([]);
+  const failureCount = useRef(0);
 
   // Keep stateRef in sync so callbacks always see latest state
   useEffect(() => {
@@ -283,14 +598,9 @@ export default function FaceVerifyScreen() {
 
   useEffect(() => {
     void (async () => {
-      if (isSimulator) {
-        setState("denied");
-        return;
-      }
-
-      // Already granted — go straight to camera
+      // Already granted — go straight to scanning
       if (permission?.granted) {
-        setState("idle");
+        setState("scanning");
         return;
       }
 
@@ -302,7 +612,7 @@ export default function FaceVerifyScreen() {
         hasRequestedRef.current = true;
         setState("requesting");
         const result = await requestPermission();
-        setState(result.granted ? "idle" : "denied");
+        setState(result.granted ? "scanning" : "denied");
         return;
       }
 
@@ -311,26 +621,77 @@ export default function FaceVerifyScreen() {
         setState("denied");
       }
     })();
-  }, [isSimulator, permission, requestPermission]);
+  }, [permission, requestPermission]);
 
   // ── Voice prompt on state change ──────────────────────────────────────────
   useEffect(() => {
     speak(state);
   }, [state]);
 
-  // ── Idle voice — delayed so camera animation finishes first ───────────────
+  // ── Delayed initial voice for scanning ────────────────────────────────────
   useEffect(() => {
-    if (state !== "idle") return;
-    const t = setTimeout(() => speak("idle"), 900);
+    if (state !== "scanning") return;
+    const t = setTimeout(() => speak("scanning"), 900);
     return () => clearTimeout(t);
   }, [state]);
 
-  // ── Brightness sampling loop ──────────────────────────────────────────────
-  // Periodically takes a tiny snapshot to measure ambient brightness.
-  const runBrightnessSample = useCallback(async () => {
+  // ── Trigger capture ───────────────────────────────────────────────────────
+  const triggerCapture = useCallback(async () => {
+    setState("processing");
+
+    try {
+      const pic = await cameraRef.current?.takePictureAsync({
+        quality: 0.15,
+        base64: true,
+        skipProcessing: true,
+        shutterSound: false,
+      });
+
+      if (!pic?.base64) {
+        failureCount.current++;
+        setState(failureCount.current >= MAX_FAILURES ? "failed" : "scanning");
+        return;
+      }
+
+      // Final validation
+      const result = analyzeFacePresence(pic.base64);
+
+      if (result.brightness < DARK_THRESHOLD) {
+        setState("too-dark");
+        return;
+      }
+
+      if (result.faceScore < CAPTURE_THRESHOLD) {
+        failureCount.current++;
+        setState(failureCount.current >= MAX_FAILURES ? "failed" : "scanning");
+        return;
+      }
+
+      // Success — save capture
+      if (pic.uri) {
+        setGroupRideFaceCapture({
+          uri: pic.uri,
+          mimeType: "image/jpeg",
+          capturedAt: new Date().toISOString(),
+        });
+      }
+
+      setState("verified");
+      if (sampleTimerRef.current) clearInterval(sampleTimerRef.current);
+
+      setTimeout(() => {
+        router.replace("/group-ride/gender");
+      }, 2000);
+    } catch {
+      failureCount.current++;
+      setState(failureCount.current >= MAX_FAILURES ? "failed" : "scanning");
+    }
+  }, [router]);
+
+  // ── Continuous face detection loop ────────────────────────────────────────
+  const runFaceDetectionSample = useCallback(async () => {
     const current = stateRef.current;
     if (
-      current === "hold" ||
       current === "processing" ||
       current === "verified" ||
       current === "failed" ||
@@ -346,112 +707,85 @@ export default function FaceVerifyScreen() {
         shutterSound: false,
       });
       if (!pic?.base64) return;
-      const brightness = await getAverageBrightness(pic.base64);
-      const tooDark = brightness < DARK_THRESHOLD;
 
-      if (stateRef.current === "idle" || stateRef.current === "too-dark") {
-        setState(tooDark ? "too-dark" : "idle");
+      const result = analyzeFacePresence(pic.base64);
+
+      // Brightness gate
+      if (result.brightness < DARK_THRESHOLD) {
+        setState("too-dark");
+        consecutiveDetections.current = 0;
+        recentScores.current = [];
+        return;
+      }
+
+      // Update rolling score window
+      recentScores.current.push(result.faceScore);
+      if (recentScores.current.length > SCORE_WINDOW_SIZE) {
+        recentScores.current.shift();
+      }
+      const smoothed = getSmoothedScore(recentScores.current);
+
+      const st = stateRef.current;
+
+      if (st === "scanning" || st === "too-dark") {
+        if (smoothed >= FACE_DETECTED_THRESHOLD) {
+          consecutiveDetections.current++;
+          if (consecutiveDetections.current >= CONSECUTIVE_DETECTIONS_NEEDED) {
+            setState("detected");
+            holdStartTime.current = Date.now();
+          }
+        } else {
+          consecutiveDetections.current = 0;
+          if (st === "too-dark") setState("scanning");
+        }
+      }
+
+      if (st === "detected") {
+        if (smoothed < FACE_LOST_THRESHOLD) {
+          setState("scanning");
+          consecutiveDetections.current = 0;
+          holdStartTime.current = 0;
+          return;
+        }
+
+        const elapsed = Date.now() - holdStartTime.current;
+        if (elapsed >= HOLD_MS && smoothed >= CAPTURE_THRESHOLD) {
+          void triggerCapture();
+        }
       }
     } catch {
       // camera busy — skip this sample
     }
-  }, []);
+  }, [triggerCapture]);
 
   useEffect(() => {
     if (state === "requesting" || state === "denied") return;
     sampleTimerRef.current = setInterval(() => {
-      void runBrightnessSample();
+      void runFaceDetectionSample();
     }, SAMPLE_INTERVAL_MS);
     return () => {
       if (sampleTimerRef.current) clearInterval(sampleTimerRef.current);
     };
-  }, [state, runBrightnessSample]);
-
-  // ── Face detection — user taps to confirm face in oval ────────────────────
-  // Since expo-camera v14 dropped onFacesDetected, we use an onTouchStart on
-  // the oval area: user taps when they see their face in the oval, which
-  // triggers the hold sequence. This matches how many production apps work.
-  const handleOvalPress = useCallback(() => {
-    const current = stateRef.current;
-    if (current !== "idle" && current !== "too-dark") return;
-    if (current === "too-dark") return; // block if dark
-
-    setState("hold");
-
-    holdTimerRef.current = setTimeout(async () => {
-      setState("processing");
-
-      // Final brightness check on a real capture
-      try {
-        const pic = await cameraRef.current?.takePictureAsync({
-          quality: 0.15,
-          base64: true,
-          skipProcessing: true,
-          shutterSound: false,
-        });
-
-        if (pic?.base64) {
-          const brightness = await getAverageBrightness(pic.base64);
-          if (brightness < DARK_THRESHOLD) {
-            setState("too-dark");
-            holdTimerRef.current = null;
-            return;
-          }
-        }
-
-        if (pic?.uri) {
-          setGroupRideFaceCapture({
-            uri: pic.uri,
-            mimeType: "image/jpeg",
-            capturedAt: new Date().toISOString(),
-          });
-        }
-      } catch {
-        // proceed even if snapshot fails
-      }
-
-      setState("verified");
-      if (sampleTimerRef.current) clearInterval(sampleTimerRef.current);
-
-      setTimeout(() => {
-        router.replace("/group-ride/gender");
-      }, 2000);
-    }, HOLD_MS);
-  }, [router]);
-
-  // Cancel hold if user lifts off oval
-  const handleOvalRelease = useCallback(() => {
-    if (stateRef.current === "hold") {
-      if (holdTimerRef.current) {
-        clearTimeout(holdTimerRef.current);
-        holdTimerRef.current = null;
-      }
-      setState("idle");
-    }
-  }, []);
+  }, [state, runFaceDetectionSample]);
 
   // ── Cleanup ───────────────────────────────────────────────────────────────
   useEffect(() => {
     return () => {
       Speech.stop();
-      if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
       if (sampleTimerRef.current) clearInterval(sampleTimerRef.current);
     };
   }, []);
 
   const cameraReady =
-    !isSimulator &&
     state !== "requesting" &&
     state !== "denied" &&
     state !== "failed";
   const cameraPermissionPermanentlyDenied =
-    !isSimulator && permission?.granted !== true && permission?.canAskAgain === false;
-  const isHolding = state === "hold" || state === "processing";
+    permission?.granted !== true && permission?.canAskAgain === false;
+  const isHolding = state === "detected" || state === "processing";
   const hintText =
-    isSimulator && state === "denied"
-      ? "Face verification needs a real device camera. The iOS simulator does not provide the camera feed this step requires."
-      : cameraPermissionPermanentlyDenied
-        ? "Camera access is blocked for Wheelers. Open Settings and allow camera access before continuing."
+    cameraPermissionPermanentlyDenied && state === "denied"
+      ? "Camera access is blocked for Wheelers. Open Settings and allow camera access before continuing."
       : HINT[state];
 
   return (
@@ -465,30 +799,18 @@ export default function FaceVerifyScreen() {
           style={StyleSheet.absoluteFill}
           facing="front"
           onCameraReady={() => {
-            if (stateRef.current === "idle") speak("idle");
+            if (stateRef.current === "scanning") speak("scanning");
           }}
         />
       )}
 
-      {/* Dark vignette overlay with oval window */}
-      <View style={styles.overlay} pointerEvents="none">
-        <View style={styles.overlayTop} />
-        <View style={styles.overlayMid}>
-          <View style={styles.overlaySide} />
-          <View style={{ width: OVAL_W + 16 }} />
-          <View style={styles.overlaySide} />
-        </View>
-        <View style={styles.overlayBottom} />
-      </View>
+      {/* Dark overlay with oval cutout */}
+      <OvalOverlay />
 
-      {/* Oval frame — tappable to trigger hold */}
-      <View
-        style={styles.ovalTouchArea}
-        onTouchStart={handleOvalPress}
-        onTouchEnd={handleOvalRelease}
-      >
+      {/* Oval frame — no touch, auto-detects */}
+      <View style={styles.ovalArea} pointerEvents="none">
         <OvalFrame state={state} />
-        <ScanLine active={isHolding} />
+        <ScanLine state={state} />
       </View>
 
       {/* Header */}
@@ -504,25 +826,11 @@ export default function FaceVerifyScreen() {
         </View>
       </Animated.View>
 
-      {/* Tap instruction — only show when idle */}
-      {state === "idle" && (
-        <Animated.View
-          entering={FadeInDown.delay(600).duration(340)}
-          exiting={FadeOut.duration(180)}
-          style={styles.tapHint}
-          pointerEvents="none"
-        >
-          <View style={styles.tapHintPill}>
-            <AppText variant="monoSmall" color={theme.colors.white} style={styles.tapHintText}>
-              TAP THE OVAL WHEN YOUR FACE IS IN FRAME
-            </AppText>
-          </View>
-        </Animated.View>
-      )}
-
       {/* Bottom UI */}
       <Animated.View entering={FadeInDown.delay(300).duration(400)} style={styles.bottom}>
         <StatusBadge state={state} />
+
+        <StepProgress state={state} />
 
         <HoldProgress active={isHolding} />
 
@@ -534,19 +842,12 @@ export default function FaceVerifyScreen() {
           <Animated.View entering={FadeInDown.duration(280)} style={styles.actionBtn}>
             <AppButton
               title={
-                isSimulator
-                  ? "Go back"
-                  : cameraPermissionPermanentlyDenied
-                    ? "Open settings"
-                    : "Allow camera access"
+                cameraPermissionPermanentlyDenied
+                  ? "Open settings"
+                  : "Allow camera access"
               }
               variant="inverse"
               onPress={async () => {
-                if (isSimulator) {
-                  router.back();
-                  return;
-                }
-
                 if (cameraPermissionPermanentlyDenied) {
                   await Linking.openSettings();
                   return;
@@ -554,7 +855,7 @@ export default function FaceVerifyScreen() {
 
                 setState("requesting");
                 const result = await requestPermission();
-                setState(result.granted ? "idle" : "denied");
+                setState(result.granted ? "scanning" : "denied");
               }}
             />
           </Animated.View>
@@ -582,31 +883,10 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.black,
   },
 
-  // Overlay
-  overlay: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  overlayTop: {
-    height: 188,
-    backgroundColor: "rgba(13,13,13,0.74)",
-  },
-  overlayMid: {
-    height: OVAL_H + 24,
-    flexDirection: "row",
-  },
-  overlaySide: {
-    flex: 1,
-    backgroundColor: "rgba(13,13,13,0.74)",
-  },
-  overlayBottom: {
-    flex: 1,
-    backgroundColor: "rgba(13,13,13,0.74)",
-  },
-
-  // Oval touch target
-  ovalTouchArea: {
+  // Oval area (non-interactive)
+  ovalArea: {
     position: "absolute",
-    top: 188,
+    top: OVAL_TOP,
     alignSelf: "center",
     width: OVAL_W,
     height: OVAL_H,
@@ -614,43 +894,26 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   ovalWrap: {
-    width: OVAL_W,
-    height: OVAL_H,
+    width: SVG_W,
+    height: SVG_H,
     alignItems: "center",
     justifyContent: "center",
   },
   ovalGlow: {
     position: "absolute",
-    width: OVAL_W + 22,
-    height: OVAL_H + 22,
-    borderRadius: (OVAL_W + 22) / 2,
+    width: OVAL_W + 28,
+    height: OVAL_H + 28,
+    borderRadius: (OVAL_H + 28) / 2,
     borderWidth: 2.5,
   },
-  oval: {
-    width: OVAL_W,
-    height: OVAL_H,
-    borderRadius: OVAL_W / 2,
-    borderWidth: 2.5,
-  },
-  // Corner ticks
-  tick: {
-    position: "absolute",
-    width: 20,
-    height: 20,
-  },
-  tickTL: { top: 14, left: 14, borderTopWidth: 3, borderLeftWidth: 3, borderTopLeftRadius: 5 },
-  tickTR: { top: 14, right: 14, borderTopWidth: 3, borderRightWidth: 3, borderTopRightRadius: 5 },
-  tickBL: { bottom: 14, left: 14, borderBottomWidth: 3, borderLeftWidth: 3, borderBottomLeftRadius: 5 },
-  tickBR: { bottom: 14, right: 14, borderBottomWidth: 3, borderRightWidth: 3, borderBottomRightRadius: 5 },
 
   // Scan line
   scanLine: {
     position: "absolute",
-    left: 4,
-    right: 4,
+    left: 14,
+    right: 14,
     height: 2.5,
     borderRadius: 2,
-    backgroundColor: theme.colors.green,
     top: 0,
   },
 
@@ -666,24 +929,6 @@ const styles = StyleSheet.create({
   },
   headerText: {
     gap: 1,
-  },
-
-  // Tap hint
-  tapHint: {
-    position: "absolute",
-    top: 188 + OVAL_H + 16,
-    alignSelf: "center",
-  },
-  tapHintPill: {
-    paddingHorizontal: theme.spacing.lg,
-    paddingVertical: 7,
-    borderRadius: theme.radius.pill,
-    backgroundColor: "rgba(13,13,13,0.55)",
-    borderWidth: theme.borders.regular,
-    borderColor: "rgba(255,255,255,0.16)",
-  },
-  tapHintText: {
-    letterSpacing: 0.6,
   },
 
   // Bottom panel
@@ -725,5 +970,51 @@ const styles = StyleSheet.create({
   actionBtn: {
     width: "100%",
     marginTop: theme.spacing.xs,
+  },
+
+  // Step progress
+  stepsRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "center",
+    gap: 0,
+    width: "100%",
+    paddingHorizontal: theme.spacing.sm,
+  },
+  stepItem: {
+    alignItems: "center",
+    flex: 1,
+    gap: 6,
+  },
+  stepDotRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    height: 22,
+  },
+  stepDot: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 2,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  stepDotActive: {
+    shadowColor: theme.colors.green,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.6,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  stepConnector: {
+    width: 24,
+    height: 2,
+    borderRadius: 1,
+    marginRight: -1,
+  },
+  stepLabel: {
+    fontSize: 10,
+    textAlign: "center",
   },
 });
