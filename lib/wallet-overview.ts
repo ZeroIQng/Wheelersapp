@@ -79,3 +79,26 @@ export function useWalletOverview(): UseWalletOverviewResult {
     refresh: load,
   };
 }
+
+export async function prefetchWalletOverview(
+  getAccessToken: () => Promise<string | null | undefined>,
+): Promise<void> {
+  if (!isBackendConfigured()) return;
+  if (
+    cachedWalletOverview &&
+    Date.now() - cachedWalletOverviewAt < WALLET_CACHE_TTL_MS
+  ) {
+    return;
+  }
+
+  try {
+    const accessToken = await getAccessTokenWithRetry(getAccessToken);
+    if (!accessToken) return;
+
+    const response = await getWalletOverview({ accessToken });
+    cachedWalletOverview = response;
+    cachedWalletOverviewAt = Date.now();
+  } catch {
+    // Silent — home screen will retry
+  }
+}

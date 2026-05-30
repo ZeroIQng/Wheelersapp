@@ -192,3 +192,27 @@ export function useRiderHistory(limit = 20): UseRiderHistoryResult {
     error,
   };
 }
+
+export async function prefetchRiderHistory(
+  getAccessToken: () => Promise<string | null | undefined>,
+  limit = 3,
+): Promise<void> {
+  if (!isBackendConfigured()) return;
+  if (
+    cachedRiderHistoryItems.length > 0 &&
+    Date.now() - cachedRiderHistoryAt < HISTORY_CACHE_TTL_MS
+  ) {
+    return;
+  }
+
+  try {
+    const accessToken = await getAccessTokenWithRetry(getAccessToken);
+    if (!accessToken) return;
+
+    const response = await getRiderRideHistory({ accessToken, limit });
+    cachedRiderHistoryItems = response.items.map(mapRideItem);
+    cachedRiderHistoryAt = Date.now();
+  } catch {
+    // Silent — home screen will retry
+  }
+}

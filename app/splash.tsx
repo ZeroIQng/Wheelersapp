@@ -35,12 +35,19 @@ import {
   getPrivyEthereumWalletAddress,
   getPrivyName,
 } from "@/lib/privy-user";
+import { prefetchRiderHistory } from "@/lib/rider-history";
+import { prefetchWalletOverview } from "@/lib/wallet-overview";
 import { theme } from "@/theme";
 
 type SplashRoute = "/role-selection" | AuthenticatedRoute;
 type AccessTokenGetter = () => Promise<string | null | undefined>;
 
 const SESSION_RESTORE_GRACE_MS = 800;
+
+function prefetchHomeData(getAccessToken: AccessTokenGetter) {
+  void prefetchRiderHistory(getAccessToken);
+  void prefetchWalletOverview(getAccessToken);
+}
 
 async function resolvePrivyDestination({
   user,
@@ -55,7 +62,11 @@ async function resolvePrivyDestination({
 
   const storedAuthState = await readStoredAuthState();
   if (storedAuthState) {
-    return getAuthenticatedRoute(storedAuthState);
+    const route = getAuthenticatedRoute(storedAuthState);
+    if (route === "/rider") {
+      prefetchHomeData(getAccessToken);
+    }
+    return route;
   }
 
   if (!isBackendConfigured()) {
@@ -84,7 +95,11 @@ async function resolvePrivyDestination({
           response.user.phone.length > 0,
       },
     );
-    return getAuthenticatedRoute(nextState);
+    const route = getAuthenticatedRoute(nextState);
+    if (route === "/rider") {
+      prefetchHomeData(getAccessToken);
+    }
+    return route;
   } catch {
     return "/role-selection";
   }
