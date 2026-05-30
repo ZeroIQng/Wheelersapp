@@ -280,6 +280,8 @@ export default function FaceVerifyScreen() {
   }, [state]);
 
   // ── Permission ────────────────────────────────────────────────────────────
+  const hasRequestedRef = useRef(false);
+
   useEffect(() => {
     void (async () => {
       if (isSimulator) {
@@ -296,16 +298,19 @@ export default function FaceVerifyScreen() {
       // Still loading permission status
       if (!permission) return;
 
-      // Not yet determined — automatically request permission
-      if (permission.canAskAgain) {
+      // Not yet determined — automatically request permission (only once)
+      if (permission.canAskAgain && !hasRequestedRef.current) {
+        hasRequestedRef.current = true;
         setState("requesting");
         const result = await requestPermission();
         setState(result.granted ? "idle" : "denied");
         return;
       }
 
-      // Permanently denied
-      setState("denied");
+      // Permanently denied or already asked
+      if (!permission.granted) {
+        setState("denied");
+      }
     })();
   }, [isSimulator, permission, requestPermission]);
 
