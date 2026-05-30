@@ -396,16 +396,17 @@ export default function DestinationSearchScreen() {
     );
 
     if (flowMode === "booking") {
-      if (nextIncompleteTarget === null) {
-        // Route is complete: return to the main screen and render the filled summary.
-        setMode("launcher");
-        setActiveInline(null);
+      if (nextIncompleteTarget !== null) {
+        // Keep the user on the search page until the next required field is filled.
+        // Once From + To are filled, do NOT auto-close the page; the rider may still
+        // want to add a stop before returning to the main screen.
+        setMode("form");
+        focusInlineField(nextIncompleteTarget);
         return;
       }
 
-      // Keep the user on the search page until From, stops, and To are all filled.
       setMode("form");
-      focusInlineField(nextIncompleteTarget);
+      setActiveInline(null);
       return;
     }
 
@@ -565,6 +566,20 @@ export default function DestinationSearchScreen() {
   const isCondensedForm = showInlineResults || hasExtraStops;
   const isUltraCondensedForm = showInlineResults || intermediateStops.length > 1;
   const shouldShowIdleHistory = !showInlineResults && recentPlacesPreview.length > 0;
+  const handleFinishEditingRoute = () => {
+    const missingTarget = findFirstIncompleteTarget();
+
+    if (missingTarget !== null) {
+      openEditor(missingTarget);
+      return;
+    }
+
+    Keyboard.dismiss();
+    setMode("launcher");
+    setActiveInline(null);
+    setSearchQuery("");
+  };
+
   const handleConfirmRoute = async () => {
     const missingTarget = findFirstIncompleteTarget();
 
@@ -631,14 +646,34 @@ export default function DestinationSearchScreen() {
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
             >
-              <MainRouteLauncherCard
-                hasRouteDraft={hasRouteDraft}
-                onPress={() => openEditor(getLauncherTarget())}
-                pickupValue={pickupValue}
-                stopsCount={filledStopsCount}
-                subtitle={launcherSubtitle}
-                title={launcherTitle}
-              />
+              <View style={styles.launcherRouteBlock}>
+                <MainRouteLauncherCard
+                  hasRouteDraft={hasRouteDraft}
+                  onPress={() => openEditor(getLauncherTarget())}
+                  pickupValue={pickupValue}
+                  stopsCount={filledStopsCount}
+                  subtitle={launcherSubtitle}
+                  title={launcherTitle}
+                />
+
+                {hasRouteDraft ? (
+                  <Pressable
+                    disabled={!canAddStop}
+                    onPress={handleAddStop}
+                    style={[
+                      styles.launcherAddStopButton,
+                      !canAddStop ? styles.launcherAddStopButtonDisabled : null,
+                    ]}
+                  >
+                    <View style={styles.launcherAddStopIcon}>
+                      <MaterialIcons color={theme.colors.black} name="add" size={17} />
+                    </View>
+                    <AppText variant="bodyMedium">
+                      {maxStopsReached ? "Maximum stops reached" : "Add stop"}
+                    </AppText>
+                  </Pressable>
+                ) : null}
+              </View>
 
               <ReferralCodeCard
                 applied={referralApplied}
@@ -901,15 +936,19 @@ export default function DestinationSearchScreen() {
               ) : null}
             </ScrollView>
 
-            {flowMode === "trip-edit" ? (
-              <View style={styles.footerActionBar}>
-                <AppButton
-                  disabled={isSubmittingRoute}
-                  title={isSubmittingRoute ? "Updating route..." : "Update trip route"}
-                  onPress={handleConfirmRoute}
-                />
-              </View>
-            ) : null}
+            <View style={styles.footerActionBar}>
+              <AppButton
+                disabled={flowMode === "trip-edit" ? isSubmittingRoute : isConfirmDisabled}
+                title={
+                  flowMode === "trip-edit"
+                    ? isSubmittingRoute
+                      ? "Updating route..."
+                      : "Update trip route"
+                    : "Done"
+                }
+                onPress={flowMode === "trip-edit" ? handleConfirmRoute : handleFinishEditingRoute}
+              />
+            </View>
           </View>
         )}
       </View>
@@ -1192,6 +1231,36 @@ const styles = StyleSheet.create({
     paddingTop: theme.spacing.xs,
     paddingBottom: theme.spacing.xl,
     backgroundColor: theme.colors.offWhite,
+  },
+  launcherRouteBlock: {
+    gap: theme.spacing.sm,
+  },
+  launcherAddStopButton: {
+    alignSelf: "flex-start",
+    minHeight: 42,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing.xs,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.xs,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    borderRadius: theme.radius.pill,
+    backgroundColor: "#FFF4EA",
+    ...theme.shadows.subtle,
+  },
+  launcherAddStopButtonDisabled: {
+    opacity: 0.55,
+  },
+  launcherAddStopIcon: {
+    width: 24,
+    height: 24,
+    borderRadius: theme.radius.pill,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: theme.borders.regular,
+    borderColor: theme.colors.black,
+    backgroundColor: theme.colors.white,
   },
   launcherRouteCard: {
     flexDirection: "row",
