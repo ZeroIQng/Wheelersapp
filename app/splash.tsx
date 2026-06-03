@@ -2,6 +2,7 @@ import { usePrivy, type User } from "@privy-io/expo";
 import { useRouter } from "expo-router";
 import { useEffect, useRef } from "react";
 import { StatusBar } from "expo-status-bar";
+import * as NativeSplash from "expo-splash-screen";
 import { Pressable, StyleSheet, View } from "react-native";
 import Animated, {
   Easing,
@@ -34,12 +35,19 @@ import {
   getPrivyEthereumWalletAddress,
   getPrivyName,
 } from "@/lib/privy-user";
+import { prefetchRiderHistory } from "@/lib/rider-history";
+import { prefetchWalletOverview } from "@/lib/wallet-overview";
 import { theme } from "@/theme";
 
 type SplashRoute = "/role-selection" | AuthenticatedRoute;
 type AccessTokenGetter = () => Promise<string | null | undefined>;
 
 const SESSION_RESTORE_GRACE_MS = 800;
+
+function prefetchHomeData(getAccessToken: AccessTokenGetter) {
+  void prefetchRiderHistory(getAccessToken);
+  void prefetchWalletOverview(getAccessToken);
+}
 
 async function resolvePrivyDestination({
   user,
@@ -54,7 +62,11 @@ async function resolvePrivyDestination({
 
   const storedAuthState = await readStoredAuthState();
   if (storedAuthState) {
-    return getAuthenticatedRoute(storedAuthState);
+    const route = getAuthenticatedRoute(storedAuthState);
+    if (route === "/rider") {
+      prefetchHomeData(getAccessToken);
+    }
+    return route;
   }
 
   if (!isBackendConfigured()) {
@@ -83,7 +95,11 @@ async function resolvePrivyDestination({
           response.user.phone.length > 0,
       },
     );
-    return getAuthenticatedRoute(nextState);
+    const route = getAuthenticatedRoute(nextState);
+    if (route === "/rider") {
+      prefetchHomeData(getAccessToken);
+    }
+    return route;
   } catch {
     return "/role-selection";
   }
@@ -217,6 +233,11 @@ function PrivyAwareSplashScreen() {
 function SplashShell({ onContinue }: { onContinue: () => void }) {
   const floatY = useSharedValue(0);
   const spin = useSharedValue(0);
+
+  useEffect(() => {
+    // Hide the native splash now that the custom splash is visible
+    NativeSplash.hideAsync();
+  }, []);
 
   useEffect(() => {
     floatY.value = withRepeat(

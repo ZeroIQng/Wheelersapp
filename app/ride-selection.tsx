@@ -1,3 +1,4 @@
+import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { usePrivy } from "@privy-io/expo";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -38,7 +39,6 @@ import {
 } from "@/lib/ride-estimate";
 import {
   estimateRide,
-  getRideRouteRows,
   parseRideItineraryParam,
   serializeRideItinerary,
 } from "@/lib/ride-route";
@@ -98,6 +98,38 @@ function formatScheduledAt(value: string): string {
   return `${dayLabel}, ${timeLabel}`;
 }
 
+function getFullPlaceLabel(location: unknown, fallback: string): string {
+  if (location && typeof location === "object") {
+    const candidate = location as {
+      address?: unknown;
+      formattedAddress?: unknown;
+      fullAddress?: unknown;
+      description?: unknown;
+      name?: unknown;
+      title?: unknown;
+      label?: unknown;
+    };
+
+    const values = [
+      candidate.fullAddress,
+      candidate.formattedAddress,
+      candidate.address,
+      candidate.description,
+      candidate.name,
+      candidate.title,
+      candidate.label,
+    ];
+
+    for (const value of values) {
+      if (typeof value === "string" && value.trim().length > 0) {
+        return value.trim();
+      }
+    }
+  }
+
+  return fallback.trim();
+}
+
 function CarArtwork({
   accentColor,
   highlightColor,
@@ -154,7 +186,6 @@ export default function RideSelectionScreen() {
     () => buildInstantRideEstimate(itinerary),
     [itinerary],
   );
-  const routeRows = useMemo(() => getRideRouteRows(itinerary), [itinerary]);
   const [liveEstimate, setLiveEstimate] = useState<RideEstimateResponse | null>(
     initialEstimate ?? fallbackEstimate,
   );
@@ -172,16 +203,22 @@ export default function RideSelectionScreen() {
     [params.scheduledAt],
   );
 
+  // Sync initial estimate only once on mount / when params change.
+  // Use serialized string as dep to avoid object-reference churn.
+  const serializedEstimateParam = params.estimate
+    ? (Array.isArray(params.estimate) ? params.estimate[0] : params.estimate)
+    : "";
   useEffect(() => {
     setLiveEstimate(initialEstimate ?? fallbackEstimate);
     setIsEstimateLoading(
       isBackendConfigured() && !hasResolvedLiveEstimate(initialEstimate),
     );
-  }, [fallbackEstimate, initialEstimate]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serializedEstimateParam, serializedItinerary]);
 
   const SHEET_MIN_HEIGHT = 260;
   const routeFitPadding = {
-    top: 88,
+    top: 188,
     right: 56,
     bottom: SHEET_MIN_HEIGHT + 36,
     left: 56,
@@ -225,29 +262,27 @@ export default function RideSelectionScreen() {
   }));
 
   useEffect(() => {
+    if (!isBackendConfigured() || !isReady || !user) {
+      setIsEstimateLoading(false);
+      return;
+    }
+
+    const destinationLabel = itinerary.stops[itinerary.stops.length - 1];
+    if (!destinationLabel) {
+      setIsEstimateLoading(false);
+      return;
+    }
+
     let cancelled = false;
+    setIsEstimateLoading(true);
 
-    async function loadEstimate(): Promise<void> {
-      if (!isBackendConfigured() || !isReady || !user) {
-        if (!cancelled) setIsEstimateLoading(false);
-        if (!cancelled)
-          setLiveEstimate((current) => current ?? fallbackEstimate);
-        return;
-      }
-
-      const destinationLabel = itinerary.stops[itinerary.stops.length - 1];
-      if (!destinationLabel) {
-        if (!cancelled) setIsEstimateLoading(false);
-        if (!cancelled)
-          setLiveEstimate((current) => current ?? fallbackEstimate);
-        return;
-      }
-
+    const timeout = setTimeout(async () => {
       try {
-        setIsEstimateLoading(true);
         const accessToken = await getAccessTokenWithRetry(getAccessToken);
-        if (!accessToken)
-          throw new Error("Could not get an access token for ride estimate.");
+        if (!accessToken || cancelled) {
+          if (!cancelled) setIsEstimateLoading(false);
+          return;
+        }
 
         const [pickup, destination, ...stops] = await Promise.all([
           resolvePlaceQuery(itinerary.pickup),
@@ -256,6 +291,8 @@ export default function RideSelectionScreen() {
             .slice(0, -1)
             .map((stop) => resolvePlaceQuery(stop)),
         ]);
+
+        if (cancelled) return;
 
         const response = await getRideEstimate({
           accessToken,
@@ -267,17 +304,18 @@ export default function RideSelectionScreen() {
           setLiveEstimate(response);
           setIsEstimateLoading(false);
         }
-      } catch (loadError) {
-        void loadError;
+      } catch {
         if (!cancelled) setIsEstimateLoading(false);
       }
-    }
+    }, 50);
 
-    void loadEstimate();
     return () => {
       cancelled = true;
+      clearTimeout(timeout);
     };
-  }, [fallbackEstimate, getAccessToken, isReady, itinerary, user]);
+    // Use serialized string to avoid object-reference re-fires
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [getAccessToken, isReady, serializedItinerary, user]);
 
   const resolvedEstimate = hasResolvedLiveEstimate(liveEstimate)
     ? liveEstimate
@@ -338,7 +376,41 @@ export default function RideSelectionScreen() {
     ? "Estimating"
     : formatNgn(selectedRideOption.fareNgn);
   const scheduleSummary = scheduledAt ? formatScheduledAt(scheduledAt) : null;
+  const pickupFullAddress = getFullPlaceLabel(
+    liveEstimate?.pickup,
+    itinerary.pickup,
+  );
+  const destinationFullAddress = getFullPlaceLabel(
+    liveEstimate?.destination,
+    itinerary.stops[itinerary.stops.length - 1] ?? "",
+  );
   const canBookRide = !isSubmitting;
+
+  const routeRows = useMemo(() => {
+    const rows: Array<{ id: string; kind: "pickup" | "stop" | "destination"; label: string; value: string }> = [];
+    rows.push({
+      id: "pickup",
+      kind: "pickup",
+      label: "Pickup",
+      value: pickupFullAddress,
+    });
+    const intermediateStops = itinerary.stops.slice(0, -1);
+    intermediateStops.forEach((stop, index) => {
+      rows.push({
+        id: `stop-${index}`,
+        kind: "stop",
+        label: `Stop ${index + 1}`,
+        value: stop,
+      });
+    });
+    rows.push({
+      id: "destination",
+      kind: "destination",
+      label: "Destination",
+      value: destinationFullAddress,
+    });
+    return rows;
+  }, [pickupFullAddress, destinationFullAddress, itinerary.stops]);
 
   useEffect(() => {
     scheduledRideIdempotencyKeyRef.current = null;
@@ -441,13 +513,23 @@ export default function RideSelectionScreen() {
         >
           <View style={styles.topBar}>
             <BackArrow onPress={() => router.back()} />
-            <FloatingView distance={5}>
-              <View style={styles.mapChip}>
-                <AppText variant="monoSmall">
-                  Wheeler • {displayEtaLabel}
-                </AppText>
-              </View>
-            </FloatingView>
+            <View style={styles.mapTopInfoStack}>
+              <FloatingView distance={5}>
+                <View style={styles.mapChip}>
+                  <AppText variant="monoSmall">
+                    Wheeler • {displayEtaLabel}
+                  </AppText>
+                </View>
+              </FloatingView>
+
+              <FloatingView distance={4}>
+                <MapRouteSummary
+                  pickup={pickupFullAddress}
+                  destination={destinationFullAddress}
+                  onEdit={handleEditRoute}
+                />
+              </FloatingView>
+            </View>
           </View>
 
           <FloatingView style={styles.priceBadge} distance={6}>
@@ -688,25 +770,71 @@ function RouteRow({
   label: string;
   value: string;
 }) {
+  const dotStyle =
+    kind === "pickup"
+      ? styles.routeDotPickup
+      : kind === "stop"
+        ? styles.routeDotStop
+        : styles.routeDotDestination;
+
   return (
     <View style={styles.routeRow}>
-      <View
-        style={[
-          styles.routeDot,
-          kind === "pickup"
-            ? styles.routeDotPickup
-            : kind === "destination"
-              ? styles.routeDotDestination
-              : styles.routeDotStop,
-        ]}
-      />
+      <View style={[styles.routeDot, dotStyle]} />
       <View style={styles.routeCopy}>
         <AppText variant="monoSmall" color={theme.colors.muted}>
-          {label}
+          {label.toUpperCase()}
         </AppText>
-        <AppText variant="bodyMedium">{value}</AppText>
+        <AppText variant="bodySmall" numberOfLines={2}>
+          {value || "Not set"}
+        </AppText>
       </View>
     </View>
+  );
+}
+
+function MapRouteSummary({
+  pickup,
+  destination,
+  onEdit,
+}: {
+  pickup: string;
+  destination: string;
+  onEdit: () => void;
+}) {
+  return (
+    <Pressable onPress={onEdit} style={styles.mapRouteCard}>
+      <View style={styles.mapRoutePath}>
+        <View style={[styles.mapRouteNode, styles.mapRouteNodePickup]} />
+        <View style={styles.mapRouteLine} />
+        <View style={[styles.mapRouteNode, styles.mapRouteNodeDestination]} />
+      </View>
+
+      <View style={styles.mapRouteCopy}>
+        <View style={styles.mapRouteTextBlock}>
+          <AppText variant="monoSmall" color={theme.colors.muted}>
+            PICKUP
+          </AppText>
+          <AppText variant="bodySmall" style={styles.mapRouteAddress}>
+            {pickup || "Pickup address"}
+          </AppText>
+        </View>
+
+        <View style={styles.mapRouteDivider} />
+
+        <View style={styles.mapRouteTextBlock}>
+          <AppText variant="monoSmall" color={theme.colors.muted}>
+            DESTINATION
+          </AppText>
+          <AppText variant="bodySmall" style={styles.mapRouteAddress}>
+            {destination || "Destination address"}
+          </AppText>
+        </View>
+      </View>
+
+      <View style={styles.mapRouteEditButton}>
+        <MaterialIcons name="edit" size={17} color={theme.colors.black} />
+      </View>
+    </Pressable>
   );
 }
 
@@ -725,10 +853,16 @@ const styles = StyleSheet.create({
     left: theme.spacing.gutter,
     right: theme.spacing.gutter,
     flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
+    alignItems: "flex-start",
+    gap: theme.spacing.sm,
+  },
+  mapTopInfoStack: {
+    flex: 1,
+    gap: theme.spacing.xs,
+    alignItems: "flex-end",
   },
   mapChip: {
+    alignSelf: "flex-end",
     backgroundColor: theme.colors.white,
     borderWidth: theme.borders.thick,
     borderColor: theme.colors.black,
@@ -736,6 +870,72 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.spacing.md,
     paddingVertical: theme.spacing.sm,
     ...theme.shadows.card,
+  },
+  mapRouteCard: {
+    width: "100%",
+    flexDirection: "row",
+    alignItems: "stretch",
+    gap: theme.spacing.sm,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    borderRadius: theme.radius.md,
+    backgroundColor: "rgba(255,255,255,0.96)",
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.sm,
+    ...theme.shadows.card,
+  },
+  mapRoutePath: {
+    width: 18,
+    alignItems: "center",
+    paddingVertical: 5,
+  },
+  mapRouteNode: {
+    width: 10,
+    height: 10,
+    borderWidth: theme.borders.regular,
+    borderColor: theme.colors.black,
+  },
+  mapRouteNodePickup: {
+    borderRadius: theme.radius.pill,
+    backgroundColor: theme.colors.green,
+  },
+  mapRouteNodeDestination: {
+    borderRadius: 3,
+    backgroundColor: theme.colors.orange,
+  },
+  mapRouteLine: {
+    flex: 1,
+    width: 2,
+    minHeight: 34,
+    marginVertical: 5,
+    backgroundColor: theme.colors.black,
+    opacity: 0.45,
+  },
+  mapRouteCopy: {
+    flex: 1,
+    gap: theme.spacing.xs,
+    minWidth: 0,
+  },
+  mapRouteTextBlock: {
+    gap: 1,
+  },
+  mapRouteAddress: {
+    lineHeight: 17,
+  },
+  mapRouteDivider: {
+    height: 1,
+    backgroundColor: theme.colors.borderLight,
+  },
+  mapRouteEditButton: {
+    width: 36,
+    height: 36,
+    alignSelf: "center",
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    borderRadius: theme.radius.pill,
+    backgroundColor: theme.colors.orangeLight,
+    alignItems: "center",
+    justifyContent: "center",
   },
   priceBadge: {
     position: "absolute",

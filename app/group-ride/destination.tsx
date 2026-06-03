@@ -21,14 +21,14 @@ import {
   isGoogleMapsConfigured,
   type PlaceSuggestion,
 } from "@/lib/google-places";
+import { useAppLocation } from "@/lib/location";
 import {
   readRecentPlaceSearches,
   saveRecentPlaceSearch,
 } from "@/lib/place-search-history";
-import { useAppLocation } from "@/lib/location";
 import { theme } from "@/theme";
 
-type ScreenMode = "form" | "search";
+type ScreenMode = "launcher" | "route-search";
 type ActiveField = "pickup" | "destination";
 
 const SEARCH_DEBOUNCE_MS = 280;
@@ -60,14 +60,19 @@ function isSamePlaceSuggestion(a: PlaceSuggestion, b: PlaceSuggestion) {
 function matchesSearchQuery(place: PlaceSuggestion, query: string) {
   const normalizedQuery = normalizeSearchText(query);
   if (!normalizedQuery) return true;
-  return [place.title, place.subtitle, place.address, formatSuggestionValue(place)].some(
-    (part) => normalizeSearchText(part).includes(normalizedQuery),
-  );
+
+  return [
+    place.title,
+    place.subtitle,
+    place.address,
+    formatSuggestionValue(place),
+  ].some((part) => normalizeSearchText(part).includes(normalizedQuery));
 }
 
 function isExactSearchMatch(place: PlaceSuggestion, query: string) {
   const normalizedQuery = normalizeSearchText(query);
   if (!normalizedQuery) return false;
+
   return [place.title, place.address, formatSuggestionValue(place)].some(
     (part) => normalizeSearchText(part) === normalizedQuery,
   );
@@ -76,11 +81,12 @@ function isExactSearchMatch(place: PlaceSuggestion, query: string) {
 export default function GroupRideDestinationScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ genderPreference?: string }>();
-  const inputRef = useRef<TextInput>(null);
+  const searchInputRef = useRef<TextInput>(null);
+  const routeScrollRef = useRef<ScrollView>(null);
   const { currentLocation } = useAppLocation();
 
-  const [mode, setMode] = useState<ScreenMode>("form");
-  const [activeField, setActiveField] = useState<ActiveField>("pickup");
+  const [mode, setMode] = useState<ScreenMode>("launcher");
+  const [activeField, setActiveField] = useState<ActiveField>("destination");
   const [pickupValue, setPickupValue] = useState("");
   const [destinationValue, setDestinationValue] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
@@ -88,7 +94,7 @@ export default function GroupRideDestinationScreen() {
   const [providerSuggestions, setProviderSuggestions] = useState<PlaceSuggestion[]>([]);
   const [recentPlaces, setRecentPlaces] = useState<PlaceSuggestion[]>([]);
   const [isSearching, setIsSearching] = useState(false);
-  const [isDestinationEditing, setIsDestinationEditing] = useState(false);
+
   const genderPreference = normalizeGenderPreference(params.genderPreference);
 
   useEffect(() => {
@@ -100,31 +106,42 @@ export default function GroupRideDestinationScreen() {
   }, [currentLocation?.address, pickupValue]);
 
   useEffect(() => {
-    if (mode !== "search") return;
-    const timeout = setTimeout(() => inputRef.current?.focus(), 50);
-    return () => clearTimeout(timeout);
-  }, [activeField, mode]);
-
-  useEffect(() => {
     let cancelled = false;
+
     void readRecentPlaceSearches().then((places) => {
       if (!cancelled) setRecentPlaces(places);
     });
-    return () => { cancelled = true; };
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
     const timeout = setTimeout(() => {
       setDebouncedSearchQuery(searchQuery);
     }, SEARCH_DEBOUNCE_MS);
+
     return () => clearTimeout(timeout);
   }, [searchQuery]);
+
+  useEffect(() => {
+    if (mode !== "route-search") return;
+
+    const timeout = setTimeout(() => searchInputRef.current?.focus(), 50);
+    return () => clearTimeout(timeout);
+  }, [activeField, mode]);
 
   const trimmedSearchQuery = searchQuery.trim();
 
   const matchingRecentPlaces = useMemo(
     () => recentPlaces.filter((place) => matchesSearchQuery(place, trimmedSearchQuery)),
     [recentPlaces, trimmedSearchQuery],
+  );
+
+  const matchingRecentPlacesPreview = useMemo(
+    () => matchingRecentPlaces.slice(0, FORM_HISTORY_PREVIEW_LIMIT),
+    [matchingRecentPlaces],
   );
 
   const hasExactRecentMatch = useMemo(
@@ -176,15 +193,20 @@ export default function GroupRideDestinationScreen() {
       }
     })();
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [debouncedSearchQuery, hasExactRecentMatch]);
 
   const shouldUseProviderResults =
-    isGoogleMapsConfigured() && trimmedSearchQuery.length > 0 && !shouldReuseCurrentRecentMatch;
+    isGoogleMapsConfigured() &&
+    trimmedSearchQuery.length > 0 &&
+    !shouldReuseCurrentRecentMatch;
 
   const uniqueProviderSuggestions = useMemo(() => {
     const filtered = shouldUseProviderResults ? providerSuggestions : [];
     const seen = new Set<string>();
+
     return filtered.filter((item) => {
       const key = `${item.id}:${item.title}:${item.subtitle}`;
       if (seen.has(key)) return false;
@@ -196,67 +218,106 @@ export default function GroupRideDestinationScreen() {
   const providerResults = useMemo(
     () =>
       uniqueProviderSuggestions.filter(
-        (item) => !matchingRecentPlaces.some((r) => isSamePlaceSuggestion(r, item)),
+        (item) =>
+          !matchingRecentPlacesPreview.some((recent) =>
+            isSamePlaceSuggestion(recent, item),
+          ),
       ),
-    [matchingRecentPlaces, uniqueProviderSuggestions],
+    [matchingRecentPlacesPreview, uniqueProviderSuggestions],
   );
 
-  const openSearch = (field: ActiveField) => {
-    setActiveField(field);
-    setIsDestinationEditing(false);
-    const currentVal = field === "pickup" ? pickupValue : destinationValue;
-    setSearchQuery(currentVal);
-    setMode("search");
+  const hasCompleteRoute = pickupValue.trim().length > 0 && destinationValue.trim().length > 0;
+
+  const searchPlaceholder =
+    activeField === "pickup" ? "Search pickup" : "Search destination";
+
+  const openRouteSearch = (field: ActiveField = "destination") => {
+    setMode("route-search");
+    focusRouteField(field);
   };
 
-  const handleBack = () => {
-    if (mode === "search") {
-      setMode("form");
-      setSearchQuery("");
-      return;
+  const focusRouteField = (field: ActiveField) => {
+    setActiveField(field);
+    setSearchQuery("");
+    requestAnimationFrame(() => {
+      routeScrollRef.current?.scrollTo({ y: 0, animated: true });
+    });
+  };
+
+  const writeToActiveField = (value: string) => {
+    if (activeField === "pickup") {
+      setPickupValue(value);
+    } else {
+      setDestinationValue(value);
     }
-    router.back();
+  };
+
+  const handleSearchChange = (value: string) => {
+    setSearchQuery(value);
+    writeToActiveField(value);
+  };
+
+  const handleClearField = (field: ActiveField) => {
+    if (field === "pickup") {
+      setPickupValue("");
+    } else {
+      setDestinationValue("");
+    }
+
+    if (activeField === field) {
+      setSearchQuery("");
+    }
   };
 
   const handlePlaceSelection = (place: PlaceSuggestion) => {
     void saveRecentPlaceSearch(place)
       .then((next) => setRecentPlaces(next))
       .catch(() => {});
-    const value = formatSuggestionValue(place);
-    Keyboard.dismiss();
 
-    if (mode === "search") {
-      if (activeField === "pickup") {
-        setPickupValue(value);
-      } else {
-        setDestinationValue(value);
-      }
-      setMode("form");
+    Keyboard.dismiss();
+    writeToActiveField(formatSuggestionValue(place));
+    setSearchQuery("");
+  };
+
+  const handleBack = () => {
+    if (mode === "route-search") {
+      setMode("launcher");
       setSearchQuery("");
       return;
     }
 
-    if (isDestinationEditing) {
-      setDestinationValue(value);
-      setIsDestinationEditing(false);
-      setSearchQuery("");
+    router.back();
+  };
+
+  const handleDoneEditingRoute = () => {
+    if (!pickupValue.trim()) {
+      focusRouteField("pickup");
+      return;
     }
+
+    if (!destinationValue.trim()) {
+      focusRouteField("destination");
+      return;
+    }
+
+    Keyboard.dismiss();
+    setSearchQuery("");
+    setMode("launcher");
   };
-
-  const handleDestinationChange = (value: string) => {
-    setDestinationValue(value);
-    setSearchQuery(value);
-  };
-
-  const isConfirmDisabled = !pickupValue.trim() || !destinationValue.trim();
-
-  const showInlineResults = isDestinationEditing;
-  const shouldShowIdleHistory = !showInlineResults && recentPlacesPreview.length > 0;
 
   const handleConfirm = () => {
+    if (!hasCompleteRoute) {
+      openRouteSearch(destinationValue.trim() ? "pickup" : "destination");
+      return;
+    }
+
     router.push({
       pathname: "/group-ride/matching",
-      params: { pickup: pickupValue, destination: destinationValue, genderPreference },
+      params: {
+        pickup: pickupValue,
+        destination: destinationValue,
+        genderPreference,
+      },
     });
   };
 
@@ -269,9 +330,8 @@ export default function GroupRideDestinationScreen() {
       <StatusBar style="dark" backgroundColor={theme.colors.offWhite} />
 
       <View style={styles.content}>
-        {mode === "form" ? (
+        {mode === "launcher" ? (
           <View style={styles.modeLayout}>
-            {/* Top bar */}
             <View style={styles.formTopBar}>
               <BackArrow onPress={handleBack} />
               <View style={styles.formTopCopy}>
@@ -279,12 +339,14 @@ export default function GroupRideDestinationScreen() {
                   GROUP RIDE
                 </AppText>
                 <AppText variant="bodySmall" color={theme.colors.muted}>
-                  Set your pickup and destination
+                  Share your route with riders going your way
                 </AppText>
               </View>
               <View style={styles.ridersChip}>
                 <MaterialIcons name="group" size={14} color={theme.colors.orange} />
-                <AppText variant="monoSmall" color={theme.colors.orange}>SHARED</AppText>
+                <AppText variant="monoSmall" color={theme.colors.orange}>
+                  SHARED
+                </AppText>
               </View>
             </View>
 
@@ -294,52 +356,31 @@ export default function GroupRideDestinationScreen() {
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
             >
-              {/* Form card */}
-              <View style={styles.formSheet}>
-                <View style={styles.formConnector} />
+              <MainRouteCard
+                destination={destinationValue}
+                hasCompleteRoute={hasCompleteRoute}
+                onPress={() => openRouteSearch("destination")}
+                pickup={pickupValue}
+              />
 
-                {/* Pickup — taps into full search mode */}
-                <SearchTriggerField
-                  color={theme.colors.green}
-                  label="Pickup"
-                  marker="circle"
-                  onPress={() => openSearch("pickup")}
-                  value={pickupValue}
-                />
-
-                {/* Destination — inline editable */}
-                <View style={styles.triggerFieldBlock}>
+              <View style={styles.groupRideCard}>
+                <View style={styles.groupRideIcon}>
+                  <MaterialIcons name="groups" size={18} color={theme.colors.black} />
+                </View>
+                <View style={styles.groupRideCopy}>
+                  <AppText variant="bodyMedium">Group ride matching</AppText>
                   <AppText variant="bodySmall" color={theme.colors.muted}>
-                    Destination
+                    We will find riders on a similar route so you can split the ride cost.
                   </AppText>
-                  <View
-                    style={[
-                      styles.triggerField,
-                      isDestinationEditing ? styles.routeInputActive : null,
-                    ]}
-                  >
-                    <View style={[styles.markerSquare, { backgroundColor: theme.colors.orange }]} />
-                    <TextInput
-                      onChangeText={handleDestinationChange}
-                      onFocus={() => {
-                        setIsDestinationEditing(true);
-                        setSearchQuery(destinationValue);
-                      }}
-                      onSubmitEditing={() => setIsDestinationEditing(false)}
-                      placeholder="Where are you going?"
-                      placeholderTextColor="#A59B92"
-                      style={styles.destinationInput}
-                      value={destinationValue}
-                    />
-                  </View>
                 </View>
               </View>
 
-              {/* Idle history */}
-              {shouldShowIdleHistory ? (
+              {recentPlacesPreview.length > 0 ? (
                 <View style={styles.historySection}>
                   <View style={styles.sectionHeading}>
-                    <AppText variant="monoSmall" color={theme.colors.muted}>HISTORY</AppText>
+                    <AppText variant="monoSmall" color={theme.colors.muted}>
+                      HISTORY
+                    </AppText>
                     <AppText variant="bodySmall" color={theme.colors.muted}>
                       Recent places saved on this device
                     </AppText>
@@ -349,79 +390,27 @@ export default function GroupRideDestinationScreen() {
                       <PlaceResultRow
                         icon="history"
                         item={item}
-                        key={`${item.id}-${index}-recent`}
-                        onPress={() => handlePlaceSelection(item)}
+                        key={`${item.id}-${index}-launcher-history`}
+                        onPress={() => {
+                          setDestinationValue(formatSuggestionValue(item));
+                          openRouteSearch("pickup");
+                        }}
                       />
                     ))}
                   </View>
-                </View>
-              ) : null}
-
-              {/* Inline search results */}
-              {showInlineResults ? (
-                <View style={styles.resultsSection}>
-                  {isSearching ? (
-                    <View style={styles.emptyState}>
-                      <AppText variant="bodyMedium">Searching places...</AppText>
-                      <AppText variant="bodySmall" color={theme.colors.muted}>
-                        Finding matching locations.
-                      </AppText>
-                    </View>
-                  ) : matchingRecentPlaces.length > 0 || providerResults.length > 0 ? (
-                    <View style={styles.resultsListContent}>
-                      {trimmedSearchQuery.length === 0 && matchingRecentPlaces.length > 0 ? (
-                        <View style={styles.sectionHeading}>
-                          <AppText variant="monoSmall" color={theme.colors.muted}>HISTORY</AppText>
-                          <AppText variant="bodySmall" color={theme.colors.muted}>
-                            Recent places saved on this device
-                          </AppText>
-                        </View>
-                      ) : null}
-                      {matchingRecentPlaces.map((item, index) => (
-                        <PlaceResultRow
-                          icon="history"
-                          item={item}
-                          key={`${item.id}-${index}-history`}
-                          onPress={() => handlePlaceSelection(item)}
-                        />
-                      ))}
-                      {providerResults.map((item, index) => (
-                        <PlaceResultRow
-                          item={item}
-                          key={`${item.id}-${index}-provider`}
-                          onPress={() => handlePlaceSelection(item)}
-                        />
-                      ))}
-                    </View>
-                  ) : trimmedSearchQuery.length > 0 ? (
-                    <View style={styles.emptyState}>
-                      <AppText variant="bodyMedium">No places found</AppText>
-                      <AppText variant="bodySmall" color={theme.colors.muted}>
-                        Keep typing to search for a location.
-                      </AppText>
-                    </View>
-                  ) : (
-                    <View style={styles.emptyState}>
-                      <AppText variant="bodyMedium">Search Lagos addresses</AppText>
-                      <AppText variant="bodySmall" color={theme.colors.muted}>
-                        Start typing a street, estate, building, or bus stop.
-                      </AppText>
-                    </View>
-                  )}
                 </View>
               ) : null}
             </ScrollView>
 
             <View style={styles.footerActionBar}>
               <AppButton
-                disabled={isConfirmDisabled}
-                title="Find Group Ride"
+                disabled={false}
+                title={hasCompleteRoute ? "Find Group Ride" : "Continue"}
                 onPress={handleConfirm}
               />
             </View>
           </View>
         ) : (
-          /* Full search mode */
           <View style={styles.modeLayout}>
             <View style={styles.searchHeader}>
               <BackArrow onPress={handleBack} />
@@ -429,35 +418,21 @@ export default function GroupRideDestinationScreen() {
                 <MaterialIcons color={theme.colors.muted} name="search" size={18} />
                 <TextInput
                   autoFocus
-                  onChangeText={setSearchQuery}
-                  placeholder={activeField === "pickup" ? "Search pickup" : "Search destination"}
+                  onChangeText={handleSearchChange}
+                  placeholder={searchPlaceholder}
                   placeholderTextColor="#A59B92"
-                  ref={inputRef}
+                  ref={searchInputRef}
                   style={styles.searchInput}
                   value={searchQuery}
                 />
-              </View>
-            </View>
-
-            <View style={styles.activeSummary}>
-              <View style={styles.summaryMarkerWrap}>
-                <View
-                  style={[
-                    activeField === "pickup" ? styles.markerCircle : styles.markerSquare,
-                    {
-                      backgroundColor:
-                        activeField === "pickup" ? theme.colors.green : theme.colors.orange,
-                    },
-                  ]}
-                />
-              </View>
-              <View style={styles.summaryCopy}>
-                <AppText variant="bodySmall" color={theme.colors.muted}>
-                  {activeField === "pickup" ? "Editing pickup" : "Editing destination"}
-                </AppText>
-                <AppText variant="bodyMedium">
-                  {searchQuery || (activeField === "pickup" ? pickupValue : destinationValue) || "Search for a place"}
-                </AppText>
+                {searchQuery.length > 0 ? (
+                  <Pressable
+                    onPress={() => handleSearchChange("")}
+                    style={styles.inlineClearButton}
+                  >
+                    <MaterialIcons color={theme.colors.black} name="close" size={15} />
+                  </Pressable>
+                ) : null}
               </View>
             </View>
 
@@ -465,8 +440,35 @@ export default function GroupRideDestinationScreen() {
               bounces={false}
               contentContainerStyle={styles.searchScrollContent}
               keyboardShouldPersistTaps="handled"
+              ref={routeScrollRef}
               showsVerticalScrollIndicator={false}
             >
+              <View style={styles.formSheet}>
+                <View style={styles.formConnector} />
+
+                <RouteSelectRow
+                  active={activeField === "pickup"}
+                  color={theme.colors.green}
+                  label="Pickup"
+                  marker="circle"
+                  onClear={() => handleClearField("pickup")}
+                  onPress={() => focusRouteField("pickup")}
+                  placeholder="Where from?"
+                  value={pickupValue}
+                />
+
+                <RouteSelectRow
+                  active={activeField === "destination"}
+                  color={theme.colors.orange}
+                  label="Destination"
+                  marker="square"
+                  onClear={() => handleClearField("destination")}
+                  onPress={() => focusRouteField("destination")}
+                  placeholder="Where to?"
+                  value={destinationValue}
+                />
+              </View>
+
               <View style={styles.resultsSection}>
                 {isSearching ? (
                   <View style={styles.emptyState}>
@@ -475,17 +477,20 @@ export default function GroupRideDestinationScreen() {
                       Finding matching locations.
                     </AppText>
                   </View>
-                ) : matchingRecentPlaces.length > 0 || providerResults.length > 0 ? (
+                ) : matchingRecentPlacesPreview.length > 0 || providerResults.length > 0 ? (
                   <View style={styles.resultsListContent}>
-                    {trimmedSearchQuery.length === 0 && matchingRecentPlaces.length > 0 ? (
+                    {trimmedSearchQuery.length === 0 && matchingRecentPlacesPreview.length > 0 ? (
                       <View style={styles.sectionHeading}>
-                        <AppText variant="monoSmall" color={theme.colors.muted}>HISTORY</AppText>
+                        <AppText variant="monoSmall" color={theme.colors.muted}>
+                          HISTORY
+                        </AppText>
                         <AppText variant="bodySmall" color={theme.colors.muted}>
                           Recent places saved on this device
                         </AppText>
                       </View>
                     ) : null}
-                    {matchingRecentPlaces.map((item, index) => (
+
+                    {matchingRecentPlacesPreview.map((item, index) => (
                       <PlaceResultRow
                         icon="history"
                         item={item}
@@ -493,6 +498,7 @@ export default function GroupRideDestinationScreen() {
                         onPress={() => handlePlaceSelection(item)}
                       />
                     ))}
+
                     {providerResults.map((item, index) => (
                       <PlaceResultRow
                         item={item}
@@ -511,18 +517,21 @@ export default function GroupRideDestinationScreen() {
                 ) : (
                   <View style={styles.historySection}>
                     <View style={styles.sectionHeading}>
-                      <AppText variant="monoSmall" color={theme.colors.muted}>HISTORY</AppText>
+                      <AppText variant="monoSmall" color={theme.colors.muted}>
+                        HISTORY
+                      </AppText>
                       <AppText variant="bodySmall" color={theme.colors.muted}>
                         Recent places saved on this device
                       </AppText>
                     </View>
-                    {recentPlaces.length > 0 ? (
+
+                    {recentPlacesPreview.length > 0 ? (
                       <View style={styles.resultsListContent}>
-                        {recentPlaces.map((item, index) => (
+                        {recentPlacesPreview.map((item, index) => (
                           <PlaceResultRow
                             icon="history"
                             item={item}
-                            key={`${item.id}-${index}-search-empty`}
+                            key={`${item.id}-${index}-empty-history`}
                             onPress={() => handlePlaceSelection(item)}
                           />
                         ))}
@@ -539,6 +548,14 @@ export default function GroupRideDestinationScreen() {
                 )}
               </View>
             </ScrollView>
+
+            <View style={styles.footerActionBar}>
+              <AppButton
+                disabled={false}
+                title="Done"
+                onPress={handleDoneEditingRoute}
+              />
+            </View>
           </View>
         )}
       </View>
@@ -546,23 +563,90 @@ export default function GroupRideDestinationScreen() {
   );
 }
 
-// ─── Sub-components ────────────────────────────────────────────────────────────
+function MainRouteCard({
+  destination,
+  hasCompleteRoute,
+  onPress,
+  pickup,
+}: {
+  destination: string;
+  hasCompleteRoute: boolean;
+  onPress: () => void;
+  pickup: string;
+}) {
+  return (
+    <Pressable onPress={onPress} style={styles.mainRouteCard}>
+      <View style={styles.mainRouteIcon}>
+        <MaterialIcons name="search" size={18} color={theme.colors.black} />
+      </View>
+      <View style={styles.mainRouteCopy}>
+        <AppText variant="monoSmall" color={theme.colors.muted}>
+          WHERE TO?
+        </AppText>
+        {hasCompleteRoute ? (
+          <>
+            <AppText numberOfLines={1} variant="bodyMedium">
+              {destination}
+            </AppText>
+            <AppText numberOfLines={1} variant="bodySmall" color={theme.colors.muted}>
+              From {pickup}
+            </AppText>
+          </>
+        ) : destination ? (
+          <>
+            <AppText numberOfLines={1} variant="bodyMedium">
+              {destination}
+            </AppText>
+            <AppText variant="bodySmall" color={theme.colors.muted}>
+              Add your pickup to continue
+            </AppText>
+          </>
+        ) : (
+          <>
+            <AppText variant="bodyMedium">Where are you going?</AppText>
+            <AppText variant="bodySmall" color={theme.colors.muted}>
+              Set your pickup and destination
+            </AppText>
+          </>
+        )}
+      </View>
+      <MaterialIcons name="chevron-right" size={20} color={theme.colors.muted} />
+    </Pressable>
+  );
+}
 
-type SearchTriggerFieldProps = {
+type RouteSelectRowProps = {
+  active: boolean;
   color: string;
   label: string;
   marker: "circle" | "square";
+  onClear: () => void;
   onPress: () => void;
+  placeholder: string;
   value: string;
 };
 
-function SearchTriggerField({ color, label, marker, onPress, value }: SearchTriggerFieldProps) {
+function RouteSelectRow({
+  active,
+  color,
+  label,
+  marker,
+  onClear,
+  onPress,
+  placeholder,
+  value,
+}: RouteSelectRowProps) {
+  const hasValue = value.trim().length > 0;
+
   return (
     <View style={styles.triggerFieldBlock}>
       <AppText variant="bodySmall" color={theme.colors.muted}>
         {label}
       </AppText>
-      <Pressable onPress={onPress} style={styles.triggerField}>
+      <Pressable
+        onPress={onPress}
+        style={[styles.triggerField, active ? styles.routeInputActive : null]}
+      >
         <View
           style={[
             marker === "circle" ? styles.markerCircle : styles.markerSquare,
@@ -570,8 +654,17 @@ function SearchTriggerField({ color, label, marker, onPress, value }: SearchTrig
           ]}
         />
         <AppText numberOfLines={1} variant="body" style={styles.triggerText}>
-          {value || <AppText variant="body" color="#A59B92">Where are you riding from?</AppText>}
+          {value || (
+            <AppText variant="body" color="#A59B92">
+              {placeholder}
+            </AppText>
+          )}
         </AppText>
+        {hasValue ? (
+          <Pressable onPress={onClear} style={styles.inlineClearButton}>
+            <MaterialIcons color={theme.colors.black} name="close" size={15} />
+          </Pressable>
+        ) : null}
       </Pressable>
     </View>
   );
@@ -600,8 +693,6 @@ function PlaceResultRow({
     </Pressable>
   );
 }
-
-// ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   container: {
@@ -645,11 +736,62 @@ const styles = StyleSheet.create({
   searchScrollContent: {
     flexGrow: 1,
     paddingBottom: theme.spacing.xl,
+    gap: theme.spacing.md,
   },
   footerActionBar: {
     paddingTop: theme.spacing.xs,
     paddingBottom: theme.spacing.xl,
     backgroundColor: theme.colors.offWhite,
+  },
+  mainRouteCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing.sm,
+    padding: theme.spacing.md,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    borderRadius: theme.radius.md,
+    backgroundColor: theme.colors.white,
+    ...theme.shadows.card,
+  },
+  mainRouteIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: theme.radius.pill,
+    borderWidth: theme.borders.regular,
+    borderColor: theme.colors.black,
+    backgroundColor: "#FFF4EA",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  mainRouteCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  groupRideCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing.sm,
+    padding: theme.spacing.md,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    borderRadius: theme.radius.md,
+    backgroundColor: "#FFF4EA",
+    ...theme.shadows.card,
+  },
+  groupRideIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: theme.radius.pill,
+    borderWidth: theme.borders.regular,
+    borderColor: theme.colors.black,
+    backgroundColor: theme.colors.white,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  groupRideCopy: {
+    flex: 1,
+    gap: 2,
   },
   formSheet: {
     position: "relative",
@@ -691,12 +833,16 @@ const styles = StyleSheet.create({
     borderColor: theme.colors.orange,
     backgroundColor: "#FFF8F2",
   },
-  destinationInput: {
-    flex: 1,
-    fontFamily: theme.fonts.body,
-    fontSize: 14,
-    color: theme.colors.black,
-    paddingVertical: 0,
+  inlineClearButton: {
+    width: 26,
+    height: 26,
+    borderRadius: theme.radius.pill,
+    borderWidth: theme.borders.regular,
+    borderColor: theme.colors.black,
+    backgroundColor: theme.colors.white,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
   },
   markerCircle: {
     width: 8,
@@ -736,25 +882,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: theme.colors.black,
     paddingVertical: 0,
-  },
-  activeSummary: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing.sm,
-    padding: theme.spacing.md,
-    borderWidth: theme.borders.thick,
-    borderColor: theme.colors.black,
-    borderRadius: theme.radius.md,
-    backgroundColor: theme.colors.white,
-    ...theme.shadows.card,
-  },
-  summaryMarkerWrap: {
-    width: 22,
-    alignItems: "center",
-  },
-  summaryCopy: {
-    flex: 1,
-    gap: 2,
   },
   resultsSection: {
     gap: theme.spacing.sm,

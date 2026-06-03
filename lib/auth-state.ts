@@ -1,5 +1,7 @@
 import * as SecureStore from "expo-secure-store";
 
+import { clearCachedAccessToken } from "@/lib/access-token";
+
 export type AppAuthRole = "RIDER" | "DRIVER";
 export type RiderOnboardingRoute = "/phone-auth" | "/otp-verify" | "/rider";
 export type AuthenticatedRoute = "/driver/dashboard" | RiderOnboardingRoute;
@@ -149,6 +151,7 @@ export async function markStoredOnboardingComplete(): Promise<StoredAuthState | 
 }
 
 export async function clearStoredAuthState(): Promise<void> {
+  clearCachedAccessToken();
   await SecureStore.deleteItemAsync(AUTH_STATE_KEY);
 }
 

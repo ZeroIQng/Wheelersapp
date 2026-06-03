@@ -7,7 +7,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Keyboard,
   Modal,
-  PanResponder,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -42,7 +41,6 @@ import {
 } from "@/lib/ride-estimate";
 import {
   MAX_ADDITIONAL_STOPS,
-  moveRouteStop,
   serializeRideItinerary,
   type RideItinerary,
 } from "@/lib/ride-route";
@@ -144,18 +142,30 @@ function matchesSearchQuery(place: PlaceSuggestion, query: string) {
   ].some((part) => normalizeSearchText(part).includes(normalizedQuery));
 }
 
-const DRAG_SWAP_THRESHOLD = 88;
+const SEARCH_DEBOUNCE_MS = 280;
 const FORM_HISTORY_PREVIEW_LIMIT = 3;
 const WHEEL_ITEM_HEIGHT = 44;
 const WHEEL_VISIBLE_ROWS = 3;
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+function isSamePlaceSuggestion(a: PlaceSuggestion, b: PlaceSuggestion) {
+  return normalizeSearchText(a.address) === normalizeSearchText(b.address);
+}
 
-type ScreenMode = "form" | "search";
-type ActiveField =
-  | { type: "pickup" }
-  | { type: "stop"; index: number }
-  | { type: "destination" };
+function isExactSearchMatch(place: PlaceSuggestion, query: string) {
+  const normalizedQuery = normalizeSearchText(query);
+  if (!normalizedQuery) return false;
+
+  return [
+    place.title,
+    place.address,
+    formatSuggestionValue(place),
+  ].some((part) => normalizeSearchText(part) === normalizedQuery);
+}
+
+// "pickup" targets From; a number targets routeStops[index]
+// (intermediate stops + the final destination).
+type InlineTarget = "pickup" | number;
+type ScreenMode = "launcher" | "form";
 
 // ─── WheelColumn ─────────────────────────────────────────────────────────────
 // No border, no internal overlay — the parent drumPickerContainer owns all chrome.
@@ -505,214 +515,159 @@ function ScheduleModal({
   );
 }
 
+
+
 // ─── Route sub-components ─────────────────────────────────────────────────────
 
-function SearchTriggerField({
-  dense,
-  compact,
-  color,
-  label,
-  marker,
+function MainRouteLauncherCard({
+  hasRouteDraft,
   onPress,
-  value,
+  pickupValue,
+  stopsCount,
+  subtitle,
+  title,
 }: {
-  dense?: boolean;
-  compact?: boolean;
-  color: string;
-  label: string;
-  marker: "circle" | "square";
+  hasRouteDraft: boolean;
   onPress: () => void;
-  value: string;
+  pickupValue: string;
+  stopsCount: number;
+  subtitle: string;
+  title: string;
 }) {
   return (
-    <View style={[styles.triggerFieldBlock, dense ? styles.triggerFieldBlockDense : null]}>
-      <AppText
-        variant="bodySmall"
-        color={theme.colors.muted}
-        style={[
-          dense ? styles.fieldLabelDense : null,
-          compact ? styles.fieldLabelCompact : null,
-        ]}
-      >
-        {label}
-      </AppText>
-      <Pressable
-        onPress={onPress}
-        style={[
-          styles.triggerField,
-          dense ? styles.triggerFieldDense : null,
-          compact ? styles.triggerFieldCompact : null,
-        ]}
-      >
-        <View
-          style={[
-            marker === "circle" ? styles.markerCircle : styles.markerSquare,
-            { backgroundColor: color },
-          ]}
-        />
-        <AppText numberOfLines={1} variant="body" style={styles.triggerText}>
-          {value || (
-            <AppText variant="body" color={theme.colors.muted}>
-              Where from?
-            </AppText>
-          )}
-        </AppText>
-        <MaterialIcons name="edit" size={14} color={theme.colors.muted} />
-      </Pressable>
-    </View>
-  );
-}
-
-function DestinationField({
-  dense,
-  compact,
-  isEditing,
-  onChangeText,
-  onFocus,
-  onSubmitEditing,
-  value,
-}: {
-  dense?: boolean;
-  compact?: boolean;
-  isEditing: boolean;
-  onChangeText: (value: string) => void;
-  onFocus: () => void;
-  onSubmitEditing: () => void;
-  value: string;
-}) {
-  return (
-    <View style={[styles.triggerFieldBlock, dense ? styles.triggerFieldBlockDense : null]}>
-      <AppText
-        variant="bodySmall"
-        color={theme.colors.muted}
-        style={[
-          dense ? styles.fieldLabelDense : null,
-          compact ? styles.fieldLabelCompact : null,
-        ]}
-      >
-        Destination
-      </AppText>
-      <View
-        style={[
-          styles.triggerField,
-          dense ? styles.triggerFieldDense : null,
-          compact ? styles.triggerFieldCompact : null,
-          isEditing ? styles.routeInputActive : null,
-        ]}
-      >
-        <View style={[styles.markerSquare, { backgroundColor: theme.colors.orange }]} />
-        <TextInput
-          onChangeText={onChangeText}
-          onFocus={onFocus}
-          onSubmitEditing={onSubmitEditing}
-          placeholder="Where are you going?"
-          placeholderTextColor="#A59B92"
-          style={styles.inlineInput}
-          value={value}
+    <Pressable onPress={onPress} style={styles.launcherRouteCard}>
+      <View style={styles.launcherRouteIcon}>
+        <MaterialIcons
+          color={theme.colors.black}
+          name={hasRouteDraft ? "route" : "search"}
+          size={20}
         />
       </View>
-    </View>
+      <View style={styles.launcherRouteBody}>
+        <AppText
+          numberOfLines={1}
+          variant="bodyMedium"
+          color={hasRouteDraft ? theme.colors.black : theme.colors.muted}
+        >
+          {title}
+        </AppText>
+        <AppText numberOfLines={1} variant="bodySmall" color={theme.colors.muted}>
+          {subtitle}
+        </AppText>
+        {hasRouteDraft ? (
+          <View style={styles.launcherRouteBadgeRow}>
+            {pickupValue.trim() ? (
+              <View style={styles.launcherRouteBadge}>
+                <AppText variant="monoSmall">From set</AppText>
+              </View>
+            ) : null}
+            {stopsCount > 0 ? (
+              <View style={styles.launcherRouteBadge}>
+                <AppText variant="monoSmall">
+                  {stopsCount} {stopsCount === 1 ? "stop" : "stops"}
+                </AppText>
+              </View>
+            ) : null}
+          </View>
+        ) : null}
+      </View>
+      <MaterialIcons color={theme.colors.muted} name="chevron-right" size={22} />
+    </Pressable>
   );
 }
 
-type StopRouteFieldProps = {
-  canRemove: boolean;
-  dense?: boolean;
+function PlaceResultRow({
+  icon,
+  item,
+  onPress,
+}: {
+  icon?: PlaceSuggestion["icon"];
+  item: PlaceSuggestion;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable onPress={onPress} style={styles.resultRow}>
+      <View style={styles.resultIcon}>
+        <MaterialIcons
+          color={theme.colors.black}
+          name={icon ?? item.icon}
+          size={18}
+        />
+      </View>
+      <View style={styles.resultCopy}>
+        <AppText variant="bodyMedium">{item.title}</AppText>
+        <AppText variant="bodySmall" color={theme.colors.muted}>
+          {item.subtitle}
+        </AppText>
+      </View>
+    </Pressable>
+  );
+}
+
+type RouteSummaryRowProps = {
+  active: boolean;
+  color: string;
   compact?: boolean;
-  isEditing: boolean;
-  isDragging: boolean;
+  dense?: boolean;
   label: string;
-  onChangeText: (value: string) => void;
-  onFocus: () => void;
-  onRemove: () => void;
-  onReorder: (dy: number) => void;
-  onReorderEnd: () => void;
-  onReorderStart: () => void;
-  onSubmitEditing: () => void;
+  marker: "circle" | "square";
+  onClear?: () => void;
+  onPress: () => void;
+  onRemove?: () => void;
+  placeholder: string;
   value: string;
 };
 
-function StopRouteField({
-  canRemove,
-  dense,
+function RouteSummaryRow({
+  active,
+  color,
   compact,
-  isEditing,
-  isDragging,
+  dense,
   label,
-  onChangeText,
-  onFocus,
+  marker,
+  onClear,
+  onPress,
   onRemove,
-  onReorder,
-  onReorderEnd,
-  onReorderStart,
-  onSubmitEditing,
+  placeholder,
   value,
-}: StopRouteFieldProps) {
-  const panResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onStartShouldSetPanResponder: () => true,
-        onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dy) > 4,
-        onPanResponderGrant: onReorderStart,
-        onPanResponderRelease: (_, g) => { onReorder(g.dy); onReorderEnd(); },
-        onPanResponderTerminate: onReorderEnd,
-      }),
-    [onReorder, onReorderEnd, onReorderStart],
-  );
+}: RouteSummaryRowProps) {
+  const hasValue = value.trim().length > 0;
+  const trailingAction = onRemove ?? (hasValue ? onClear : undefined);
 
   return (
-    <View style={[styles.triggerFieldBlock, dense ? styles.triggerFieldBlockDense : null]}>
-      <AppText
-        variant="bodySmall"
-        color={theme.colors.muted}
+    <Pressable
+      onPress={onPress}
+      style={[
+        styles.triggerField,
+        dense ? styles.triggerFieldDense : null,
+        compact ? styles.triggerFieldCompact : null,
+        active ? styles.routeInputActive : null,
+      ]}
+    >
+      <View
         style={[
-          dense ? styles.fieldLabelDense : null,
-          compact ? styles.fieldLabelCompact : null,
+          marker === "circle" ? styles.markerCircle : styles.markerSquare,
+          { backgroundColor: color },
         ]}
-      >
-        {label}
-      </AppText>
-      <View style={[styles.stopFieldRow, isDragging ? styles.stopFieldRowDragging : null]}>
-        <View
-          style={[
-            styles.stopFieldPressable,
-            dense ? styles.stopFieldPressableDense : null,
-            compact ? styles.stopFieldPressableCompact : null,
-            isEditing ? styles.routeInputActive : null,
-          ]}
+      />
+      <View style={styles.routeSummaryCopy}>
+        <AppText variant="bodySmall" color={theme.colors.muted}>
+          {label}
+        </AppText>
+        <AppText
+          numberOfLines={1}
+          variant="bodyMedium"
+          color={hasValue ? theme.colors.black : theme.colors.muted}
         >
-          <View style={[styles.markerSquare, { backgroundColor: theme.colors.orangeLight }]} />
-          <TextInput
-            onChangeText={onChangeText}
-            onFocus={onFocus}
-            onSubmitEditing={onSubmitEditing}
-            placeholder="Add a stop"
-            placeholderTextColor="#A59B92"
-            style={styles.inlineInput}
-            value={value}
-          />
-          <View {...panResponder.panHandlers} style={[styles.inlineDragButton, styles.dragButton]}>
-            <AppText variant="monoSmall" color={theme.colors.black}>
-              =
-            </AppText>
-          </View>
-        </View>
-        {canRemove ? (
-          <Pressable
-            onPress={onRemove}
-            style={[
-              styles.iconButton,
-              dense ? styles.iconButtonDense : null,
-              compact ? styles.iconButtonCompact : null,
-            ]}
-          >
-            <MaterialIcons color={theme.colors.black} name="close" size={18} />
-          </Pressable>
-        ) : (
-          <View style={styles.iconButtonPlaceholder} />
-        )}
+          {hasValue ? value : placeholder}
+        </AppText>
       </View>
-    </View>
+      {trailingAction ? (
+        <Pressable onPress={trailingAction} style={styles.inlineClearButton}>
+          <MaterialIcons color={theme.colors.black} name="close" size={15} />
+        </Pressable>
+      ) : null}
+    </Pressable>
   );
 }
 
@@ -721,18 +676,20 @@ function StopRouteField({
 export default function ScheduleRideScreen() {
   const router = useRouter();
   const { getAccessToken, isReady, user } = usePrivy();
-  const formScrollRef = useRef<ScrollView>(null);
 
-  const [mode, setMode] = useState<ScreenMode>("form");
-  const [activeField, setActiveField] = useState<ActiveField>({ type: "pickup" });
+  const formScrollRef = useRef<ScrollView>(null);
+  const searchInputRef = useRef<TextInput>(null);
+  const estimateRequestRef = useRef(0);
+
+  const [mode, setMode] = useState<ScreenMode>("launcher");
   const [pickupValue, setPickupValue] = useState("");
   const [routeStops, setRouteStops] = useState<string[]>([""]);
-  const [activeRouteIndex, setActiveRouteIndex] = useState<number | null>(null);
-  const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
   const [providerSuggestions, setProviderSuggestions] = useState<PlaceSuggestion[]>([]);
   const [recentPlaces, setRecentPlaces] = useState<PlaceSuggestion[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [activeInline, setActiveInline] = useState<InlineTarget | null>(null);
 
   const [calendarVisible, setCalendarVisible] = useState(false);
   const [scheduledDate, setScheduledDate] = useState<Date | null>(null);
@@ -740,27 +697,72 @@ export default function ScheduleRideScreen() {
   const [prefetchedEstimate, setPrefetchedEstimate] =
     useState<RideEstimateResponse | null>(null);
 
-  const inputRef = useRef<TextInput>(null);
-  const estimateRequestRef = useRef(0);
-
   const destinationValue = routeStops[routeStops.length - 1] ?? "";
   const intermediateStops = routeStops.slice(0, -1);
-
-  useEffect(() => {
-    if (mode !== "search") return;
-    const t = setTimeout(() => inputRef.current?.focus(), 50);
-    return () => clearTimeout(t);
-  }, [activeField, mode]);
+  const destinationIndex = routeStops.length - 1;
 
   useEffect(() => {
     let cancelled = false;
-    const load = async () => {
-      const stored = await readRecentPlaceSearches();
-      if (!cancelled) setRecentPlaces(stored);
+
+    const loadRecentPlaces = async () => {
+      const storedPlaces = await readRecentPlaceSearches();
+      if (!cancelled) {
+        setRecentPlaces(storedPlaces);
+      }
     };
-    void load();
-    return () => { cancelled = true; };
+
+    void loadRecentPlaces();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
+
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, SEARCH_DEBOUNCE_MS);
+
+    return () => clearTimeout(timeout);
+  }, [searchQuery]);
+
+  useEffect(() => {
+    if (mode !== "form" || activeInline === null) return;
+
+    const timeout = setTimeout(() => {
+      searchInputRef.current?.focus();
+    }, 50);
+
+    return () => clearTimeout(timeout);
+  }, [activeInline, mode]);
+
+  const trimmedSearchQuery = searchQuery.trim();
+  const matchingRecentPlaces = useMemo(
+    () => recentPlaces.filter((place) => matchesSearchQuery(place, trimmedSearchQuery)),
+    [recentPlaces, trimmedSearchQuery],
+  );
+  const matchingRecentPlacesPreview = useMemo(
+    () => matchingRecentPlaces.slice(0, FORM_HISTORY_PREVIEW_LIMIT),
+    [matchingRecentPlaces],
+  );
+  const hasExactRecentMatch = useMemo(
+    () =>
+      recentPlaces.some((place) =>
+        isExactSearchMatch(place, debouncedSearchQuery),
+      ),
+    [debouncedSearchQuery, recentPlaces],
+  );
+  const shouldReuseCurrentRecentMatch = useMemo(
+    () =>
+      recentPlaces.some((place) =>
+        isExactSearchMatch(place, searchQuery),
+      ),
+    [recentPlaces, searchQuery],
+  );
+  const recentPlacesPreview = useMemo(
+    () => recentPlaces.slice(0, FORM_HISTORY_PREVIEW_LIMIT),
+    [recentPlaces],
+  );
 
   useEffect(() => {
     if (!isGoogleMapsConfigured()) {
@@ -768,158 +770,337 @@ export default function ScheduleRideScreen() {
       setIsSearching(false);
       return;
     }
-    const normalized = searchQuery.trim();
+
+    const normalized = debouncedSearchQuery.trim();
+
     if (!normalized) {
       setProviderSuggestions([]);
       setIsSearching(false);
       return;
     }
+
+    if (hasExactRecentMatch) {
+      setProviderSuggestions([]);
+      setIsSearching(false);
+      return;
+    }
+
     let cancelled = false;
     setIsSearching(true);
-    const timeout = setTimeout(async () => {
+
+    void (async () => {
       try {
         const suggestions = await fetchGooglePlaceSuggestions(normalized);
-        if (!cancelled) setProviderSuggestions(suggestions);
+        if (!cancelled) {
+          setProviderSuggestions(suggestions);
+        }
       } catch {
-        if (!cancelled) setProviderSuggestions([]);
+        if (!cancelled) {
+          setProviderSuggestions([]);
+        }
       } finally {
-        if (!cancelled) setIsSearching(false);
+        if (!cancelled) {
+          setIsSearching(false);
+        }
       }
-    }, 220);
-    return () => { cancelled = true; clearTimeout(timeout); };
-  }, [searchQuery]);
+    })();
 
-  const uniqueSuggestions = useMemo(() => {
-    if (!isGoogleMapsConfigured() || !searchQuery.trim()) return [];
+    return () => {
+      cancelled = true;
+    };
+  }, [debouncedSearchQuery, hasExactRecentMatch]);
+
+  const shouldUseProviderResults =
+    isGoogleMapsConfigured() &&
+    trimmedSearchQuery.length > 0 &&
+    !shouldReuseCurrentRecentMatch;
+
+  const uniqueProviderSuggestions = useMemo(() => {
+    const filteredSuggestions = shouldUseProviderResults ? providerSuggestions : [];
     const seen = new Set<string>();
-    return providerSuggestions.filter((item) => {
+    return filteredSuggestions.filter((item) => {
       const key = `${item.id}:${item.title}:${item.subtitle}`;
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
     });
-  }, [providerSuggestions, searchQuery]);
+  }, [providerSuggestions, shouldUseProviderResults]);
 
-  const matchingRecentPlaces = useMemo(
-    () => recentPlaces.filter((p) => matchesSearchQuery(p, searchQuery)),
-    [recentPlaces, searchQuery],
-  );
-  const recentPlacesPreview = useMemo(() => recentPlaces.slice(0, FORM_HISTORY_PREVIEW_LIMIT), [recentPlaces]);
-  const matchingRecentPlacesPreview = useMemo(
-    () => matchingRecentPlaces.slice(0, FORM_HISTORY_PREVIEW_LIMIT),
-    [matchingRecentPlaces],
-  );
   const providerResults = useMemo(
     () =>
-      uniqueSuggestions.filter(
+      uniqueProviderSuggestions.filter(
         (item) =>
-          !matchingRecentPlacesPreview.some(
-            (r) => normalizeSearchText(r.address) === normalizeSearchText(item.address),
+          !matchingRecentPlacesPreview.some((recentPlace) =>
+            isSamePlaceSuggestion(recentPlace, item),
           ),
       ),
-    [matchingRecentPlacesPreview, uniqueSuggestions],
+    [matchingRecentPlacesPreview, uniqueProviderSuggestions],
   );
 
-  const openSearch = (field: ActiveField) => {
-    setActiveRouteIndex(null);
-    setActiveField(field);
-    setSearchQuery("");
-    setMode("search");
-  };
-
-  const handleBack = () => {
-    if (mode === "search") { setMode("form"); setSearchQuery(""); return; }
-    router.back();
-  };
-
-  const handlePlaceSelection = (place: PlaceSuggestion) => {
-    void saveRecentPlaceSearch(place).then((next) => setRecentPlaces(next)).catch(() => {});
-    handleSuggestionPress(formatSuggestionValue(place));
-  };
-
-  const handleSuggestionPress = (value: string) => {
-    Keyboard.dismiss();
-    if (mode === "search") {
-      if (activeField.type === "pickup") {
-        setPickupValue(value);
-      } else if (activeField.type === "destination") {
-        setRouteStops((cur) => cur.map((s, i) => (i === cur.length - 1 ? value : s)));
-      } else {
-        const idx = (activeField as { type: "stop"; index: number }).index;
-        setRouteStops((cur) => cur.map((s, i) => (i === idx ? value : s)));
-      }
-      setMode("form");
-      setSearchQuery("");
-      return;
-    }
-    if (activeRouteIndex != null) {
-      setRouteStops((cur) => cur.map((s, i) => (i === activeRouteIndex ? value : s)));
-      setActiveRouteIndex(null);
-      setSearchQuery("");
-    }
-  };
-
-  const handleAddStop = () => {
-    if (intermediateStops.length >= MAX_ADDITIONAL_STOPS) return;
-    const insertIndex = routeStops.length - 1;
-    setRouteStops((cur) => { const next = [...cur]; next.splice(insertIndex, 0, ""); return next; });
-    setActiveRouteIndex(insertIndex);
-    setSearchQuery("");
-    requestAnimationFrame(() => formScrollRef.current?.scrollTo({ y: 0, animated: true }));
-  };
-
-  const handleRemoveStop = (index: number) => {
-    if (activeRouteIndex === index) { setActiveRouteIndex(null); setSearchQuery(""); }
-    setRouteStops((cur) => cur.filter((_, i) => i !== index));
-  };
-
-  const handleReorderStop = (index: number, dy: number) => {
-    const offset = Math.round(dy / DRAG_SWAP_THRESHOLD);
-    if (offset === 0) return;
-    setActiveRouteIndex(null);
-    setSearchQuery("");
-    setRouteStops((cur) => {
-      const lastMovable = cur.length - 2;
-      const nextIndex = Math.max(0, Math.min(lastMovable, index + offset));
-      return moveRouteStop(cur, index, nextIndex);
-    });
-  };
-
-  const handleDestinationChange = (value: string) => {
-    setRouteStops((cur) => cur.map((s, i) => (i === cur.length - 1 ? value : s)));
-    setSearchQuery(value);
-  };
-
-  const handleStopChange = (index: number, value: string) => {
-    setRouteStops((cur) => cur.map((s, i) => (i === index ? value : s)));
-    setSearchQuery(value);
-  };
-
-  const canAddStop =
-    intermediateStops.length < MAX_ADDITIONAL_STOPS &&
-    intermediateStops.every((s) => s.trim().length > 0);
-  const maxStopsReached = intermediateStops.length >= MAX_ADDITIONAL_STOPS;
+  const showInlineResults = activeInline !== null;
   const hasExtraStops = intermediateStops.length > 0;
-  const showInlineResults = activeRouteIndex != null;
   const isCondensedForm = showInlineResults || hasExtraStops;
   const isUltraCondensedForm = showInlineResults || intermediateStops.length > 1;
-  const firstIncompleteStopIndex = intermediateStops.findIndex((s) => s.trim().length === 0);
+  const canAddStop =
+    intermediateStops.length < MAX_ADDITIONAL_STOPS &&
+    intermediateStops.every((stop) => stop.trim().length > 0);
+  const maxStopsReached = intermediateStops.length >= MAX_ADDITIONAL_STOPS;
+  const firstIncompleteStopIndex = intermediateStops.findIndex(
+    (stop) => stop.trim().length === 0,
+  );
+
+  const itinerary = useMemo<RideItinerary>(
+    () => ({ pickup: pickupValue, stops: routeStops }),
+    [pickupValue, routeStops],
+  );
+  const serializedItinerary = serializeRideItinerary(itinerary);
+  const instantEstimate = useMemo(
+    () => buildInstantRideEstimate(itinerary),
+    [itinerary],
+  );
+
+  const scheduleLabel =
+    scheduledDate && scheduledTime
+      ? formatScheduleLabel(scheduledDate, scheduledTime)
+      : null;
+
   const hasCompleteRoute =
     pickupValue.trim().length > 0 &&
     destinationValue.trim().length > 0 &&
     firstIncompleteStopIndex < 0;
 
-  const focusInlineField = (index: number) => {
-    setActiveRouteIndex(index);
+  const hasRouteDraft =
+    pickupValue.trim().length > 0 ||
+    destinationValue.trim().length > 0 ||
+    intermediateStops.some((stop) => stop.trim().length > 0);
+
+  const filledStopsCount = intermediateStops.filter(
+    (stop) => stop.trim().length > 0,
+  ).length;
+
+  const launcherTitle = destinationValue.trim()
+    ? destinationValue
+    : "Where to?";
+
+  const launcherSubtitle = hasRouteDraft
+    ? pickupValue.trim()
+      ? `From ${pickupValue}${filledStopsCount > 0 ? ` · ${filledStopsCount} stop${filledStopsCount === 1 ? "" : "s"}` : ""}`
+      : "Add your pickup location"
+    : "Search destination, pickup, and optional stops";
+
+  const focusInlineField = (target: InlineTarget) => {
+    setActiveInline(target);
     setSearchQuery("");
-    requestAnimationFrame(() => formScrollRef.current?.scrollTo({ y: 0, animated: true }));
+
+    requestAnimationFrame(() => {
+      formScrollRef.current?.scrollTo({ y: 0, animated: true });
+      searchInputRef.current?.focus();
+    });
+  };
+
+  const openEditor = (target: InlineTarget = destinationIndex) => {
+    setMode("form");
+    focusInlineField(target);
+  };
+
+  const handleBack = () => {
+    if (mode === "form") {
+      setMode("launcher");
+      setActiveInline(null);
+      setSearchQuery("");
+      Keyboard.dismiss();
+      return;
+    }
+
+    router.back();
+  };
+
+  const writeRouteValue = (
+    target: InlineTarget,
+    value: string,
+    pickup = pickupValue,
+    stops = routeStops,
+  ) => {
+    if (target === "pickup") {
+      return { pickup: value, stops };
+    }
+
+    return {
+      pickup,
+      stops: stops.map((stop, index) => (index === target ? value : stop)),
+    };
+  };
+
+  const findFirstIncompleteTarget = (
+    pickup = pickupValue,
+    stops = routeStops,
+  ): InlineTarget | null => {
+    if (!pickup.trim()) return "pickup";
+
+    const emptyStopIndex = stops
+      .slice(0, -1)
+      .findIndex((stop) => stop.trim().length === 0);
+
+    if (emptyStopIndex >= 0) return emptyStopIndex;
+
+    const finalDestinationIndex = stops.length - 1;
+    if (!stops[finalDestinationIndex]?.trim()) return finalDestinationIndex;
+
+    return null;
+  };
+
+  const getLauncherTarget = () => {
+    const missingTarget = findFirstIncompleteTarget();
+    return missingTarget ?? destinationIndex;
+  };
+
+  const handleSearchQueryChange = (value: string) => {
+    setSearchQuery(value);
+  };
+
+  const handleClearActiveSearch = () => {
+    setSearchQuery("");
+  };
+
+  const clearRouteField = (target: InlineTarget) => {
+    if (target === "pickup") {
+      setPickupValue("");
+    } else {
+      setRouteStops((current) =>
+        current.map((stop, index) => (index === target ? "" : stop)),
+      );
+    }
+
+    if (activeInline === target) {
+      setSearchQuery("");
+    }
+  };
+
+  const handleSuggestionPress = (value: string) => {
+    const target = activeInline ?? destinationIndex;
+    const nextRoute = writeRouteValue(target, value);
+
+    Keyboard.dismiss();
+    setPickupValue(nextRoute.pickup);
+    setRouteStops(nextRoute.stops);
+    setSearchQuery("");
+
+    const nextIncompleteTarget = findFirstIncompleteTarget(
+      nextRoute.pickup,
+      nextRoute.stops,
+    );
+
+    if (nextIncompleteTarget !== null) {
+      setMode("form");
+      focusInlineField(nextIncompleteTarget);
+      return;
+    }
+
+    // From + To can be complete, but keep the user here so they can still add
+    // a stop before they tap Done.
+    setMode("form");
+    setActiveInline(null);
+  };
+
+  const handlePlaceSelection = (place: PlaceSuggestion) => {
+    void saveRecentPlaceSearch(place)
+      .then((next) => setRecentPlaces(next))
+      .catch(() => {});
+
+    handleSuggestionPress(formatSuggestionValue(place));
+  };
+
+  const handleLauncherPlaceSelection = (place: PlaceSuggestion) => {
+    const value = formatSuggestionValue(place);
+
+    void saveRecentPlaceSearch(place)
+      .then((next) => setRecentPlaces(next))
+      .catch(() => {});
+
+    setRouteStops((current) =>
+      current.map((stop, index) =>
+        index === current.length - 1 ? value : stop,
+      ),
+    );
+
+    if (!pickupValue.trim()) {
+      openEditor("pickup");
+    }
+  };
+
+  const handleSearchSubmit = () => {
+    const value = searchQuery.trim();
+    if (!value) return;
+    handleSuggestionPress(value);
+  };
+
+  const handleAddStop = () => {
+    if (intermediateStops.length >= MAX_ADDITIONAL_STOPS) return;
+
+    const insertIndex = routeStops.length - 1;
+    setRouteStops((current) => {
+      const next = [...current];
+      next.splice(insertIndex, 0, "");
+      return next;
+    });
+
+    openEditor(insertIndex);
+  };
+
+  const handleRemoveStop = (index: number) => {
+    if (intermediateStops.length === 0) return;
+
+    setActiveInline((current) => {
+      if (typeof current !== "number") return current;
+      if (current === index) {
+        setSearchQuery("");
+        return null;
+      }
+      return current > index ? current - 1 : current;
+    });
+
+    setRouteStops((current) => current.filter((_, i) => i !== index));
+  };
+
+  const getActiveSearchPlaceholder = () => {
+    if (activeInline === "pickup") return "Search pickup";
+
+    if (typeof activeInline === "number") {
+      return activeInline === destinationIndex
+        ? "Search destination"
+        : `Search stop ${activeInline + 1}`;
+    }
+
+    return "Tap From, Stop, or To";
+  };
+
+  const handleFinishEditingRoute = () => {
+    const missingTarget = findFirstIncompleteTarget();
+
+    if (missingTarget !== null) {
+      openEditor(missingTarget);
+      return;
+    }
+
+    Keyboard.dismiss();
+    setMode("launcher");
+    setActiveInline(null);
+    setSearchQuery("");
   };
 
   const handleConfirmSchedule = () => {
-    if (!pickupValue.trim()) { openSearch({ type: "pickup" }); return; }
-    if (firstIncompleteStopIndex >= 0) { focusInlineField(firstIncompleteStopIndex); return; }
-    if (!destinationValue.trim()) { focusInlineField(routeStops.length - 1); return; }
-    if (!scheduledDate || !scheduledTime) { setCalendarVisible(true); return; }
+    const missingTarget = findFirstIncompleteTarget();
+
+    if (missingTarget !== null) {
+      openEditor(missingTarget);
+      return;
+    }
+
+    if (!scheduledDate || !scheduledTime) {
+      setCalendarVisible(true);
+      return;
+    }
+
     router.push({
       pathname: "/ride-selection",
       params: {
@@ -929,15 +1110,6 @@ export default function ScheduleRideScreen() {
       },
     });
   };
-
-  const itinerary: RideItinerary = { pickup: pickupValue, stops: routeStops };
-  const serializedItinerary = serializeRideItinerary(itinerary);
-  const instantEstimate = useMemo(
-    () => buildInstantRideEstimate(itinerary),
-    [itinerary],
-  );
-  const scheduleLabel =
-    scheduledDate && scheduledTime ? formatScheduleLabel(scheduledDate, scheduledTime) : null;
 
   useEffect(() => {
     if (!isBackendConfigured() || !isReady || !user || !hasCompleteRoute) {
@@ -968,7 +1140,9 @@ export default function ScheduleRideScreen() {
         const [pickup, destination, ...stops] = await Promise.all([
           resolvePlaceQuery(itinerary.pickup),
           resolvePlaceQuery(destinationLabel),
-          ...itinerary.stops.slice(0, -1).map((stop) => resolvePlaceQuery(stop)),
+          ...itinerary.stops
+            .slice(0, -1)
+            .map((stop) => resolvePlaceQuery(stop)),
         ]);
 
         const estimate = await getRideEstimate({
@@ -992,28 +1166,15 @@ export default function ScheduleRideScreen() {
       cancelled = true;
       clearTimeout(timeout);
     };
-  }, [getAccessToken, hasCompleteRoute, isReady, itinerary, user]);
-
-  const searchHeading =
-    activeField.type === "pickup"
-      ? "Search pickup"
-      : activeField.type === "destination"
-        ? "Search destination"
-        : `Search stop ${(activeField as { type: "stop"; index: number }).index + 1}`;
-
-  const activeSummaryLabel =
-    activeField.type === "pickup"
-      ? "Editing pickup"
-      : activeField.type === "destination"
-        ? "Editing destination"
-        : `Editing stop ${(activeField as { type: "stop"; index: number }).index + 1}`;
-
-  const activeFieldCurrentValue =
-    activeField.type === "pickup"
-      ? pickupValue
-      : activeField.type === "destination"
-        ? destinationValue
-        : (routeStops[(activeField as { type: "stop"; index: number }).index] ?? "");
+    // Use serialized string to avoid object-reference re-fires
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    getAccessToken,
+    hasCompleteRoute,
+    isReady,
+    serializedItinerary,
+    user,
+  ]);
 
   return (
     <AppScreen
@@ -1034,9 +1195,8 @@ export default function ScheduleRideScreen() {
       />
 
       <View style={styles.content}>
-        {mode === "form" ? (
+        {mode === "launcher" ? (
           <View style={styles.modeLayout}>
-            {/* Top bar */}
             <View style={styles.formTopBar}>
               <BackArrow onPress={handleBack} />
               <View style={styles.formTopCopy}>
@@ -1054,6 +1214,146 @@ export default function ScheduleRideScreen() {
 
             <ScrollView
               bounces={false}
+              contentContainerStyle={styles.formScrollContent}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              <View style={styles.launcherRouteBlock}>
+                <MainRouteLauncherCard
+                  hasRouteDraft={hasRouteDraft}
+                  onPress={() => openEditor(getLauncherTarget())}
+                  pickupValue={pickupValue}
+                  stopsCount={filledStopsCount}
+                  subtitle={launcherSubtitle}
+                  title={launcherTitle}
+                />
+
+                {hasRouteDraft ? (
+                  <Pressable
+                    disabled={!canAddStop}
+                    onPress={handleAddStop}
+                    style={[
+                      styles.launcherAddStopButton,
+                      !canAddStop ? styles.launcherAddStopButtonDisabled : null,
+                    ]}
+                  >
+                    <View style={styles.launcherAddStopIcon}>
+                      <MaterialIcons color={theme.colors.black} name="add" size={17} />
+                    </View>
+                    <AppText variant="bodyMedium">
+                      {maxStopsReached ? "Maximum stops reached" : "Add stop"}
+                    </AppText>
+                  </Pressable>
+                ) : null}
+              </View>
+
+              <Pressable
+                onPress={() => setCalendarVisible(true)}
+                style={[
+                  styles.scheduleTrigger,
+                  scheduleLabel ? styles.scheduleTriggerSet : null,
+                ]}
+              >
+                <View style={styles.scheduleTriggerIcon}>
+                  <MaterialIcons
+                    name="calendar-today"
+                    size={16}
+                    color={scheduleLabel ? theme.colors.white : theme.colors.orange}
+                  />
+                </View>
+                <View style={styles.scheduleTriggerCopy}>
+                  {scheduleLabel ? (
+                    <>
+                      <AppText variant="monoSmall" color={theme.colors.white}>
+                        SCHEDULED RIDE
+                      </AppText>
+                      <AppText variant="bodyMedium" color={theme.colors.white}>
+                        {scheduleLabel}
+                      </AppText>
+                    </>
+                  ) : (
+                    <>
+                      <AppText variant="bodyMedium">Scheduled ride</AppText>
+                      <AppText variant="bodySmall" color={theme.colors.muted}>
+                        Choose the exact day and time for this ride
+                      </AppText>
+                    </>
+                  )}
+                </View>
+                <MaterialIcons
+                  name="chevron-right"
+                  size={20}
+                  color={scheduleLabel ? theme.colors.white : theme.colors.muted}
+                />
+              </Pressable>
+
+              {recentPlacesPreview.length > 0 ? (
+                <View style={styles.historySection}>
+                  <View style={styles.sectionHeading}>
+                    <AppText variant="monoSmall" color={theme.colors.muted}>
+                      HISTORY
+                    </AppText>
+                    <AppText variant="bodySmall" color={theme.colors.muted}>
+                      Recent places saved on this device
+                    </AppText>
+                  </View>
+                  <View style={styles.resultsListContent}>
+                    {recentPlacesPreview.map((item, index) => (
+                      <PlaceResultRow
+                        icon="history"
+                        item={item}
+                        key={`${item.id}-${index}-launcher-recent`}
+                        onPress={() => handleLauncherPlaceSelection(item)}
+                      />
+                    ))}
+                  </View>
+                </View>
+              ) : null}
+            </ScrollView>
+
+            <View style={styles.footerActionBar}>
+              <AppButton
+                disabled={false}
+                title="Schedule ride"
+                onPress={handleConfirmSchedule}
+              />
+            </View>
+          </View>
+        ) : (
+          <View style={styles.modeLayout}>
+            <View style={styles.searchHeader}>
+              <BackArrow onPress={handleBack} />
+              <View style={styles.searchBar}>
+                <MaterialIcons
+                  color={theme.colors.muted}
+                  name="search"
+                  size={18}
+                />
+                <TextInput
+                  autoCorrect={false}
+                  editable={activeInline !== null}
+                  onChangeText={handleSearchQueryChange}
+                  onSubmitEditing={handleSearchSubmit}
+                  placeholder={getActiveSearchPlaceholder()}
+                  placeholderTextColor="#A59B92"
+                  ref={searchInputRef}
+                  returnKeyType="search"
+                  style={styles.searchInput}
+                  value={searchQuery}
+                />
+                {searchQuery.length > 0 ? (
+                  <Pressable
+                    onPress={handleClearActiveSearch}
+                    style={styles.inlineClearButton}
+                  >
+                    <MaterialIcons color={theme.colors.black} name="close" size={15} />
+                  </Pressable>
+                ) : null}
+              </View>
+            </View>
+
+            <ScrollView
+              bounces={false}
               contentContainerStyle={[
                 styles.formScrollContent,
                 isCondensedForm ? styles.formScrollContentCondensed : null,
@@ -1063,7 +1363,6 @@ export default function ScheduleRideScreen() {
               ref={formScrollRef}
               showsVerticalScrollIndicator={false}
             >
-              {/* Route card */}
               <View
                 style={[
                   styles.formSheet,
@@ -1087,57 +1386,47 @@ export default function ScheduleRideScreen() {
                   ]}
                 />
 
-                <SearchTriggerField
-                  dense={isCondensedForm}
-                  compact={isUltraCondensedForm}
+                <RouteSummaryRow
+                  active={activeInline === "pickup"}
                   color={theme.colors.green}
-                  label="Pickup"
+                  compact={isUltraCondensedForm}
+                  dense={isCondensedForm}
+                  label="From"
                   marker="circle"
-                  onPress={() => openSearch({ type: "pickup" })}
+                  onClear={() => clearRouteField("pickup")}
+                  onPress={() => focusInlineField("pickup")}
+                  placeholder="Where from?"
                   value={pickupValue}
                 />
 
                 {hasExtraStops
                   ? intermediateStops.map((stop, index) => (
-                      <StopRouteField
-                        canRemove
-                        dense={isCondensedForm}
+                      <RouteSummaryRow
+                        active={activeInline === index}
+                        color={theme.colors.orangeLight}
                         compact={isUltraCondensedForm}
-                        isEditing={activeRouteIndex === index}
-                        isDragging={draggingIndex === index}
-                        key={`stop-${index}`}
+                        dense={isCondensedForm}
+                        key={`route-stop-${index}`}
                         label={`Stop ${index + 1}`}
-                        onChangeText={(v) => handleStopChange(index, v)}
-                        onFocus={() => {
-                          setActiveRouteIndex(index);
-                          setSearchQuery("");
-                          requestAnimationFrame(() =>
-                            formScrollRef.current?.scrollTo({ y: 0, animated: true }),
-                          );
-                        }}
+                        marker="square"
+                        onPress={() => focusInlineField(index)}
                         onRemove={() => handleRemoveStop(index)}
-                        onReorder={(dy) => handleReorderStop(index, dy)}
-                        onReorderEnd={() => setDraggingIndex(null)}
-                        onReorderStart={() => setDraggingIndex(index)}
-                        onSubmitEditing={() => setActiveRouteIndex(null)}
+                        placeholder="Add a stop"
                         value={stop}
                       />
                     ))
                   : null}
 
-                <DestinationField
-                  dense={isCondensedForm}
+                <RouteSummaryRow
+                  active={activeInline === destinationIndex}
+                  color={theme.colors.orange}
                   compact={isUltraCondensedForm}
-                  isEditing={activeRouteIndex === routeStops.length - 1}
-                  onChangeText={handleDestinationChange}
-                  onFocus={() => {
-                    setActiveRouteIndex(routeStops.length - 1);
-                    setSearchQuery("");
-                    requestAnimationFrame(() =>
-                      formScrollRef.current?.scrollTo({ y: 0, animated: true }),
-                    );
-                  }}
-                  onSubmitEditing={() => setActiveRouteIndex(null)}
+                  dense={isCondensedForm}
+                  label="To"
+                  marker="square"
+                  onClear={() => clearRouteField(destinationIndex)}
+                  onPress={() => focusInlineField(destinationIndex)}
+                  placeholder="Where to?"
                   value={destinationValue}
                 />
 
@@ -1155,13 +1444,14 @@ export default function ScheduleRideScreen() {
                   <View style={styles.addStopIcon}>
                     <MaterialIcons color={theme.colors.black} name="add" size={18} />
                   </View>
-                  <AppText variant="bodyMedium">
-                    {maxStopsReached ? "Maximum stops reached" : "Add stop"}
-                  </AppText>
+                  <View style={styles.addStopCopy}>
+                    <AppText variant="bodyMedium">
+                      {maxStopsReached ? "Maximum stops reached" : "Add stop"}
+                    </AppText>
+                  </View>
                 </Pressable>
               </View>
 
-              {/* Inline search results */}
               {showInlineResults ? (
                 <View style={styles.resultsSection}>
                   {isSearching ? (
@@ -1171,27 +1461,35 @@ export default function ScheduleRideScreen() {
                         Finding matching locations.
                       </AppText>
                     </View>
-                  ) : uniqueSuggestions.length > 0 ? (
+                  ) : matchingRecentPlacesPreview.length > 0 || providerResults.length > 0 ? (
                     <View style={styles.resultsListContent}>
-                      {uniqueSuggestions.map((item, index) => (
-                        <Pressable
-                          key={`${item.id}-${index}`}
-                          onPress={() => handleSuggestionPress(formatSuggestionValue(item))}
-                          style={styles.resultRow}
-                        >
-                          <View style={styles.resultIcon}>
-                            <MaterialIcons color={theme.colors.black} name={item.icon} size={18} />
-                          </View>
-                          <View style={styles.resultCopy}>
-                            <AppText variant="bodyMedium">{item.title}</AppText>
-                            <AppText variant="bodySmall" color={theme.colors.muted}>
-                              {item.subtitle}
-                            </AppText>
-                          </View>
-                        </Pressable>
+                      {trimmedSearchQuery.length === 0 && matchingRecentPlacesPreview.length > 0 ? (
+                        <View style={styles.sectionHeading}>
+                          <AppText variant="monoSmall" color={theme.colors.muted}>
+                            HISTORY
+                          </AppText>
+                          <AppText variant="bodySmall" color={theme.colors.muted}>
+                            Recent places saved on this device
+                          </AppText>
+                        </View>
+                      ) : null}
+                      {matchingRecentPlacesPreview.map((item, index) => (
+                        <PlaceResultRow
+                          icon="history"
+                          item={item}
+                          key={`${item.id}-${index}-history`}
+                          onPress={() => handlePlaceSelection(item)}
+                        />
+                      ))}
+                      {providerResults.map((item, index) => (
+                        <PlaceResultRow
+                          item={item}
+                          key={`${item.id}-${index}-provider`}
+                          onPress={() => handlePlaceSelection(item)}
+                        />
                       ))}
                     </View>
-                  ) : searchQuery.trim().length > 0 ? (
+                  ) : trimmedSearchQuery.length > 0 ? (
                     <View style={styles.emptyState}>
                       <AppText variant="bodyMedium">No places found</AppText>
                       <AppText variant="bodySmall" color={theme.colors.muted}>
@@ -1208,206 +1506,15 @@ export default function ScheduleRideScreen() {
                   )}
                 </View>
               ) : null}
-
-              {!showInlineResults ? (
-                <Pressable
-                  onPress={() => setCalendarVisible(true)}
-                  style={[
-                    styles.scheduleTrigger,
-                    scheduleLabel ? styles.scheduleTriggerSet : null,
-                  ]}
-                >
-                  <View style={styles.scheduleTriggerIcon}>
-                    <MaterialIcons
-                      name="calendar-today"
-                      size={16}
-                      color={scheduleLabel ? theme.colors.white : theme.colors.orange}
-                    />
-                  </View>
-                  <View style={styles.scheduleTriggerCopy}>
-                    {scheduleLabel ? (
-                      <>
-                        <AppText variant="monoSmall" color={theme.colors.white}>
-                          SCHEDULED
-                        </AppText>
-                        <AppText variant="bodyMedium" color={theme.colors.white}>
-                          {scheduleLabel}
-                        </AppText>
-                      </>
-                    ) : (
-                      <>
-                        <AppText variant="bodyMedium">Pick date & time</AppText>
-                        <AppText variant="bodySmall" color={theme.colors.muted}>
-                          Choose the exact day and time for this ride
-                        </AppText>
-                      </>
-                    )}
-                  </View>
-                  <MaterialIcons
-                    name="chevron-right"
-                    size={20}
-                    color={scheduleLabel ? theme.colors.white : theme.colors.muted}
-                  />
-                </Pressable>
-              ) : null}
             </ScrollView>
 
-            {/* Footer */}
             <View style={styles.footerActionBar}>
-              <AppButton disabled={false} title="Schedule ride" onPress={handleConfirmSchedule} />
+              <AppButton
+                disabled={false}
+                title="Done"
+                onPress={handleFinishEditingRoute}
+              />
             </View>
-          </View>
-        ) : (
-          /* Full search mode */
-          <View style={styles.modeLayout}>
-            <View style={styles.searchHeader}>
-              <BackArrow onPress={handleBack} />
-              <View style={styles.searchBar}>
-                <MaterialIcons color={theme.colors.muted} name="search" size={18} />
-                <TextInput
-                  autoFocus
-                  onChangeText={setSearchQuery}
-                  placeholder={searchHeading}
-                  placeholderTextColor="#A59B92"
-                  ref={inputRef}
-                  style={styles.searchInput}
-                  value={searchQuery}
-                />
-              </View>
-            </View>
-
-            <View style={styles.activeSummary}>
-              <View style={styles.summaryMarkerWrap}>
-                <View
-                  style={[
-                    activeField.type === "pickup" ? styles.markerCircle : styles.markerSquare,
-                    {
-                      backgroundColor:
-                        activeField.type === "pickup" ? theme.colors.green : theme.colors.orange,
-                    },
-                  ]}
-                />
-              </View>
-              <View style={styles.summaryCopy}>
-                <AppText variant="bodySmall" color={theme.colors.muted}>
-                  {activeSummaryLabel}
-                </AppText>
-                <AppText variant="bodyMedium">
-                  {searchQuery || activeFieldCurrentValue || "Search for a place"}
-                </AppText>
-              </View>
-            </View>
-
-            <ScrollView
-              bounces={false}
-              contentContainerStyle={styles.searchScrollContent}
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
-            >
-              <View style={styles.resultsSection}>
-                {isSearching ? (
-                  <View style={styles.emptyState}>
-                    <AppText variant="bodyMedium">Searching places...</AppText>
-                    <AppText variant="bodySmall" color={theme.colors.muted}>
-                      Finding matching locations.
-                    </AppText>
-                  </View>
-                ) : matchingRecentPlacesPreview.length > 0 || providerResults.length > 0 ? (
-                  <View style={styles.resultsListContent}>
-                    {searchQuery.trim().length === 0 && matchingRecentPlacesPreview.length > 0 ? (
-                      <View style={styles.sectionHeading}>
-                        <AppText variant="monoSmall" color={theme.colors.muted}>
-                          HISTORY
-                        </AppText>
-                        <AppText variant="bodySmall" color={theme.colors.muted}>
-                          Recent places saved on this device
-                        </AppText>
-                      </View>
-                    ) : null}
-                    {matchingRecentPlacesPreview.map((item, index) => (
-                      <Pressable
-                        key={`${item.id}-${index}-history`}
-                        onPress={() => handlePlaceSelection(item)}
-                        style={styles.resultRow}
-                      >
-                        <View style={styles.resultIcon}>
-                          <MaterialIcons color={theme.colors.black} name="history" size={18} />
-                        </View>
-                        <View style={styles.resultCopy}>
-                          <AppText variant="bodyMedium">{item.title}</AppText>
-                          <AppText variant="bodySmall" color={theme.colors.muted}>
-                            {item.subtitle}
-                          </AppText>
-                        </View>
-                      </Pressable>
-                    ))}
-                    {providerResults.map((item, index) => (
-                      <Pressable
-                        key={`${item.id}-${index}-provider`}
-                        onPress={() => handlePlaceSelection(item)}
-                        style={styles.resultRow}
-                      >
-                        <View style={styles.resultIcon}>
-                          <MaterialIcons color={theme.colors.black} name={item.icon} size={18} />
-                        </View>
-                        <View style={styles.resultCopy}>
-                          <AppText variant="bodyMedium">{item.title}</AppText>
-                          <AppText variant="bodySmall" color={theme.colors.muted}>
-                            {item.subtitle}
-                          </AppText>
-                        </View>
-                      </Pressable>
-                    ))}
-                  </View>
-                ) : searchQuery.trim().length > 0 ? (
-                  <View style={styles.emptyState}>
-                    <AppText variant="bodyMedium">No places found</AppText>
-                    <AppText variant="bodySmall" color={theme.colors.muted}>
-                      Keep typing to search for a location.
-                    </AppText>
-                  </View>
-                ) : (
-                  <View style={styles.historySection}>
-                    <View style={styles.sectionHeading}>
-                      <AppText variant="monoSmall" color={theme.colors.muted}>
-                        HISTORY
-                      </AppText>
-                      <AppText variant="bodySmall" color={theme.colors.muted}>
-                        Recent places saved on this device
-                      </AppText>
-                    </View>
-                    {recentPlacesPreview.length > 0 ? (
-                      <View style={styles.resultsListContent}>
-                        {recentPlacesPreview.map((item, index) => (
-                          <Pressable
-                            key={`${item.id}-${index}-empty-history`}
-                            onPress={() => handlePlaceSelection(item)}
-                            style={styles.resultRow}
-                          >
-                            <View style={styles.resultIcon}>
-                              <MaterialIcons color={theme.colors.black} name="history" size={18} />
-                            </View>
-                            <View style={styles.resultCopy}>
-                              <AppText variant="bodyMedium">{item.title}</AppText>
-                              <AppText variant="bodySmall" color={theme.colors.muted}>
-                                {item.subtitle}
-                              </AppText>
-                            </View>
-                          </Pressable>
-                        ))}
-                      </View>
-                    ) : (
-                      <View style={styles.emptyState}>
-                        <AppText variant="bodyMedium">Search Lagos addresses</AppText>
-                        <AppText variant="bodySmall" color={theme.colors.muted}>
-                          Start typing a street, estate, building, or bus stop.
-                        </AppText>
-                      </View>
-                    )}
-                  </View>
-                )}
-              </View>
-            </ScrollView>
           </View>
         )}
       </View>
@@ -1415,12 +1522,80 @@ export default function ScheduleRideScreen() {
   );
 }
 
-// ─── Styles ───────────────────────────────────────────────────────────────────
-
 const styles = StyleSheet.create({
   container: { flex: 1, paddingTop: theme.spacing.lg, paddingBottom: 0 },
   content: { flex: 1 },
   modeLayout: { flex: 1, gap: theme.spacing.md, overflow: "visible" },
+  launcherRouteBlock: {
+    gap: theme.spacing.sm,
+  },
+  launcherAddStopButton: {
+    alignSelf: "flex-start",
+    minHeight: 42,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing.xs,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.xs,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    borderRadius: theme.radius.pill,
+    backgroundColor: "#FFF4EA",
+    ...theme.shadows.subtle,
+  },
+  launcherAddStopButtonDisabled: {
+    opacity: 0.55,
+  },
+  launcherAddStopIcon: {
+    width: 24,
+    height: 24,
+    borderRadius: theme.radius.pill,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: theme.borders.regular,
+    borderColor: theme.colors.black,
+    backgroundColor: theme.colors.white,
+  },
+  launcherRouteCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing.sm,
+    padding: theme.spacing.md,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    borderRadius: theme.radius.md,
+    backgroundColor: theme.colors.white,
+    ...theme.shadows.card,
+  },
+  launcherRouteIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: theme.radius.pill,
+    borderWidth: theme.borders.regular,
+    borderColor: theme.colors.black,
+    backgroundColor: "#FFF4EA",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  launcherRouteBody: {
+    flex: 1,
+    minWidth: 0,
+    gap: 3,
+  },
+  launcherRouteBadgeRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: theme.spacing.xs,
+    paddingTop: 4,
+  },
+  launcherRouteBadge: {
+    paddingHorizontal: theme.spacing.xs,
+    paddingVertical: 3,
+    borderWidth: theme.borders.regular,
+    borderColor: theme.colors.black,
+    borderRadius: theme.radius.pill,
+    backgroundColor: theme.colors.offWhite,
+  },
 
   formTopBar: { flexDirection: "row", alignItems: "center", gap: theme.spacing.sm },
   formTopCopy: { flex: 1, gap: 2 },
@@ -1914,4 +2089,25 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.spacing.md,
     paddingTop: theme.spacing.sm,
   },
+  inlineClearButton: {
+    width: 26,
+    height: 26,
+    borderRadius: theme.radius.pill,
+    borderWidth: theme.borders.regular,
+    borderColor: theme.colors.black,
+    backgroundColor: theme.colors.white,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  routeSummaryCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  addStopCopy: {
+    flex: 1,
+  },
+
 });
+

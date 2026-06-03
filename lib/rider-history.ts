@@ -101,12 +101,18 @@ function mapRideItem(ride: RiderHistoryRide): RiderHistoryListItem {
   };
 }
 
+let cachedRiderHistoryAt = 0;
+const HISTORY_CACHE_TTL_MS = 30_000;
+
 export function useRiderHistory(limit = 20): UseRiderHistoryResult {
   const { getAccessToken, isReady, user } = usePrivy();
+  const hasCachedItems = cachedRiderHistoryItems.length > 0;
   const [items, setItems] = useState<RiderHistoryListItem[]>(() =>
     cachedRiderHistoryItems.slice(0, limit),
   );
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(() =>
+    !hasCachedItems && isBackendConfigured(),
+  );
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -117,6 +123,18 @@ export function useRiderHistory(limit = 20): UseRiderHistoryResult {
         if (!cancelled) {
           cachedRiderHistoryItems = [];
           setItems([]);
+          setIsLoading(false);
+        }
+        return;
+      }
+
+      // Skip fetch if cache is fresh
+      if (
+        cachedRiderHistoryItems.length > 0 &&
+        Date.now() - cachedRiderHistoryAt < HISTORY_CACHE_TTL_MS
+      ) {
+        if (!cancelled) {
+          setItems(cachedRiderHistoryItems.slice(0, limit));
           setIsLoading(false);
         }
         return;
@@ -139,10 +157,15 @@ export function useRiderHistory(limit = 20): UseRiderHistoryResult {
         if (!cancelled) {
           const nextItems = response.items.map(mapRideItem);
           cachedRiderHistoryItems = nextItems;
+          cachedRiderHistoryAt = Date.now();
           setItems(nextItems.slice(0, limit));
         }
       } catch (loadError) {
         if (!cancelled) {
+          // Keep showing cached items on error
+          if (cachedRiderHistoryItems.length > 0) {
+            setItems(cachedRiderHistoryItems.slice(0, limit));
+          }
           setError(
             loadError instanceof Error
               ? loadError.message
@@ -168,4 +191,28 @@ export function useRiderHistory(limit = 20): UseRiderHistoryResult {
     isLoading,
     error,
   };
+}
+
+export async function prefetchRiderHistory(
+  getAccessToken: () => Promise<string | null | undefined>,
+  limit = 3,
+): Promise<void> {
+  if (!isBackendConfigured()) return;
+  if (
+    cachedRiderHistoryItems.length > 0 &&
+    Date.now() - cachedRiderHistoryAt < HISTORY_CACHE_TTL_MS
+  ) {
+    return;
+  }
+
+  try {
+    const accessToken = await getAccessTokenWithRetry(getAccessToken);
+    if (!accessToken) return;
+
+    const response = await getRiderRideHistory({ accessToken, limit });
+    cachedRiderHistoryItems = response.items.map(mapRideItem);
+    cachedRiderHistoryAt = Date.now();
+  } catch {
+    // Silent — home screen will retry
+  }
 }

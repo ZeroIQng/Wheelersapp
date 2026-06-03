@@ -1,15 +1,15 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { usePrivy } from "@privy-io/expo";
-import { Href, useRouter } from "expo-router";
+import { Href, useFocusEffect, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { Alert, Pressable, StyleSheet, View } from "react-native";
 
 import { AppCard } from "@/components/app-card";
 import { AppScreen } from "@/components/app-screen";
 import { AppText } from "@/components/app-text";
 import { SettingsRow } from "@/components/SettingsRow";
-import { SettingOption, settingsOptions, userProfile } from "@/data/mock";
+import { SettingOption, settingsOptions } from "@/data/mock";
 import { getAccessTokenWithRetry } from "@/lib/access-token";
 import { getCurrentProfile, isBackendConfigured } from "@/lib/api";
 import {
@@ -69,7 +69,7 @@ function deriveNameFromEmail(email: string): string {
     .trim();
 
   if (!normalized) {
-    return "Wheelers User";
+    return "";
   }
 
   return normalized
@@ -92,12 +92,15 @@ function deriveInitials(name: string): string {
   }
 
   const compact = name.replace(/\s+/g, "").slice(0, 2).toUpperCase();
-  return compact || userProfile.initials;
+  return compact;
 }
 
-function buildProfile(input?: { name?: string; email?: string }): SettingsProfile {
-  const email = input?.email?.trim() || userProfile.email;
-  const name = input?.name?.trim() || deriveNameFromEmail(email);
+function buildProfile(input?: {
+  name?: string | null;
+  email?: string | null;
+}): SettingsProfile {
+  const email = input?.email?.trim() || "";
+  const name = input?.name?.trim() || (email ? deriveNameFromEmail(email) : "");
 
   return {
     initials: deriveInitials(name),
@@ -153,7 +156,7 @@ function PrivySettingsScreen() {
     }),
   );
 
-  useEffect(() => {
+  const loadProfile = useCallback(async () => {
     if (!isReady || !user || !isBackendConfigured()) {
       setProfile(
         buildProfile({
@@ -164,42 +167,34 @@ function PrivySettingsScreen() {
       return;
     }
 
-    let cancelled = false;
+    const accessToken = await getAccessTokenWithRetry(getAccessToken);
+    if (!accessToken) {
+      return;
+    }
 
-    void (async () => {
-      const accessToken = await getAccessTokenWithRetry(getAccessToken);
-      if (!accessToken) {
-        return;
-      }
-
-      try {
-        const response = await getCurrentProfile({ accessToken });
-        if (cancelled) {
-          return;
-        }
-
-        setProfile(
-          buildProfile({
-            name: response.user.name ?? getPrivyName(user),
-            email: response.user.email ?? getPrivyEmail(user),
-          }),
-        );
-      } catch {
-        if (!cancelled) {
-          setProfile(
-            buildProfile({
-              name: getPrivyName(user),
-              email: getPrivyEmail(user),
-            }),
-          );
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
+    try {
+      const response = await getCurrentProfile({ accessToken });
+      setProfile(
+        buildProfile({
+          name: response.user.name ?? getPrivyName(user),
+          email: response.user.email ?? getPrivyEmail(user),
+        }),
+      );
+    } catch {
+      setProfile(
+        buildProfile({
+          name: getPrivyName(user),
+          email: getPrivyEmail(user),
+        }),
+      );
+    }
   }, [getAccessToken, isReady, user]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadProfile();
+    }, [loadProfile]),
+  );
 
   async function handleLogout() {
     if (isLoggingOut) {

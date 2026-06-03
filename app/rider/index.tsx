@@ -22,6 +22,11 @@ import { FloatingView, RevealView } from "@/components/motion";
 import { useAppLocation } from "@/lib/location";
 import { useAppNotifications } from "@/lib/notifications";
 import { useRiderHistory } from "@/lib/rider-history";
+import {
+  parseRideItineraryParam,
+  serializeRideItinerary,
+  type RideItinerary,
+} from "@/lib/ride-route";
 import { useWalletOverview } from "@/lib/wallet-overview";
 import { theme } from "@/theme";
 
@@ -53,6 +58,121 @@ const riderHomeCenter = {
   lat: 6.4473,
   lng: 3.4729,
 };
+
+
+type HistoryRouteSource = Record<string, unknown>;
+
+function readString(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function readNestedString(source: HistoryRouteSource, keys: string[]): string {
+  let current: unknown = source;
+
+  for (const key of keys) {
+    if (!current || typeof current !== "object") return "";
+    current = (current as Record<string, unknown>)[key];
+  }
+
+  return readString(current);
+}
+
+function firstHistoryString(
+  source: HistoryRouteSource,
+  directKeys: string[],
+  nestedKeys: string[][] = [],
+): string {
+  for (const key of directKeys) {
+    const value = readString(source[key]);
+    if (value) return value;
+  }
+
+  for (const path of nestedKeys) {
+    const value = readNestedString(source, path);
+    if (value) return value;
+  }
+
+  return "";
+}
+
+function parseHistoryRoutePair(value: unknown): { pickup: string; destination: string } | null {
+  const text = readString(value);
+  if (!text) return null;
+
+  const separators = ["→", "->", " to ", " To ", " TO "];
+  for (const separator of separators) {
+    const parts = text.split(separator).map((part) => part.trim()).filter(Boolean);
+    if (parts.length >= 2) {
+      return {
+        pickup: parts[0],
+        destination: parts.slice(1).join(separator).trim(),
+      };
+    }
+  }
+
+  return null;
+}
+
+function getHistoryRideItinerary(ride: unknown): RideItinerary | null {
+  if (!ride || typeof ride !== "object") return null;
+
+  const source = ride as HistoryRouteSource;
+
+  if (typeof source.itinerary === "string") {
+    const parsed = parseRideItineraryParam(source.itinerary);
+    const parsedDestination = parsed.stops[parsed.stops.length - 1] ?? "";
+    if (parsed.pickup.trim() && parsedDestination.trim()) {
+      return parsed;
+    }
+  }
+
+  if (source.itinerary && typeof source.itinerary === "object") {
+    const rawItinerary = source.itinerary as Partial<RideItinerary>;
+    const pickup = rawItinerary.pickup?.trim() ?? "";
+    const destination = rawItinerary.stops?.[rawItinerary.stops.length - 1]?.trim() ?? "";
+    if (pickup && destination) {
+      return { pickup, stops: rawItinerary.stops ?? [destination] };
+    }
+  }
+
+  const pickup = firstHistoryString(
+    source,
+    ["pickup", "pickupLabel", "pickupAddress", "from", "origin", "originAddress", "start", "startAddress"],
+    [["route", "pickup"], ["route", "from"], ["pickup", "address"], ["origin", "address"]],
+  );
+  const destination = firstHistoryString(
+    source,
+    ["destination", "destinationLabel", "destinationAddress", "to", "dropoff", "dropoffAddress", "end", "endAddress"],
+    [["route", "destination"], ["route", "to"], ["destination", "address"], ["dropoff", "address"]],
+  );
+
+  if (pickup && destination) {
+    return { pickup, stops: [destination] };
+  }
+
+  const titlePair = parseHistoryRoutePair(source.title);
+  if (titlePair) {
+    return { pickup: titlePair.pickup, stops: [titlePair.destination] };
+  }
+
+  const metaPair = parseHistoryRoutePair(source.meta);
+  if (metaPair) {
+    return { pickup: metaPair.pickup, stops: [metaPair.destination] };
+  }
+
+  return null;
+}
+
+function formatHistoryRouteTitle(ride: unknown): string {
+  const itinerary = getHistoryRideItinerary(ride);
+  if (!itinerary) {
+    const source = ride as HistoryRouteSource;
+    return readString(source?.title) || "Previous ride";
+  }
+
+  const destination = itinerary.stops[itinerary.stops.length - 1] ?? "";
+  return `${itinerary.pickup} → ${destination}`;
+}
 
 function ClockBadge() {
   return (
@@ -273,6 +393,23 @@ export default function RiderHomeScreen() {
   const { overview } = useWalletOverview();
   const historyPreview = historyItems.slice(0, 2);
   const hasHistoryPreview = historyPreview.length > 0;
+
+  const handleHistoryRidePress = (ride: unknown) => {
+    const itinerary = getHistoryRideItinerary(ride);
+
+    if (!itinerary) {
+      router.push("/rider/history" as Href);
+      return;
+    }
+
+    router.push({
+      pathname: "/ride-selection",
+      params: {
+        itinerary: serializeRideItinerary(itinerary),
+        source: "history",
+      },
+    } as Href);
+  };
 
   // Large enough that map always fills behind the sheet regardless of sheet height
   const mapFillHeight = 800;
@@ -554,9 +691,7 @@ export default function RiderHomeScreen() {
                 <View style={styles.historySection}>
                   {historyPreview.map((ride, index) => (
                     <RevealView key={ride.id} delay={220 + index * 70}>
-                      <Pressable
-                        onPress={() => router.push("/rider/history" as Href)}
-                      >
+                      <Pressable onPress={() => handleHistoryRidePress(ride)}>
                         <AppCard style={styles.historyCard}>
                           <View style={styles.historyIcon}>
                             <MaterialIcons
@@ -569,14 +704,14 @@ export default function RiderHomeScreen() {
                           </View>
                           <View style={styles.historyCopy}>
                             <AppText variant="bodyMedium" numberOfLines={1}>
-                              {ride.title}
+                              {formatHistoryRouteTitle(ride)}
                             </AppText>
                             <AppText
                               variant="bodySmall"
                               color={theme.colors.muted}
                               numberOfLines={1}
                             >
-                              {ride.meta}
+                              Tap to book this route again
                             </AppText>
                           </View>
                           <AppText

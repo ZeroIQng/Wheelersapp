@@ -102,7 +102,7 @@ const GUIDELINES = [
 
 // ─── Guide bottom sheet ────────────────────────────────────────────────────────
 
-const READ_SECONDS = 120;
+const READ_SECONDS = 0;
 
 function GuideSheet({
   visible,
