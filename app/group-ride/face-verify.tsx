@@ -3,7 +3,7 @@ import { useRouter } from "expo-router";
 import * as Speech from "expo-speech";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Dimensions, Linking, StyleSheet, View } from "react-native";
+import { Dimensions, Image, Linking, StyleSheet, View } from "react-native";
 import Animated, {
   Easing,
   FadeIn,
@@ -26,7 +26,10 @@ import Svg, {
 import { AppButton } from "@/components/app-button";
 import { AppText } from "@/components/app-text";
 import { BackArrow } from "@/components/back-arrow";
-import { setGroupRideFaceCapture } from "@/lib/group-ride-draft";
+import {
+  type GroupRideFaceCapture,
+  setGroupRideFaceCapture,
+} from "@/lib/group-ride-draft";
 import { theme } from "@/theme";
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
@@ -40,13 +43,14 @@ type VerifyState =
   | "too-dark"      // environment too dark
   | "detected"      // frame is usable, capture is queued
   | "processing"    // capturing final image
+  | "review"        // user can accept or retake the captured image
   | "verified"      // done
   | "failed";       // too many failures
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
 const CAPTURE_DELAY_MS = 650;             // small delay so the UI can show progress
-const SAMPLE_INTERVAL_MS = 850;           // how often to sample a snapshot
+const CAMERA_SETTLE_MS = 900;             // wait before enabling capture
 const DARK_THRESHOLD = 48;                // 0-255 avg brightness — below = too dark
 const VOICE_GAP_MS = 4000;               // min ms between voice prompts
 const MAX_FAILURES = 6;                   // failures before "failed" state
@@ -64,6 +68,7 @@ const PROMPTS: Partial<Record<VerifyState, string>> = {
   "too-dark":  "It's too dark. Please move to a brighter area",
   detected:    "Face framed. Capturing now",
   processing:  "Almost done. Verifying your face",
+  review:      "Review your photo before continuing",
   verified:    "Verification complete. Welcome.",
   failed:      "Verification failed. Please try again.",
 };
@@ -279,6 +284,8 @@ function getStepStatuses(state: VerifyState): StepStatus[] {
       return ["done", "done", "active", "pending"];
     case "processing":
       return ["done", "done", "active", "pending"];
+    case "review":
+      return ["done", "done", "done", "active"];
     case "verified":
       return ["done", "done", "done", "done"];
     case "failed":
@@ -421,10 +428,11 @@ type BadgeCfg = { label: string; bg: string; color: string };
 const BADGE: Record<VerifyState, BadgeCfg> = {
   requesting:  { label: "Starting camera\u2026",          bg: "rgba(13,13,13,0.55)",     color: theme.colors.white },
   denied:      { label: "Camera access denied",       bg: theme.colors.dangerLight,  color: theme.colors.danger },
-  scanning:    { label: "Checking frame\u2026",           bg: "rgba(13,13,13,0.55)",     color: theme.colors.white },
+  scanning:    { label: "Ready to capture",           bg: "rgba(13,13,13,0.55)",     color: theme.colors.white },
   "too-dark":  { label: "Too dark \u2014 move to light",  bg: theme.colors.dangerLight,  color: theme.colors.danger },
   detected:    { label: "Frame ready",                bg: "rgba(0,196,140,0.18)",    color: theme.colors.green },
   processing:  { label: "Capturing\u2026",                bg: "rgba(0,196,140,0.18)",    color: theme.colors.green },
+  review:      { label: "Review photo",               bg: "rgba(0,196,140,0.18)",    color: theme.colors.green },
   verified:    { label: "Verified  \u2713",               bg: theme.colors.successLight, color: theme.colors.green },
   failed:      { label: "Verification failed",        bg: theme.colors.dangerLight,  color: theme.colors.danger },
 };
@@ -450,10 +458,11 @@ function StatusBadge({ state }: { state: VerifyState }) {
 const HINT: Record<VerifyState, string> = {
   requesting:  "Requesting camera access\u2026",
   denied:      "Camera permission is required. Tap below to grant access.",
-  scanning:    "Center your face in the oval. Capture starts automatically once the camera has a usable frame.",
-  "too-dark":  "Move to a well-lit room or face a window. Avoid back-lighting.",
+  scanning:    "Center your face in the oval, hold still, then tap Capture.",
+  "too-dark":  "Move to a well-lit room or face a window, then retake the photo.",
   detected:    "Frame is clear. Capturing now.",
   processing:  "Capturing your face. Please wait.",
+  review:      "Check the photo. Retake it if it is blurry, dark, or not centered.",
   verified:    "Identity confirmed. Taking you to the next step.",
   failed:      "Could not capture a usable photo. Please try again.",
 };
@@ -464,14 +473,14 @@ export default function FaceVerifyScreen() {
   const router = useRouter();
   const [permission, requestPermission] = useCameraPermissions();
   const [state, setState] = useState<VerifyState>("requesting");
+  const [capturedPhoto, setCapturedPhoto] = useState<GroupRideFaceCapture | null>(null);
+  const [captureReady, setCaptureReady] = useState(false);
   const cameraRef = useRef<InstanceType<typeof CameraView>>(null);
-  const sampleTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const captureTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stateRef = useRef<VerifyState>("requesting");
 
   const captureInFlightRef = useRef(false);
   const failureCount = useRef(0);
-  const sampleFailureCount = useRef(0);
 
   // Keep stateRef in sync so callbacks always see latest state
   useEffect(() => {
@@ -485,7 +494,9 @@ export default function FaceVerifyScreen() {
     void (async () => {
       // Already granted — go straight to scanning
       if (permission?.granted) {
-        setState("scanning");
+        if (stateRef.current === "requesting" || stateRef.current === "denied") {
+          setState("scanning");
+        }
         return;
       }
 
@@ -520,6 +531,18 @@ export default function FaceVerifyScreen() {
     return () => clearTimeout(t);
   }, [state]);
 
+  // ── Let the camera settle before allowing capture ────────────────────────
+  useEffect(() => {
+    if (state !== "scanning" && state !== "too-dark") {
+      setCaptureReady(false);
+      return;
+    }
+
+    setCaptureReady(false);
+    const t = setTimeout(() => setCaptureReady(true), CAMERA_SETTLE_MS);
+    return () => clearTimeout(t);
+  }, [state]);
+
   // ── Trigger capture ───────────────────────────────────────────────────────
   const triggerCapture = useCallback(async () => {
     if (captureInFlightRef.current) return;
@@ -544,91 +567,58 @@ export default function FaceVerifyScreen() {
 
       if (pic.base64 && !analyzeCameraFrame(pic.base64).isBrightEnough) {
         captureInFlightRef.current = false;
+        setCapturedPhoto(null);
         setState("too-dark");
         return;
       }
 
-      setGroupRideFaceCapture({
+      setCapturedPhoto({
         uri: pic.uri,
         mimeType: "image/jpeg",
         capturedAt: new Date().toISOString(),
       });
 
-      setState("verified");
-      if (sampleTimerRef.current) clearInterval(sampleTimerRef.current);
-
-      setTimeout(() => {
-        router.replace("/group-ride/gender");
-      }, 2000);
+      captureInFlightRef.current = false;
+      failureCount.current = 0;
+      setState("review");
     } catch {
       failureCount.current++;
       captureInFlightRef.current = false;
       setState(failureCount.current >= MAX_FAILURES ? "failed" : "scanning");
     }
-  }, [router]);
+  }, []);
 
-  const queueCapture = useCallback(() => {
+  const handleCapturePress = useCallback(() => {
+    const current = stateRef.current;
+    if (current !== "scanning" && current !== "too-dark" && current !== "failed") return;
     if (captureInFlightRef.current) return;
-    if (sampleTimerRef.current) clearInterval(sampleTimerRef.current);
-    setState("detected");
+    setCapturedPhoto(null);
+    setState("processing");
     if (captureTimeoutRef.current) clearTimeout(captureTimeoutRef.current);
     captureTimeoutRef.current = setTimeout(() => {
       void triggerCapture();
     }, CAPTURE_DELAY_MS);
   }, [triggerCapture]);
 
-  // ── Continuous camera frame check ─────────────────────────────────────────
-  const runCameraFrameSample = useCallback(async () => {
-    const current = stateRef.current;
-    if (current !== "scanning" && current !== "too-dark") return;
+  const handleRetakePress = useCallback(() => {
+    if (captureTimeoutRef.current) clearTimeout(captureTimeoutRef.current);
+    captureInFlightRef.current = false;
+    setCapturedPhoto(null);
+    setState("scanning");
+  }, []);
 
-    try {
-      const pic = await cameraRef.current?.takePictureAsync({
-        quality: 0.1,
-        base64: true,
-        skipProcessing: true,
-        shutterSound: false,
-      });
-      if (!pic?.base64) {
-        sampleFailureCount.current++;
-        if (sampleFailureCount.current >= 4) {
-          queueCapture();
-        }
-        return;
-      }
+  const handleUsePhotoPress = useCallback(() => {
+    if (!capturedPhoto) return;
 
-      const result = analyzeCameraFrame(pic.base64);
-      if (!result.isBrightEnough) {
-        sampleFailureCount.current = 0;
-        setState("too-dark");
-        return;
-      }
-
-      sampleFailureCount.current = 0;
-      queueCapture();
-    } catch {
-      sampleFailureCount.current++;
-      if (sampleFailureCount.current >= 4) {
-        queueCapture();
-      }
-    }
-  }, [queueCapture]);
-
-  useEffect(() => {
-    if (state !== "scanning" && state !== "too-dark") return;
-    sampleTimerRef.current = setInterval(() => {
-      void runCameraFrameSample();
-    }, SAMPLE_INTERVAL_MS);
-    return () => {
-      if (sampleTimerRef.current) clearInterval(sampleTimerRef.current);
-    };
-  }, [state, runCameraFrameSample]);
+    setGroupRideFaceCapture(capturedPhoto);
+    setState("verified");
+    router.replace("/group-ride/gender");
+  }, [capturedPhoto, router]);
 
   // ── Cleanup ───────────────────────────────────────────────────────────────
   useEffect(() => {
     return () => {
       Speech.stop();
-      if (sampleTimerRef.current) clearInterval(sampleTimerRef.current);
       if (captureTimeoutRef.current) clearTimeout(captureTimeoutRef.current);
     };
   }, []);
@@ -636,10 +626,16 @@ export default function FaceVerifyScreen() {
   const cameraReady =
     state !== "requesting" &&
     state !== "denied" &&
+    state !== "review" &&
+    state !== "verified" &&
     state !== "failed";
   const cameraPermissionPermanentlyDenied =
     permission?.granted !== true && permission?.canAskAgain === false;
-  const isCapturing = state === "detected" || state === "processing";
+  const isCapturing = state === "processing";
+  const canCapture =
+    (state === "scanning" || state === "too-dark") &&
+    captureReady &&
+    !captureInFlightRef.current;
   const hintText =
     cameraPermissionPermanentlyDenied && state === "denied"
       ? "Camera access is blocked for Wheelers. Open Settings and allow camera access before continuing."
@@ -658,16 +654,23 @@ export default function FaceVerifyScreen() {
           onCameraReady={() => {
             if (stateRef.current === "scanning") {
               speak("scanning");
-              void runCameraFrameSample();
             }
           }}
+        />
+      )}
+
+      {state === "review" && capturedPhoto && (
+        <Image
+          source={{ uri: capturedPhoto.uri }}
+          resizeMode="cover"
+          style={StyleSheet.absoluteFill}
         />
       )}
 
       {/* Dark overlay with oval cutout */}
       <OvalOverlay />
 
-      {/* Oval frame — no touch, auto-detects */}
+      {/* Oval frame */}
       <View style={styles.ovalArea} pointerEvents="none">
         <OvalFrame state={state} />
         <ScanLine state={state} />
@@ -697,6 +700,32 @@ export default function FaceVerifyScreen() {
         <AppText variant="bodySmall" color="rgba(255,255,255,0.52)" style={styles.hint}>
           {hintText}
         </AppText>
+
+        {(state === "scanning" || state === "too-dark") && (
+          <Animated.View entering={FadeInDown.duration(280)} style={styles.actionBtn}>
+            <AppButton
+              title={captureReady ? "Capture" : "Getting camera ready"}
+              variant="inverse"
+              disabled={!canCapture}
+              onPress={handleCapturePress}
+            />
+          </Animated.View>
+        )}
+
+        {state === "review" && capturedPhoto && (
+          <Animated.View entering={FadeInDown.duration(280)} style={styles.reviewActions}>
+            <AppButton
+              title="Retake"
+              variant="inverse"
+              onPress={handleRetakePress}
+            />
+            <AppButton
+              title="Use photo"
+              variant="primary"
+              onPress={handleUsePhotoPress}
+            />
+          </Animated.View>
+        )}
 
         {state === "denied" && (
           <Animated.View entering={FadeInDown.duration(280)} style={styles.actionBtn}>
@@ -728,7 +757,6 @@ export default function FaceVerifyScreen() {
               variant="inverse"
               onPress={() => {
                 failureCount.current = 0;
-                sampleFailureCount.current = 0;
                 captureInFlightRef.current = false;
                 setState("scanning");
               }}
@@ -834,6 +862,11 @@ const styles = StyleSheet.create({
   },
   actionBtn: {
     width: "100%",
+    marginTop: theme.spacing.xs,
+  },
+  reviewActions: {
+    width: "100%",
+    gap: theme.spacing.sm,
     marginTop: theme.spacing.xs,
   },
 
