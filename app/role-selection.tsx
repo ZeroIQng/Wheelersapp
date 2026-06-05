@@ -1,24 +1,13 @@
 import { useLoginWithOAuth, usePrivy, type User } from "@privy-io/expo";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { StatusBar } from "expo-status-bar";
 import { useEffect, useRef, useState } from "react";
 import { Alert, Pressable, StyleSheet, View } from "react-native";
-import Animated, {
-  Easing,
-  FadeIn,
-  FadeInDown,
-  useAnimatedStyle,
-  useSharedValue,
-  withRepeat,
-  withTiming,
-  ZoomIn,
-} from "react-native-reanimated";
 
 import { AppButton } from "@/components/app-button";
 import { AppCard } from "@/components/app-card";
 import { AppScreen } from "@/components/app-screen";
 import { AppText } from "@/components/app-text";
-import { BlobShape, DiamondPair, RingStack, StarBurst } from "@/components/decorative-shapes";
+import { RingStack, StarBurst } from "@/components/decorative-shapes";
 import { FlowHeader } from "@/components/flow-header";
 import { getAccessTokenWithRetry } from "@/lib/access-token";
 import { getDisplayErrorMessage, isIgnorableUserCancelledError } from "@/lib/errors";
@@ -139,11 +128,7 @@ function PrivyRoleSelectionScreen() {
   const params = useLocalSearchParams<{ logout?: string | string[] }>();
   const { getAccessToken, isReady, user } = usePrivy();
   const [selectedRole, setSelectedRole] = useState<Role>("ride");
-  const [rideMotionKey, setRideMotionKey] = useState(0);
-  const [driveMotionKey, setDriveMotionKey] = useState(1);
-  const [restoreAttempt, setRestoreAttempt] = useState(0);
   const [restoreError, setRestoreError] = useState<string | null>(null);
-  const [isRestoringSession, setIsRestoringSession] = useState(false);
   const [logoutPending, setLogoutPending] = useState(false);
   const [isManualAuthFlow, setIsManualAuthFlow] = useState(false);
   const lastRestoreAlertRef = useRef<string | null>(null);
@@ -168,7 +153,6 @@ function PrivyRoleSelectionScreen() {
 
   useEffect(() => {
     if (!isPrivyConfigured || !isReady || !user || shouldSuppressRestore || isManualAuthFlow) {
-      setIsRestoringSession(false);
       return;
     }
 
@@ -176,12 +160,10 @@ function PrivyRoleSelectionScreen() {
 
     if (!isBackendConfigured()) {
       setRestoreError("Set EXPO_PUBLIC_API_BASE_URL before continuing.");
-      setIsRestoringSession(false);
       return;
     }
 
     setRestoreError(null);
-    setIsRestoringSession(true);
 
     void (async () => {
       try {
@@ -201,14 +183,13 @@ function PrivyRoleSelectionScreen() {
         }
 
         setRestoreError(getDisplayErrorMessage(error, "Could not restore your account."));
-        setIsRestoringSession(false);
       }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [getAccessToken, isManualAuthFlow, isReady, restoreAttempt, router, shouldSuppressRestore, user]);
+  }, [getAccessToken, isManualAuthFlow, isReady, router, shouldSuppressRestore, user]);
 
   useEffect(() => {
     if (!restoreError) {
@@ -226,24 +207,6 @@ function PrivyRoleSelectionScreen() {
 
   function handleRolePress(role: Role) {
     setSelectedRole(role);
-    if (role === "ride") {
-      setRideMotionKey((current) => current + 1);
-      return;
-    }
-    setDriveMotionKey((current) => current + 1);
-  }
-
-  if (isPrivyConfigured && !shouldSuppressRestore && (!isReady || user)) {
-    return (
-      <SessionRestoreSplash
-        isRestoring={isRestoringSession || !isReady}
-        onContinue={
-          !isRestoringSession && isReady && user
-            ? () => setRestoreAttempt((current) => current + 1)
-            : undefined
-        }
-      />
-    );
   }
 
   return (
@@ -332,97 +295,6 @@ function RoleSelectionScreenContent({
         )}
         {selectedRole === "ride" ? <WalletConnectAction /> : null}
       </RevealView>
-    </AppScreen>
-  );
-}
-
-function SessionRestoreSplash({
-  isRestoring,
-  onContinue,
-  statusMessage,
-}: {
-  isRestoring: boolean;
-  onContinue?: () => void;
-  statusMessage?: string;
-}) {
-  const floatY = useSharedValue(0);
-  const spin = useSharedValue(0);
-
-  useEffect(() => {
-    floatY.value = withRepeat(
-      withTiming(-10, {
-        duration: 1500,
-        easing: Easing.inOut(Easing.ease),
-      }),
-      -1,
-      true,
-    );
-    spin.value = withRepeat(
-      withTiming(1, {
-        duration: 9000,
-        easing: Easing.linear,
-      }),
-      -1,
-      false,
-    );
-  }, [floatY, spin]);
-
-  const logoStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: floatY.value }],
-  }));
-
-  const starStyle = useAnimatedStyle(() => ({
-    transform: [{ rotate: `${spin.value * 360}deg` }],
-  }));
-
-  return (
-    <AppScreen backgroundColor={theme.colors.orange} contentStyle={styles.splashContainer}>
-      <StatusBar style="light" backgroundColor={theme.colors.orange} />
-      <Pressable onPress={onContinue} style={styles.splashPressable}>
-        <BlobShape color="rgba(255,255,255,0.18)" style={styles.splashBlobTop} />
-        <Animated.View style={[styles.splashStarRight, starStyle]}>
-          <StarBurst color="rgba(255,255,255,0.22)" width={54} height={54} />
-        </Animated.View>
-        <DiamondPair color="rgba(255,255,255,0.18)" style={styles.splashDiamondLeft} />
-        <View style={styles.splashCenter}>
-          <Animated.View entering={ZoomIn.duration(500)} style={[styles.splashLogoWrap, logoStyle]}>
-            <View style={styles.splashLogoOuter}>
-              <View style={styles.splashLogoInner}>
-                <AppText variant="h2" color={theme.colors.white} style={styles.splashMarkText}>
-                  W
-                </AppText>
-              </View>
-            </View>
-          </Animated.View>
-          <Animated.View entering={FadeInDown.delay(100).duration(500)} style={styles.splashTitleBlock}>
-            <View style={styles.splashWordmark}>
-              <AppText variant="h1" color={theme.colors.white} style={styles.splashTitleLine}>
-                WHEEL
-              </AppText>
-              <AppText variant="h1" color={theme.colors.white} style={styles.splashTitleLine}>
-                ERS
-              </AppText>
-            </View>
-            <AppText variant="bodySmall" color="rgba(255,255,255,0.74)" style={styles.splashTagline}>
-              ride. earn. own.
-            </AppText>
-          </Animated.View>
-        </View>
-        <Animated.View entering={FadeIn.delay(250).duration(450)} style={styles.splashBottom}>
-          <View style={styles.splashLoaderTrack}>
-            <Animated.View style={styles.splashLoaderBar} />
-          </View>
-          <AppText
-            variant="monoSmall"
-            color="rgba(255,255,255,0.7)"
-            style={styles.splashHint}
-          >
-            {isRestoring
-              ? "opening your app..."
-              : (statusMessage ?? "tap anywhere to continue")}
-          </AppText>
-        </Animated.View>
-      </Pressable>
     </AppScreen>
   );
 }
@@ -678,101 +550,6 @@ function RoleCard({
 
 const styles = StyleSheet.create({
   container: { gap: theme.spacing.xl, paddingTop: theme.spacing.lg },
-  splashContainer: {
-    paddingHorizontal: 0,
-    paddingBottom: 0,
-  },
-  splashPressable: {
-    flex: 1,
-    justifyContent: "space-between",
-    alignItems: "center",
-    width: "100%",
-    paddingVertical: theme.spacing.xxxl,
-  },
-  splashCenter: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    width: "100%",
-  },
-  splashLogoWrap: {
-    marginBottom: theme.spacing.md,
-  },
-  splashLogoOuter: {
-    width: 82,
-    height: 82,
-    borderRadius: theme.radius.pill,
-    backgroundColor: "rgba(255,255,255,0.18)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  splashLogoInner: {
-    width: 58,
-    height: 58,
-    borderRadius: theme.radius.pill,
-    backgroundColor: "rgba(255,255,255,0.14)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  splashMarkText: {
-    fontSize: 25,
-    lineHeight: 25,
-    letterSpacing: -0.4,
-  },
-  splashTitleBlock: {
-    alignItems: "center",
-    gap: theme.spacing.xs,
-  },
-  splashWordmark: {
-    alignItems: "center",
-    gap: 0,
-  },
-  splashTitleLine: {
-    textAlign: "center",
-    fontSize: 28,
-    lineHeight: 27,
-    letterSpacing: -0.8,
-  },
-  splashTagline: {
-    letterSpacing: 0.4,
-    lineHeight: 16,
-  },
-  splashBottom: {
-    width: "100%",
-    alignItems: "center",
-    gap: theme.spacing.sm,
-  },
-  splashBlobTop: {
-    position: "absolute",
-    top: -18,
-    left: -20,
-  },
-  splashStarRight: {
-    position: "absolute",
-    right: 20,
-    bottom: 108,
-  },
-  splashDiamondLeft: {
-    position: "absolute",
-    top: 68,
-    left: 28,
-  },
-  splashLoaderTrack: {
-    width: 112,
-    height: 8,
-    borderRadius: theme.radius.pill,
-    backgroundColor: "rgba(255,255,255,0.24)",
-    overflow: "hidden",
-  },
-  splashLoaderBar: {
-    width: "72%",
-    height: "100%",
-    borderRadius: theme.radius.pill,
-    backgroundColor: theme.colors.white,
-  },
-  splashHint: {
-    letterSpacing: 1.2,
-  },
   headerWrap: { marginTop: theme.spacing.sm },
   rings: { position: "absolute", top: -20, right: -32 },
   star: { position: "absolute", bottom: 42, left: 16 },

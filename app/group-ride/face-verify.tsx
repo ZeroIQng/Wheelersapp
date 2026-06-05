@@ -3,7 +3,7 @@ import { useRouter } from "expo-router";
 import * as Speech from "expo-speech";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Dimensions, Linking, StyleSheet, View } from "react-native";
+import { Dimensions, Image, Linking, StyleSheet, View } from "react-native";
 import Animated, {
   Easing,
   FadeIn,
@@ -26,7 +26,10 @@ import Svg, {
 import { AppButton } from "@/components/app-button";
 import { AppText } from "@/components/app-text";
 import { BackArrow } from "@/components/back-arrow";
-import { setGroupRideFaceCapture } from "@/lib/group-ride-draft";
+import {
+  type GroupRideFaceCapture,
+  setGroupRideFaceCapture,
+} from "@/lib/group-ride-draft";
 import { theme } from "@/theme";
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
@@ -36,25 +39,21 @@ const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
 type VerifyState =
   | "requesting"    // waiting for permission result
   | "denied"        // camera permission denied
-  | "scanning"      // camera ready, actively looking for face
+  | "scanning"      // camera ready, checking the frame
   | "too-dark"      // environment too dark
-  | "detected"      // face detected — holding for capture
+  | "detected"      // frame is usable, capture is queued
   | "processing"    // capturing final image
+  | "review"        // user can accept or retake the captured image
   | "verified"      // done
   | "failed";       // too many failures
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
-const HOLD_MS = 2400;                     // ms face must stay detected before capture
-const SAMPLE_INTERVAL_MS = 1000;          // how often to sample a snapshot
-const DARK_THRESHOLD = 55;                // 0-255 avg brightness — below = too dark
+const CAPTURE_DELAY_MS = 650;             // small delay so the UI can show progress
+const CAMERA_SETTLE_MS = 900;             // wait before enabling capture
+const DARK_THRESHOLD = 48;                // 0-255 avg brightness — below = too dark
 const VOICE_GAP_MS = 4000;               // min ms between voice prompts
-const FACE_DETECTED_THRESHOLD = 65;       // faceScore to transition → detected
-const FACE_LOST_THRESHOLD = 45;           // faceScore below which face is "lost"
-const CAPTURE_THRESHOLD = 60;             // faceScore needed for final capture
-const CONSECUTIVE_DETECTIONS_NEEDED = 2;  // frames before transitioning to detected
-const MAX_FAILURES = 5;                   // failures before "failed" state
-const SCORE_WINDOW_SIZE = 3;              // rolling window for temporal smoothing
+const MAX_FAILURES = 6;                   // failures before "failed" state
 
 // ─── Oval dimensions ─────────────────────────────────────────────────────────
 
@@ -65,10 +64,11 @@ const OVAL_TOP = 150;                     // distance from top of screen
 // ─── Voice ────────────────────────────────────────────────────────────────────
 
 const PROMPTS: Partial<Record<VerifyState, string>> = {
-  scanning:    "Position your face inside the oval frame",
+  scanning:    "Center your face inside the oval frame",
   "too-dark":  "It's too dark. Please move to a brighter area",
-  detected:    "Face detected. Hold still",
+  detected:    "Face framed. Capturing now",
   processing:  "Almost done. Verifying your face",
+  review:      "Review your photo before continuing",
   verified:    "Verification complete. Welcome.",
   failed:      "Verification failed. Please try again.",
 };
@@ -86,155 +86,44 @@ function speak(state: VerifyState) {
   Speech.speak(text, { language: "en-NG", pitch: 1.0, rate: 0.9 });
 }
 
-// ─── Face presence analyser ──────────────────────────────────────────────────
-// Analyses JPEG base64 byte stream for face-like characteristics.
-// This is a heuristic over compressed data — not pixel-perfect but good enough
-// for frontend gating. The backend does the real identity verification.
+// ─── Camera frame analyser ───────────────────────────────────────────────────
+// The frontend only gates unusable lighting. The backend does the real identity
+// verification after the image is uploaded.
 
 type AnalysisResult = {
   brightness: number;
-  faceScore: number;
+  isBrightEnough: boolean;
 };
 
-function analyzeFacePresence(base64: string): AnalysisResult {
+function analyzeCameraFrame(base64: string): AnalysisResult {
   try {
     const raw = atob(base64);
     const len = raw.length;
 
-    if (len < 800) return { brightness: 128, faceScore: 0 };
+    if (len < 800) return { brightness: 0, isBrightEnough: false };
 
     // Skip JPEG header (~600 bytes of metadata)
     const dataStart = Math.min(600, Math.floor(len * 0.05));
     const dataLen = len - dataStart;
 
-    // Divide data into a conceptual 20x20 grid (400 cells)
-    const GRID = 20;
-    const cellSize = Math.max(1, Math.floor(dataLen / (GRID * GRID)));
+    let sum = 0;
+    let count = 0;
+    const sampleCount = 900;
+    const step = Math.max(1, Math.floor(dataLen / sampleCount));
 
-    // Build grid of average byte values
-    const grid: number[][] = [];
-    for (let row = 0; row < GRID; row++) {
-      grid[row] = [];
-      for (let col = 0; col < GRID; col++) {
-        const cellStart = dataStart + (row * GRID + col) * cellSize;
-        let sum = 0;
-        const samples = Math.min(cellSize, 8);
-        const step = Math.max(1, Math.floor(cellSize / samples));
-        for (let i = 0; i < samples && cellStart + i * step < len; i++) {
-          sum += raw.charCodeAt(cellStart + i * step);
-        }
-        grid[row][col] = sum / samples;
-      }
+    for (let i = dataStart; i < len; i += step) {
+      sum += raw.charCodeAt(i);
+      count++;
     }
 
-    // Overall brightness
-    let totalSum = 0;
-    let totalCount = 0;
-    for (let r = 0; r < GRID; r++) {
-      for (let c = 0; c < GRID; c++) {
-        totalSum += grid[r][c];
-        totalCount++;
-      }
-    }
-    const brightness = totalSum / totalCount;
-
-    // Center region (roughly where the oval is): rows 4-15, cols 5-14
-    const centerRows = { start: 4, end: 16 };
-    const centerCols = { start: 5, end: 15 };
-
-    // Edge region: everything outside center
-    let centerSum = 0, centerCount = 0;
-    let edgeSum = 0, edgeCount = 0;
-    const centerValues: number[] = [];
-    const edgeValues: number[] = [];
-
-    for (let r = 0; r < GRID; r++) {
-      for (let c = 0; c < GRID; c++) {
-        const v = grid[r][c];
-        const inCenter = r >= centerRows.start && r < centerRows.end &&
-                         c >= centerCols.start && c < centerCols.end;
-        if (inCenter) {
-          centerSum += v;
-          centerCount++;
-          centerValues.push(v);
-        } else {
-          edgeSum += v;
-          edgeCount++;
-          edgeValues.push(v);
-        }
-      }
-    }
-
-    const centerAvg = centerCount > 0 ? centerSum / centerCount : 128;
-    const edgeAvg = edgeCount > 0 ? edgeSum / edgeCount : 128;
-
-    // 1. Center vs edge difference (face makes center different from background)
-    const centerEdgeDiff = Math.abs(centerAvg - edgeAvg);
-    const diffScore = Math.min(25, (centerEdgeDiff / 20) * 25);
-
-    // 2. Center contrast (standard deviation — faces have high variance)
-    const centerMean = centerAvg;
-    let varianceSum = 0;
-    for (const v of centerValues) {
-      varianceSum += (v - centerMean) ** 2;
-    }
-    const centerStdDev = Math.sqrt(varianceSum / Math.max(1, centerValues.length));
-    const contrastScore = Math.min(25, (centerStdDev / 35) * 25);
-
-    // 3. Symmetry — compare left half vs right half of center
-    let symmetryDiffSum = 0;
-    let symmetryCount = 0;
-    const centerW = centerCols.end - centerCols.start;
-    const halfW = Math.floor(centerW / 2);
-    for (let r = centerRows.start; r < centerRows.end; r++) {
-      for (let c = 0; c < halfW; c++) {
-        const left = grid[r][centerCols.start + c];
-        const right = grid[r][centerCols.end - 1 - c];
-        symmetryDiffSum += Math.abs(left - right);
-        symmetryCount++;
-      }
-    }
-    const avgSymmetryDiff = symmetryCount > 0 ? symmetryDiffSum / symmetryCount : 128;
-    const symmetryRatio = Math.max(0, 1 - avgSymmetryDiff / 80);
-    const symmetryScore = symmetryRatio * 20;
-
-    // 4. Texture — how much variation exists in center (faces have texture)
-    let uniqueBuckets = new Set<number>();
-    for (const v of centerValues) {
-      uniqueBuckets.add(Math.floor(v / 16)); // 16 buckets of 16 values each
-    }
-    const textureRatio = uniqueBuckets.size / 16;
-    const textureScore = Math.min(20, textureRatio * 20);
-
-    // 5. Brightness range check — center should be 60-200
-    const brightnessInRange = centerAvg >= 60 && centerAvg <= 200;
-    const brightnessScore = brightnessInRange ? 10 : 0;
-
-    // Composite face score
-    let faceScore = diffScore + contrastScore + symmetryScore + textureScore + brightnessScore;
-
-    // Anti-spoofing: penalise extremely uniform center (flat printout)
-    if (centerStdDev < 12) {
-      faceScore *= 0.4;
-    }
-
-    // Clamp
-    faceScore = Math.max(0, Math.min(100, Math.round(faceScore)));
-
-    return { brightness, faceScore };
+    const brightness = count > 0 ? sum / count : 0;
+    return {
+      brightness,
+      isBrightEnough: brightness >= DARK_THRESHOLD,
+    };
   } catch {
-    return { brightness: 128, faceScore: 0 };
+    return { brightness: 0, isBrightEnough: false };
   }
-}
-
-// Temporal smoothing — rolling median
-function getSmoothedScore(scores: number[]): number {
-  if (scores.length === 0) return 0;
-  const sorted = [...scores].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 0
-    ? (sorted[mid - 1] + sorted[mid]) / 2
-    : sorted[mid];
 }
 
 // ─── SVG Oval frame with white guide markers ─────────────────────────────────
@@ -376,8 +265,8 @@ function OvalFrame({ state }: { state: VerifyState }) {
 type StepStatus = "pending" | "active" | "done";
 
 const STEPS = [
-  { key: "face", label: "Face found" },
-  { key: "hold", label: "Hold steady" },
+  { key: "frame", label: "Frame ready" },
+  { key: "light", label: "Light checked" },
   { key: "capture", label: "Capturing" },
   { key: "verify", label: "Verified" },
 ] as const;
@@ -386,13 +275,17 @@ function getStepStatuses(state: VerifyState): StepStatus[] {
   switch (state) {
     case "requesting":
     case "denied":
-    case "scanning":
-    case "too-dark":
       return ["pending", "pending", "pending", "pending"];
-    case "detected":
+    case "scanning":
+      return ["active", "pending", "pending", "pending"];
+    case "too-dark":
       return ["done", "active", "pending", "pending"];
+    case "detected":
+      return ["done", "done", "active", "pending"];
     case "processing":
       return ["done", "done", "active", "pending"];
+    case "review":
+      return ["done", "done", "done", "active"];
     case "verified":
       return ["done", "done", "done", "done"];
     case "failed":
@@ -505,13 +398,13 @@ function ScanLine({ state }: { state: VerifyState }) {
 
 // ─── Hold progress bar ────────────────────────────────────────────────────────
 
-function HoldProgress({ active }: { active: boolean }) {
+function CaptureProgress({ active }: { active: boolean }) {
   const width = useSharedValue(0);
 
   useEffect(() => {
     if (active) {
       width.value = 0;
-      width.value = withTiming(1, { duration: HOLD_MS, easing: Easing.linear });
+      width.value = withTiming(1, { duration: CAPTURE_DELAY_MS, easing: Easing.linear });
     } else {
       width.value = withTiming(0, { duration: 180 });
     }
@@ -535,10 +428,11 @@ type BadgeCfg = { label: string; bg: string; color: string };
 const BADGE: Record<VerifyState, BadgeCfg> = {
   requesting:  { label: "Starting camera\u2026",          bg: "rgba(13,13,13,0.55)",     color: theme.colors.white },
   denied:      { label: "Camera access denied",       bg: theme.colors.dangerLight,  color: theme.colors.danger },
-  scanning:    { label: "Looking for face\u2026",         bg: "rgba(13,13,13,0.55)",     color: theme.colors.white },
+  scanning:    { label: "Ready to capture",           bg: "rgba(13,13,13,0.55)",     color: theme.colors.white },
   "too-dark":  { label: "Too dark \u2014 move to light",  bg: theme.colors.dangerLight,  color: theme.colors.danger },
-  detected:    { label: "Hold still\u2026",               bg: "rgba(0,196,140,0.18)",    color: theme.colors.green },
+  detected:    { label: "Frame ready",                bg: "rgba(0,196,140,0.18)",    color: theme.colors.green },
   processing:  { label: "Capturing\u2026",                bg: "rgba(0,196,140,0.18)",    color: theme.colors.green },
+  review:      { label: "Review photo",               bg: "rgba(0,196,140,0.18)",    color: theme.colors.green },
   verified:    { label: "Verified  \u2713",               bg: theme.colors.successLight, color: theme.colors.green },
   failed:      { label: "Verification failed",        bg: theme.colors.dangerLight,  color: theme.colors.danger },
 };
@@ -564,12 +458,13 @@ function StatusBadge({ state }: { state: VerifyState }) {
 const HINT: Record<VerifyState, string> = {
   requesting:  "Requesting camera access\u2026",
   denied:      "Camera permission is required. Tap below to grant access.",
-  scanning:    "Make sure your face is well-lit and centred in the oval.",
-  "too-dark":  "Move to a well-lit room or face a window. Avoid back-lighting.",
-  detected:    "Face detected. Keep looking at the camera.",
+  scanning:    "Center your face in the oval, hold still, then tap Capture.",
+  "too-dark":  "Move to a well-lit room or face a window, then retake the photo.",
+  detected:    "Frame is clear. Capturing now.",
   processing:  "Capturing your face. Please wait.",
+  review:      "Check the photo. Retake it if it is blurry, dark, or not centered.",
   verified:    "Identity confirmed. Taking you to the next step.",
-  failed:      "Could not detect a face. Please go back and try again.",
+  failed:      "Could not capture a usable photo. Please try again.",
 };
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
@@ -578,14 +473,13 @@ export default function FaceVerifyScreen() {
   const router = useRouter();
   const [permission, requestPermission] = useCameraPermissions();
   const [state, setState] = useState<VerifyState>("requesting");
+  const [capturedPhoto, setCapturedPhoto] = useState<GroupRideFaceCapture | null>(null);
+  const [captureReady, setCaptureReady] = useState(false);
   const cameraRef = useRef<InstanceType<typeof CameraView>>(null);
-  const sampleTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const captureTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stateRef = useRef<VerifyState>("requesting");
 
-  // Face detection refs
-  const consecutiveDetections = useRef(0);
-  const holdStartTime = useRef(0);
-  const recentScores = useRef<number[]>([]);
+  const captureInFlightRef = useRef(false);
   const failureCount = useRef(0);
 
   // Keep stateRef in sync so callbacks always see latest state
@@ -600,7 +494,9 @@ export default function FaceVerifyScreen() {
     void (async () => {
       // Already granted — go straight to scanning
       if (permission?.granted) {
-        setState("scanning");
+        if (stateRef.current === "requesting" || stateRef.current === "denied") {
+          setState("scanning");
+        }
         return;
       }
 
@@ -635,154 +531,111 @@ export default function FaceVerifyScreen() {
     return () => clearTimeout(t);
   }, [state]);
 
+  // ── Let the camera settle before allowing capture ────────────────────────
+  useEffect(() => {
+    if (state !== "scanning" && state !== "too-dark") {
+      setCaptureReady(false);
+      return;
+    }
+
+    setCaptureReady(false);
+    const t = setTimeout(() => setCaptureReady(true), CAMERA_SETTLE_MS);
+    return () => clearTimeout(t);
+  }, [state]);
+
   // ── Trigger capture ───────────────────────────────────────────────────────
   const triggerCapture = useCallback(async () => {
+    if (captureInFlightRef.current) return;
+    captureInFlightRef.current = true;
+    if (captureTimeoutRef.current) clearTimeout(captureTimeoutRef.current);
     setState("processing");
 
     try {
       const pic = await cameraRef.current?.takePictureAsync({
-        quality: 0.15,
+        quality: 0.72,
         base64: true,
-        skipProcessing: true,
+        skipProcessing: false,
         shutterSound: false,
       });
 
-      if (!pic?.base64) {
+      if (!pic?.uri) {
         failureCount.current++;
+        captureInFlightRef.current = false;
         setState(failureCount.current >= MAX_FAILURES ? "failed" : "scanning");
         return;
       }
 
-      // Final validation
-      const result = analyzeFacePresence(pic.base64);
-
-      if (result.brightness < DARK_THRESHOLD) {
+      if (pic.base64 && !analyzeCameraFrame(pic.base64).isBrightEnough) {
+        captureInFlightRef.current = false;
+        setCapturedPhoto(null);
         setState("too-dark");
         return;
       }
 
-      if (result.faceScore < CAPTURE_THRESHOLD) {
-        failureCount.current++;
-        setState(failureCount.current >= MAX_FAILURES ? "failed" : "scanning");
-        return;
-      }
+      setCapturedPhoto({
+        uri: pic.uri,
+        mimeType: "image/jpeg",
+        capturedAt: new Date().toISOString(),
+      });
 
-      // Success — save capture
-      if (pic.uri) {
-        setGroupRideFaceCapture({
-          uri: pic.uri,
-          mimeType: "image/jpeg",
-          capturedAt: new Date().toISOString(),
-        });
-      }
-
-      setState("verified");
-      if (sampleTimerRef.current) clearInterval(sampleTimerRef.current);
-
-      setTimeout(() => {
-        router.replace("/group-ride/gender");
-      }, 2000);
+      captureInFlightRef.current = false;
+      failureCount.current = 0;
+      setState("review");
     } catch {
       failureCount.current++;
+      captureInFlightRef.current = false;
       setState(failureCount.current >= MAX_FAILURES ? "failed" : "scanning");
     }
-  }, [router]);
+  }, []);
 
-  // ── Continuous face detection loop ────────────────────────────────────────
-  const runFaceDetectionSample = useCallback(async () => {
+  const handleCapturePress = useCallback(() => {
     const current = stateRef.current;
-    if (
-      current === "processing" ||
-      current === "verified" ||
-      current === "failed" ||
-      current === "denied" ||
-      current === "requesting"
-    ) return;
-
-    try {
-      const pic = await cameraRef.current?.takePictureAsync({
-        quality: 0.1,
-        base64: true,
-        skipProcessing: true,
-        shutterSound: false,
-      });
-      if (!pic?.base64) return;
-
-      const result = analyzeFacePresence(pic.base64);
-
-      // Brightness gate
-      if (result.brightness < DARK_THRESHOLD) {
-        setState("too-dark");
-        consecutiveDetections.current = 0;
-        recentScores.current = [];
-        return;
-      }
-
-      // Update rolling score window
-      recentScores.current.push(result.faceScore);
-      if (recentScores.current.length > SCORE_WINDOW_SIZE) {
-        recentScores.current.shift();
-      }
-      const smoothed = getSmoothedScore(recentScores.current);
-
-      const st = stateRef.current;
-
-      if (st === "scanning" || st === "too-dark") {
-        if (smoothed >= FACE_DETECTED_THRESHOLD) {
-          consecutiveDetections.current++;
-          if (consecutiveDetections.current >= CONSECUTIVE_DETECTIONS_NEEDED) {
-            setState("detected");
-            holdStartTime.current = Date.now();
-          }
-        } else {
-          consecutiveDetections.current = 0;
-          if (st === "too-dark") setState("scanning");
-        }
-      }
-
-      if (st === "detected") {
-        if (smoothed < FACE_LOST_THRESHOLD) {
-          setState("scanning");
-          consecutiveDetections.current = 0;
-          holdStartTime.current = 0;
-          return;
-        }
-
-        const elapsed = Date.now() - holdStartTime.current;
-        if (elapsed >= HOLD_MS && smoothed >= CAPTURE_THRESHOLD) {
-          void triggerCapture();
-        }
-      }
-    } catch {
-      // camera busy — skip this sample
-    }
+    if (current !== "scanning" && current !== "too-dark" && current !== "failed") return;
+    if (captureInFlightRef.current) return;
+    setCapturedPhoto(null);
+    setState("processing");
+    if (captureTimeoutRef.current) clearTimeout(captureTimeoutRef.current);
+    captureTimeoutRef.current = setTimeout(() => {
+      void triggerCapture();
+    }, CAPTURE_DELAY_MS);
   }, [triggerCapture]);
 
-  useEffect(() => {
-    if (state === "requesting" || state === "denied") return;
-    sampleTimerRef.current = setInterval(() => {
-      void runFaceDetectionSample();
-    }, SAMPLE_INTERVAL_MS);
-    return () => {
-      if (sampleTimerRef.current) clearInterval(sampleTimerRef.current);
-    };
-  }, [state, runFaceDetectionSample]);
+  const handleRetakePress = useCallback(() => {
+    if (captureTimeoutRef.current) clearTimeout(captureTimeoutRef.current);
+    captureInFlightRef.current = false;
+    setCapturedPhoto(null);
+    setState("scanning");
+  }, []);
+
+  const handleUsePhotoPress = useCallback(() => {
+    if (!capturedPhoto) return;
+
+    setGroupRideFaceCapture(capturedPhoto);
+    setState("verified");
+    router.replace("/group-ride/gender");
+  }, [capturedPhoto, router]);
 
   // ── Cleanup ───────────────────────────────────────────────────────────────
   useEffect(() => {
     return () => {
       Speech.stop();
-      if (sampleTimerRef.current) clearInterval(sampleTimerRef.current);
+      if (captureTimeoutRef.current) clearTimeout(captureTimeoutRef.current);
     };
   }, []);
 
   const cameraReady =
     state !== "requesting" &&
     state !== "denied" &&
+    state !== "review" &&
+    state !== "verified" &&
     state !== "failed";
   const cameraPermissionPermanentlyDenied =
     permission?.granted !== true && permission?.canAskAgain === false;
-  const isHolding = state === "detected" || state === "processing";
+  const isCapturing = state === "processing";
+  const canCapture =
+    (state === "scanning" || state === "too-dark") &&
+    captureReady &&
+    !captureInFlightRef.current;
   const hintText =
     cameraPermissionPermanentlyDenied && state === "denied"
       ? "Camera access is blocked for Wheelers. Open Settings and allow camera access before continuing."
@@ -799,15 +652,25 @@ export default function FaceVerifyScreen() {
           style={StyleSheet.absoluteFill}
           facing="front"
           onCameraReady={() => {
-            if (stateRef.current === "scanning") speak("scanning");
+            if (stateRef.current === "scanning") {
+              speak("scanning");
+            }
           }}
+        />
+      )}
+
+      {state === "review" && capturedPhoto && (
+        <Image
+          source={{ uri: capturedPhoto.uri }}
+          resizeMode="cover"
+          style={StyleSheet.absoluteFill}
         />
       )}
 
       {/* Dark overlay with oval cutout */}
       <OvalOverlay />
 
-      {/* Oval frame — no touch, auto-detects */}
+      {/* Oval frame */}
       <View style={styles.ovalArea} pointerEvents="none">
         <OvalFrame state={state} />
         <ScanLine state={state} />
@@ -832,11 +695,37 @@ export default function FaceVerifyScreen() {
 
         <StepProgress state={state} />
 
-        <HoldProgress active={isHolding} />
+        <CaptureProgress active={isCapturing} />
 
         <AppText variant="bodySmall" color="rgba(255,255,255,0.52)" style={styles.hint}>
           {hintText}
         </AppText>
+
+        {(state === "scanning" || state === "too-dark") && (
+          <Animated.View entering={FadeInDown.duration(280)} style={styles.actionBtn}>
+            <AppButton
+              title={captureReady ? "Capture" : "Getting camera ready"}
+              variant="inverse"
+              disabled={!canCapture}
+              onPress={handleCapturePress}
+            />
+          </Animated.View>
+        )}
+
+        {state === "review" && capturedPhoto && (
+          <Animated.View entering={FadeInDown.duration(280)} style={styles.reviewActions}>
+            <AppButton
+              title="Retake"
+              variant="inverse"
+              onPress={handleRetakePress}
+            />
+            <AppButton
+              title="Use photo"
+              variant="primary"
+              onPress={handleUsePhotoPress}
+            />
+          </Animated.View>
+        )}
 
         {state === "denied" && (
           <Animated.View entering={FadeInDown.duration(280)} style={styles.actionBtn}>
@@ -864,9 +753,13 @@ export default function FaceVerifyScreen() {
         {state === "failed" && (
           <Animated.View entering={FadeInDown.duration(280)} style={styles.actionBtn}>
             <AppButton
-              title="Go back"
+              title="Try again"
               variant="inverse"
-              onPress={() => router.back()}
+              onPress={() => {
+                failureCount.current = 0;
+                captureInFlightRef.current = false;
+                setState("scanning");
+              }}
             />
           </Animated.View>
         )}
@@ -969,6 +862,11 @@ const styles = StyleSheet.create({
   },
   actionBtn: {
     width: "100%",
+    marginTop: theme.spacing.xs,
+  },
+  reviewActions: {
+    width: "100%",
+    gap: theme.spacing.sm,
     marginTop: theme.spacing.xs,
   },
 
