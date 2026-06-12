@@ -26,7 +26,7 @@ import { clearStoredAuthState } from "@/lib/auth-state";
 import { theme } from "@/theme";
 
 const APP_LOCK_KEY = "wheelers.app.lock.v1";
-const PUBLIC_ROUTES = new Set(["/splash", "/role-selection"]);
+const PUBLIC_ROUTES = new Set(["/splash", "/role-selection", "/account-auth"]);
 
 type StoredAppLockState = {
   pinHash: string;

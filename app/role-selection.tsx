@@ -13,7 +13,11 @@ import { getAccessTokenWithRetry } from "@/lib/access-token";
 import { getDisplayErrorMessage, isIgnorableUserCancelledError } from "@/lib/errors";
 import { FloatingView, PulseView, RevealView } from "@/components/motion";
 import { RoleMotionBadge } from "@/components/role-motion-badge";
-import { isBackendConfigured, syncPrivyAuth, type BackendRole } from "@/lib/api";
+import {
+  isBackendConfigured,
+  syncPrivyAuth,
+  type BackendRole,
+} from "@/lib/api";
 import {
   getAuthenticatedRoute,
   persistAuthenticatedRole,
@@ -25,20 +29,9 @@ import {
   getPrivyEthereumWalletAddress,
   getPrivyName,
 } from "@/lib/privy-user";
-import {
-  isThirdwebConfigured,
-  thirdwebAppMetadata,
-  thirdwebChain,
-  thirdwebClient,
-  thirdwebWallets,
-} from "@/lib/thirdweb";
-import {
-  ConnectButton,
-  isThirdwebRuntimeAvailable,
-} from "@/lib/thirdweb-runtime";
 import { theme } from "@/theme";
 
-type Role = "ride" | "drive";
+type Role = "ride";
 type AccessTokenGetter = () => Promise<string | null | undefined>;
 
 function hasGoogleAccount(user: User): boolean {
@@ -79,42 +72,6 @@ async function resolveAuthenticatedRoute({
   return getAuthenticatedRoute(nextState);
 }
 
-const walletConnectTheme = {
-  type: "light" as const,
-  fontFamily: theme.fonts.headingAlt,
-  colors: {
-    accentButtonBg: theme.colors.orange,
-    accentButtonText: theme.colors.white,
-    accentText: theme.colors.orange,
-    borderColor: theme.colors.black,
-    connectedButtonBg: theme.colors.white,
-    connectedButtonBgHover: theme.colors.orangeLight,
-    danger: theme.colors.danger,
-    inputAutofillBg: theme.colors.offWhite,
-    modalBg: theme.colors.white,
-    modalOverlayBg: "rgba(13,13,13,0.78)",
-    primaryButtonBg: theme.colors.white,
-    primaryButtonText: theme.colors.black,
-    primaryText: theme.colors.black,
-    scrollbarBg: theme.colors.orangeLight,
-    secondaryButtonBg: theme.colors.offWhite,
-    secondaryButtonHoverBg: theme.colors.orangeLight,
-    secondaryButtonText: theme.colors.black,
-    secondaryIconColor: theme.colors.muted,
-    secondaryIconHoverBg: theme.colors.orangeLight,
-    secondaryIconHoverColor: theme.colors.black,
-    secondaryText: theme.colors.muted,
-    selectedTextBg: theme.colors.black,
-    selectedTextColor: theme.colors.white,
-    separatorLine: theme.colors.borderLight,
-    skeletonBg: theme.colors.borderLight,
-    success: theme.colors.green,
-    tertiaryBg: theme.colors.orangeLight,
-    tooltipBg: theme.colors.black,
-    tooltipText: theme.colors.white,
-  },
-};
-
 export default function RoleSelectionScreen() {
   if (!isPrivyConfigured) {
     return <RoleSelectionScreenContent />;
@@ -127,7 +84,6 @@ function PrivyRoleSelectionScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ logout?: string | string[] }>();
   const { getAccessToken, isReady, user } = usePrivy();
-  const [selectedRole, setSelectedRole] = useState<Role>("ride");
   const [restoreError, setRestoreError] = useState<string | null>(null);
   const [logoutPending, setLogoutPending] = useState(false);
   const [isManualAuthFlow, setIsManualAuthFlow] = useState(false);
@@ -205,41 +161,23 @@ function PrivyRoleSelectionScreen() {
     Alert.alert("Account restore failed", restoreError);
   }, [restoreError]);
 
-  function handleRolePress(role: Role) {
-    setSelectedRole(role);
-  }
-
   return (
     <RoleSelectionScreenContent
-      selectedRole={selectedRole}
-      onRolePress={handleRolePress}
       onSyncStateChange={setIsManualAuthFlow}
     />
   );
 }
 
 function RoleSelectionScreenContent({
-  selectedRole: selectedRoleProp = "ride",
-  onRolePress,
   onSyncStateChange,
 }: {
-  selectedRole?: Role;
-  onRolePress?: (role: Role) => void;
   onSyncStateChange?: (active: boolean) => void;
 }) {
   const router = useRouter();
-  const [selectedRole, setSelectedRole] = useState<Role>(selectedRoleProp);
   const [rideMotionKey, setRideMotionKey] = useState(0);
-  const [driveMotionKey, setDriveMotionKey] = useState(1);
 
-  function handleRolePress(role: Role) {
-    setSelectedRole(role);
-    onRolePress?.(role);
-    if (role === "ride") {
-      setRideMotionKey((current) => current + 1);
-      return;
-    }
-    setDriveMotionKey((current) => current + 1);
+  function handleRolePress() {
+    setRideMotionKey((current) => current + 1);
   }
 
   return (
@@ -267,44 +205,46 @@ function RoleSelectionScreenContent({
           role="ride"
           title="I want to"
           accent="RIDE"
-          selected={selectedRole === "ride"}
+          selected
           motionKey={rideMotionKey}
-          onPress={() => handleRolePress("ride")}
-        />
-        <RoleCard
-          role="drive"
-          title="I want to"
-          accent="DRIVE"
-          selected={selectedRole === "drive"}
-          motionKey={driveMotionKey}
-          onPress={() => handleRolePress("drive")}
+          onPress={handleRolePress}
         />
       </RevealView>
 
       <RevealView delay={220} style={styles.actions}>
         {isPrivyConfigured ? (
           <GoogleContinueButton
-            role={selectedRole}
             onSyncStateChange={onSyncStateChange}
+            buttonStyle={styles.choiceButton}
           />
         ) : (
           <AppButton
-            title="Connect with Google ↗"
-            onPress={() => router.push("/phone-auth")}
+            title="Connect with Google"
+            disabled
+            variant="inverse"
+            style={styles.choiceButton}
           />
         )}
-        {selectedRole === "ride" ? <WalletConnectAction /> : null}
+        <AppButton
+          title="Create an account"
+          variant="inverse"
+          style={styles.choiceButton}
+          onPress={() => {
+            onSyncStateChange?.(true);
+            router.push("/account-auth");
+          }}
+        />
       </RevealView>
     </AppScreen>
   );
 }
 
 function GoogleContinueButton({
-  role,
   onSyncStateChange,
+  buttonStyle,
 }: {
-  role: Role;
   onSyncStateChange?: (active: boolean) => void;
+  buttonStyle?: Parameters<typeof AppButton>[0]["style"];
 }) {
   const router = useRouter();
   const { user, isReady, getAccessToken } = usePrivy();
@@ -354,8 +294,7 @@ function GoogleContinueButton({
       return;
     }
 
-    const selectedBackendRole: BackendRole =
-      role === "drive" ? "DRIVER" : "RIDER";
+    const selectedBackendRole: BackendRole = "RIDER";
     let authenticatedUser = user ?? undefined;
     let requestedRole: BackendRole | undefined = selectedBackendRole;
     if (!authenticatedUser || !hasGoogleAccount(authenticatedUser)) {
@@ -437,6 +376,7 @@ function GoogleContinueButton({
         onPress={() => {
           void handlePress();
         }}
+        style={buttonStyle}
       />
       {/*
       {user ? (
@@ -450,50 +390,6 @@ function GoogleContinueButton({
         />
       ) : null}
       */}
-    </View>
-  );
-}
-
-function WalletConnectAction() {
-  const router = useRouter();
-
-  if (!isThirdwebConfigured || !isThirdwebRuntimeAvailable || !thirdwebClient) {
-    return (
-      <AppButton
-        title="Connect your wallet"
-        variant="inverse"
-        disabled
-        style={styles.walletFallbackButton}
-      />
-    );
-  }
-
-  return (
-    <View style={styles.walletConnectButtonWrap}>
-      <View style={styles.walletConnectFrame}>
-        <ConnectButton
-          appMetadata={thirdwebAppMetadata}
-          chain={thirdwebChain ?? undefined}
-          client={thirdwebClient}
-          connectButton={{ label: "Connect your wallet" }}
-          connectModal={{
-            size: "compact",
-            showThirdwebBranding: false,
-            title: "Connect your wallet",
-            titleIcon: "",
-          }}
-          detailsModal={{
-            assetTabs: [],
-            hideBuyFunds: true,
-            hideReceiveFunds: true,
-            hideSendFunds: true,
-            hideSwitchWallet: true,
-          }}
-          onConnect={() => router.push("/phone-auth")}
-          theme={walletConnectTheme}
-          wallets={thirdwebWallets}
-        />
-      </View>
     </View>
   );
 }
@@ -553,30 +449,22 @@ const styles = StyleSheet.create({
   headerWrap: { marginTop: theme.spacing.sm },
   rings: { position: "absolute", top: -20, right: -32 },
   star: { position: "absolute", bottom: 42, left: 16 },
-  roles: { flexDirection: "row", gap: theme.spacing.md },
-  rolePressable: { flex: 1 },
+  roles: { width: "100%" },
+  rolePressable: { width: "100%" },
   roleCard: {
-    minHeight: 164,
+    minHeight: 190,
     justifyContent: "center",
     alignItems: "center",
     gap: theme.spacing.xs,
-    paddingVertical: theme.spacing.lg,
+    paddingVertical: theme.spacing.xl,
   },
   roleCardSelected: { borderColor: theme.colors.black },
   roleTextBlock: { alignItems: "center", gap: 1 },
   roleIntro: { textAlign: "center", lineHeight: 14, letterSpacing: 0.3 },
-  roleAccent: { textAlign: "center", lineHeight: 22, letterSpacing: -0.2 },
+  roleAccent: { textAlign: "center", lineHeight: 22, letterSpacing: 0 },
   actions: { gap: theme.spacing.md, marginTop: theme.spacing.sm },
-  googleActionBlock: { gap: theme.spacing.xs },
-  walletConnectButtonWrap: { width: "100%" },
-  walletConnectFrame: {
-    width: "100%",
-    overflow: "hidden",
-    borderWidth: theme.borders.thick,
-    borderColor: theme.colors.black,
-    borderRadius: theme.radius.sm,
-    backgroundColor: theme.colors.white,
-    ...theme.shadows.card,
+  choiceButton: {
+    minHeight: 54,
   },
-  walletFallbackButton: { backgroundColor: theme.colors.white },
+  googleActionBlock: { gap: theme.spacing.xs },
 });

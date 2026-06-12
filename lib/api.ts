@@ -93,6 +93,13 @@ interface SyncPrivyAuthResponse {
   user: BackendUser;
 }
 
+interface UsernamePasswordAuthResponse {
+  created?: boolean;
+  accessToken: string;
+  tokenType: "Bearer";
+  user: BackendUser;
+}
+
 interface CurrentProfileResponse {
   user: BackendUser;
 }
@@ -732,6 +739,40 @@ export async function syncPrivyAuth(
   return postJson<SyncPrivyAuthResponse>("/auth/privy", input, {
     fallbackError: "Could not sync your account with Wheelers.",
   });
+}
+
+export async function signupWithUsernamePassword(input: {
+  username: string;
+  password: string;
+  role?: BackendRole;
+}): Promise<UsernamePasswordAuthResponse> {
+  return postJson<UsernamePasswordAuthResponse>(
+    "/auth/signup",
+    {
+      username: input.username,
+      password: input.password,
+      role: input.role ?? "RIDER",
+    },
+    {
+      fallbackError: "Could not create your account.",
+    },
+  );
+}
+
+export async function signinWithUsernamePassword(input: {
+  username: string;
+  password: string;
+}): Promise<UsernamePasswordAuthResponse> {
+  return postJson<UsernamePasswordAuthResponse>(
+    "/auth/signin",
+    {
+      username: input.username,
+      password: input.password,
+    },
+    {
+      fallbackError: "Could not sign in.",
+    },
+  );
 }
 
 export async function sendPhoneOtp(

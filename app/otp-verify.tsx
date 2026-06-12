@@ -10,6 +10,7 @@ import { AppText } from "@/components/app-text";
 import { BlobShape, StarBurst } from "@/components/decorative-shapes";
 import { FlowHeader } from "@/components/flow-header";
 import { FloatingView, PulseView, RevealView } from "@/components/motion";
+import { getAccessTokenWithRetry } from "@/lib/access-token";
 import { sendPhoneOtp, verifyPhoneOtp } from "@/lib/api";
 import {
   markStoredOnboardingComplete,
@@ -105,13 +106,13 @@ function PrivyOtpVerifyScreen() {
     }
 
     if (!isReady) {
-      Alert.alert("Try again", "Privy is still initializing. Try again in a moment.");
+      Alert.alert("Try again", "Authentication is still initializing. Try again in a moment.");
       return;
     }
 
-    const accessToken = await getAccessToken();
+    const accessToken = await getAccessTokenWithRetry(getAccessToken);
     if (!accessToken) {
-      Alert.alert("Authentication required", "Could not get a Privy access token.");
+      Alert.alert("Authentication required", "Could not verify your session.");
       return;
     }
 
@@ -143,9 +144,9 @@ function PrivyOtpVerifyScreen() {
       return;
     }
 
-    const accessToken = await getAccessToken();
+    const accessToken = await getAccessTokenWithRetry(getAccessToken);
     if (!accessToken) {
-      Alert.alert("Authentication required", "Could not get a Privy access token.");
+      Alert.alert("Authentication required", "Could not verify your session.");
       return;
     }
 

@@ -22,7 +22,6 @@ import { getAccessTokenWithRetry } from "@/lib/access-token";
 import { isBackendConfigured, syncPrivyAuth } from "@/lib/api";
 import {
   clearLogoutPending,
-  clearStoredAuthState,
   getAuthenticatedRoute,
   persistAuthenticatedRole,
   readLogoutPending,
@@ -170,8 +169,23 @@ function PrivyAwareSplashScreen() {
         }
 
         void (async () => {
+          const storedAuthState = await readStoredAuthState();
+          if (storedAuthState) {
+            const route = getAuthenticatedRoute(storedAuthState);
+            if (route === "/rider") {
+              prefetchHomeData(getAccessToken);
+            }
+
+            if (cancelled || hasNavigated.current) {
+              return;
+            }
+
+            hasNavigated.current = true;
+            router.replace(route);
+            return;
+          }
+
           await clearLogoutPending();
-          await clearStoredAuthState();
 
           if (cancelled || hasNavigated.current) {
             return;
