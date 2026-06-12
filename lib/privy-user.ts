@@ -23,17 +23,23 @@ function isPrivyEthereumWallet(
   );
 }
 
-export function getPrivyEmail(user: User): string | undefined {
-  const googleAccount = user.linked_accounts.find(isGoogleAccount);
+type MaybePrivyUser = User | null | undefined;
+
+function getLinkedAccounts(user: MaybePrivyUser): LinkedAccount[] {
+  return Array.isArray(user?.linked_accounts) ? user.linked_accounts : [];
+}
+
+export function getPrivyEmail(user: MaybePrivyUser): string | undefined {
+  const googleAccount = getLinkedAccounts(user).find(isGoogleAccount);
   return googleAccount?.email ?? undefined;
 }
 
-export function getPrivyName(user: User): string | undefined {
-  const googleAccount = user.linked_accounts.find(isGoogleAccount);
+export function getPrivyName(user: MaybePrivyUser): string | undefined {
+  const googleAccount = getLinkedAccounts(user).find(isGoogleAccount);
   return googleAccount?.name ?? undefined;
 }
 
-export function getPrivyEthereumWalletAddress(user: User): string | undefined {
-  const embeddedWallet = user.linked_accounts.find(isPrivyEthereumWallet);
+export function getPrivyEthereumWalletAddress(user: MaybePrivyUser): string | undefined {
+  const embeddedWallet = getLinkedAccounts(user).find(isPrivyEthereumWallet);
   return embeddedWallet?.address?.toLowerCase();
 }
