@@ -10,7 +10,7 @@ import { AppScreen } from "@/components/app-screen";
 import { AppText } from "@/components/app-text";
 import { SettingsRow } from "@/components/SettingsRow";
 import { SettingOption, settingsOptions } from "@/data/mock";
-import { getAccessTokenWithRetry } from "@/lib/access-token";
+import { getAccessTokenWithRetry, getStoredLocalAccessToken } from "@/lib/access-token";
 import { getCurrentProfile, isBackendConfigured } from "@/lib/api";
 import {
   clearLogoutPending,
@@ -79,16 +79,24 @@ function deriveNameFromEmail(email: string): string {
     .join(" ");
 }
 
-function deriveInitials(name: string): string {
-  const letters = name
+function deriveNameFromUsername(username: string): string {
+  return username
+    .replace(/[_-]+/g, " ")
+    .trim()
     .split(/\s+/)
     .filter((segment) => segment.length > 0)
-    .slice(0, 2)
-    .map((segment) => segment[0]?.toUpperCase() ?? "")
-    .join("");
+    .map(titleCaseSegment)
+    .join(" ");
+}
 
-  if (letters.length >= 2) {
-    return letters;
+function deriveInitials(name: string): string {
+  const firstName = name
+    .split(/\s+/)
+    .filter((segment) => segment.length > 0)
+    .at(0);
+
+  if (firstName) {
+    return firstName.replace(/[^a-z0-9]/gi, "").slice(0, 2).toUpperCase();
   }
 
   const compact = name.replace(/\s+/g, "").slice(0, 2).toUpperCase();
@@ -98,14 +106,19 @@ function deriveInitials(name: string): string {
 function buildProfile(input?: {
   name?: string | null;
   email?: string | null;
+  username?: string | null;
 }): SettingsProfile {
   const email = input?.email?.trim() || "";
-  const name = input?.name?.trim() || (email ? deriveNameFromEmail(email) : "");
+  const username = input?.username?.trim() || "";
+  const name =
+    input?.name?.trim() ||
+    (username ? deriveNameFromUsername(username) : "") ||
+    (email ? deriveNameFromEmail(email) : "");
 
   return {
     initials: deriveInitials(name),
     name,
-    email,
+    email: email || (username ? `@${username}` : "No email added"),
     verificationState: "Verified account",
   };
 }
@@ -157,7 +170,7 @@ function PrivySettingsScreen() {
   );
 
   const loadProfile = useCallback(async () => {
-    if (!isReady || !user || !isBackendConfigured()) {
+    if (!isReady || !isBackendConfigured()) {
       setProfile(
         buildProfile({
           name: user ? getPrivyName(user) : undefined,
@@ -167,7 +180,9 @@ function PrivySettingsScreen() {
       return;
     }
 
-    const accessToken = await getAccessTokenWithRetry(getAccessToken);
+    const accessToken = user
+      ? await getAccessTokenWithRetry(getAccessToken)
+      : await getStoredLocalAccessToken();
     if (!accessToken) {
       return;
     }
@@ -176,15 +191,16 @@ function PrivySettingsScreen() {
       const response = await getCurrentProfile({ accessToken });
       setProfile(
         buildProfile({
-          name: response.user.name ?? getPrivyName(user),
-          email: response.user.email ?? getPrivyEmail(user),
+          name: response.user.name ?? (user ? getPrivyName(user) : undefined),
+          email: response.user.email ?? (user ? getPrivyEmail(user) : undefined),
+          username: response.user.username,
         }),
       );
     } catch {
       setProfile(
         buildProfile({
-          name: getPrivyName(user),
-          email: getPrivyEmail(user),
+          name: user ? getPrivyName(user) : undefined,
+          email: user ? getPrivyEmail(user) : undefined,
         }),
       );
     }
