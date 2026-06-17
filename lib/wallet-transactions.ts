@@ -1,7 +1,7 @@
-import { usePrivy } from "@privy-io/expo";
 import { useCallback, useEffect, useState } from "react";
 
 import { getAccessTokenWithRetry } from "@/lib/access-token";
+import { useAuth } from "@/lib/auth";
 import {
   getWalletTransactions,
   isBackendConfigured,
@@ -16,7 +16,7 @@ type UseWalletTransactionsResult = {
 };
 
 export function useWalletTransactions(limit = 30): UseWalletTransactionsResult {
-  const { getAccessToken, isReady, user } = usePrivy();
+  const { getAccessToken, isReady, user } = useAuth();
   const [items, setItems] = useState<WalletTransaction[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

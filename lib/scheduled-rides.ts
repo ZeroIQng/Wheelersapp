@@ -1,4 +1,4 @@
-import { usePrivy } from "@privy-io/expo";
+import { useAuth } from "@/lib/auth";
 import { useCallback, useEffect, useState } from "react";
 
 import { getAccessTokenWithRetry } from "@/lib/access-token";
@@ -90,7 +90,7 @@ export function useScheduledRides(limit = 20): {
   refresh: () => Promise<void>;
   cancelItem: (scheduledRideId: string, reason?: string) => Promise<void>;
 } {
-  const { getAccessToken, isReady, user } = usePrivy();
+  const { getAccessToken, isReady, user } = useAuth();
   const [rawItems, setRawItems] = useState<ScheduledRide[]>([]);
   const [items, setItems] = useState<ScheduledRideListItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);

@@ -1,7 +1,7 @@
-import { usePrivy } from "@privy-io/expo";
 import { useCallback, useEffect, useState } from "react";
 
 import { getAccessTokenWithRetry } from "@/lib/access-token";
+import { useAuth } from "@/lib/auth";
 import {
   getWalletOverview,
   isBackendConfigured,
@@ -20,7 +20,7 @@ let cachedWalletOverviewAt = 0;
 const WALLET_CACHE_TTL_MS = 30_000;
 
 export function useWalletOverview(): UseWalletOverviewResult {
-  const { getAccessToken, isReady, user } = usePrivy();
+  const { getAccessToken, isReady, user } = useAuth();
   const [overview, setOverview] = useState<WalletOverviewResponse | null>(
     () => cachedWalletOverview,
   );

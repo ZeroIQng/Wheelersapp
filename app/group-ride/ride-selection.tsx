@@ -1,13 +1,13 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
-import { usePrivy } from "@privy-io/expo";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef } from "react";
 import {
-  Dimensions,
   PanResponder,
   Pressable,
+  ScrollView,
   StyleSheet,
+  useWindowDimensions,
   View,
 } from "react-native";
 import Animated, {
@@ -23,23 +23,12 @@ import { AppText } from "@/components/app-text";
 import { BackArrow } from "@/components/back-arrow";
 import { LiveMap } from "@/components/live-map";
 import { FloatingView } from "@/components/motion";
-import { getAccessTokenWithRetry } from "@/lib/access-token";
 import {
-  getGroupRideMatchRequest,
+  type GroupRideGenderPreference,
   type GroupRideMatchRequest,
   type GroupRideMatchedRider,
 } from "@/lib/api";
 import { theme } from "@/theme";
-
-const { height } = Dimensions.get("window");
-
-function formatUsdt(value: number | null | undefined): string {
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    return "Pending";
-  }
-
-  return `${value.toFixed(2)} NGN`;
-}
 
 function formatMinutes(value: number | null | undefined): string {
   if (typeof value !== "number" || !Number.isFinite(value)) {
@@ -74,75 +63,138 @@ function getInitials(value: string): string {
     .join("");
 }
 
-function getStatusCopy(status: GroupRideMatchRequest["status"] | undefined) {
-  switch (status) {
-    case "BOOKED":
-      return "Shared route confirmed";
-    case "GROUPED":
-      return "Route sequencing in progress";
-    case "MATCHING":
-      return "Looking for riders on your corridor";
-    case "READY_FOR_MATCH":
-      return "Verification accepted";
-    default:
-      return "Preparing your shared route";
+function normalizeGenderPreference(
+  value: string | string[] | undefined,
+): GroupRideGenderPreference {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (raw === "women_only" || raw === "men_only" || raw === "any") {
+    return raw;
   }
+
+  return "any";
+}
+
+function buildMockGroupRide(input: {
+  pickup?: string;
+  destination?: string;
+  genderPreference: GroupRideGenderPreference;
+}): {
+  request: GroupRideMatchRequest;
+  matchedRiders: GroupRideMatchedRider[];
+} {
+  const pickupAddress = input.pickup?.trim() || "Current pickup";
+  const destinationAddress = input.destination?.trim() || "Selected destination";
+  const createdAt = new Date().toISOString();
+
+  return {
+    request: {
+      id: "mock-group-ride",
+      userId: "mock-current-rider",
+      status: "BOOKED",
+      groupId: "mock-group",
+      matchedRideIds: ["mock-ride-ama", "mock-ride-tola", "mock-ride-ife"],
+      pickup: {
+        lat: 6.5244,
+        lng: 3.3792,
+        address: pickupAddress,
+      },
+      destination: {
+        lat: 6.4698,
+        lng: 3.5852,
+        address: destinationAddress,
+      },
+      stops: [
+        { lat: 6.5054, lng: 3.3941, address: "Lekki Phase 1 pickup" },
+        { lat: 6.4971, lng: 3.4632, address: "Oniru shared stop" },
+      ],
+      plannedDistanceKm: 18.6,
+      plannedDurationSeconds: 2100,
+      fareEstimateUsdt: 4200,
+      genderPreference: input.genderPreference,
+      paymentMethod: "wallet_balance",
+      readyForMatchAt: createdAt,
+      matchingStartedAt: createdAt,
+      groupedAt: createdAt,
+      bookedAt: createdAt,
+      expiredAt: null,
+      cancelledAt: null,
+      cancelReason: null,
+      faceVerification: {
+        id: "mock-face-verification",
+        uploadStatus: "STORED",
+        mimeType: "image/jpeg",
+        sizeBytes: 248000,
+        capturedAt: createdAt,
+        storedAt: createdAt,
+        failedAt: null,
+        failureReason: null,
+      },
+      createdAt,
+      updatedAt: createdAt,
+    },
+    matchedRiders: [
+      {
+        rideId: "mock-ride-ama",
+        userId: "mock-user-ama",
+        name: "Ama Bello",
+        username: "ama",
+        photoUrl: null,
+        pickupAddress: "Lekki Phase 1 pickup",
+        destinationAddress,
+        status: "BOOKED",
+      },
+      {
+        rideId: "mock-ride-tola",
+        userId: "mock-user-tola",
+        name: "Tola James",
+        username: "tola",
+        photoUrl: null,
+        pickupAddress: "Oniru shared stop",
+        destinationAddress,
+        status: "BOOKED",
+      },
+      {
+        rideId: "mock-ride-ife",
+        userId: "mock-user-ife",
+        name: "Ife Okafor",
+        username: "ife",
+        photoUrl: null,
+        pickupAddress: pickupAddress,
+        destinationAddress,
+        status: "BOOKED",
+      },
+    ],
+  };
 }
 
 export default function GroupRideSelectionScreen() {
   const router = useRouter();
-  const { getAccessToken, isReady, user } = usePrivy();
-  const params = useLocalSearchParams<{ requestId?: string | string[] }>();
-  const requestId = Array.isArray(params.requestId)
-    ? params.requestId[0]
-    : params.requestId;
-  const [request, setRequest] = useState<GroupRideMatchRequest | null>(null);
-  const [matchedRiders, setMatchedRiders] = useState<GroupRideMatchedRider[]>([]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    void (async () => {
-      if (!requestId || !isReady || !user) {
-        return;
-      }
-
-      try {
-        const accessToken = await getAccessTokenWithRetry(getAccessToken);
-        if (!accessToken) {
-          return;
-        }
-
-        const response = await getGroupRideMatchRequest({
-          accessToken,
-          requestId,
-        });
-
-        if (!cancelled) {
-          setRequest(response.item);
-          setMatchedRiders(response.matchedRiders);
-        }
-      } catch {
-        if (!cancelled) {
-          setRequest(null);
-          setMatchedRiders([]);
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [getAccessToken, isReady, requestId, user]);
-
-  const routeRows = useMemo(
+  const { height } = useWindowDimensions();
+  const params = useLocalSearchParams<{
+    pickup?: string | string[];
+    destination?: string | string[];
+    genderPreference?: string | string[];
+  }>();
+  const mockPickup = Array.isArray(params.pickup) ? params.pickup[0] : params.pickup;
+  const mockDestination = Array.isArray(params.destination)
+    ? params.destination[0]
+    : params.destination;
+  const mockGroupRide = useMemo(
     () =>
-      request ? [request.pickup, ...request.stops, request.destination] : [],
-    [request],
+      buildMockGroupRide({
+        pickup: mockPickup,
+        destination: mockDestination,
+        genderPreference: normalizeGenderPreference(params.genderPreference),
+      }),
+    [mockDestination, mockPickup, params.genderPreference],
   );
 
-  const SHEET_MIN_HEIGHT = 500;
-  const collapsedSheetOffset = 220;
+  const displayRequest = mockGroupRide.request;
+  const displayMatchedRiders = mockGroupRide.matchedRiders;
+
+  const SHEET_MIN_HEIGHT = Math.min(430, Math.max(340, Math.floor(height * 0.48)));
+  const SHEET_MAX_HEIGHT = Math.min(Math.max(400, Math.floor(height * 0.66)), height - 76);
+  const collapsedSheetOffset = Math.min(220, Math.max(128, SHEET_MIN_HEIGHT - 300));
   const sheetOffset = useSharedValue(0);
 
   const routeFitPadding = {
@@ -194,36 +246,32 @@ export default function GroupRideSelectionScreen() {
     >
       <StatusBar style="dark" backgroundColor={theme.colors.mapBase} />
 
-      {/* Real map */}
       <View style={styles.mapWrap}>
         <LiveMap
           height={height}
-          pickup={request?.pickup}
-          destination={request?.destination}
-          stops={request?.stops}
-          initialCenter={request?.pickup}
+          pickup={displayRequest.pickup}
+          destination={displayRequest.destination}
+          stops={displayRequest.stops}
+          initialCenter={displayRequest.pickup}
           fitPadding={routeFitPadding}
         >
-          {/* Top bar overlaid on map */}
           <View style={styles.topBar}>
             <BackArrow onPress={() => router.back()} />
             <FloatingView distance={5}>
               <View style={styles.mapChip}>
                 <AppText variant="monoSmall">
-                  Group • {formatMinutes(request?.plannedDurationSeconds)} min
-                  trip
+                  Group • {formatMinutes(displayRequest.plannedDurationSeconds)} min trip
                 </AppText>
               </View>
             </FloatingView>
           </View>
 
-          {/* Matched riders pill floating above sheet */}
           <Animated.View
             entering={FadeInDown.delay(300).duration(400)}
-            style={styles.matchedPill}
+            style={[styles.matchedPill, { bottom: SHEET_MIN_HEIGHT - 180 }]}
           >
             <View style={styles.matchedAvatarRow}>
-              {matchedRiders.map((rider, index) => (
+              {displayMatchedRiders.map((rider, index) => (
                 <View
                   key={rider.userId}
                   style={[styles.avatar, index > 0 ? styles.avatarOverlap : null]}
@@ -248,7 +296,7 @@ export default function GroupRideSelectionScreen() {
               </View>
             </View>
             <AppText variant="bodySmall" color={theme.colors.black}>
-              {matchedRiders.length + 1} rider{matchedRiders.length === 0 ? "" : "s"} in group
+              {displayMatchedRiders.length + 1} riders in group
             </AppText>
           </Animated.View>
         </LiveMap>
@@ -256,186 +304,120 @@ export default function GroupRideSelectionScreen() {
 
       {/* Bottom sheet */}
       <Animated.View
-        style={[styles.sheet, sheetAnimatedStyle]}
+        style={[
+          styles.sheet,
+          { minHeight: SHEET_MIN_HEIGHT, maxHeight: SHEET_MAX_HEIGHT },
+          sheetAnimatedStyle,
+        ]}
         {...sheetPanResponder.panHandlers}
       >
         <Pressable onPress={expandSheet} style={styles.handleArea}>
           <View style={styles.handle} />
         </Pressable>
 
-        {/* Sheet header */}
-        <View style={styles.sheetHeader}>
-          <View style={styles.sheetHeaderCopy}>
-            <AppText variant="monoSmall" color={theme.colors.orange}>
-              GROUP RIDE • {request?.status ?? "PENDING"}
-            </AppText>
-            <AppText variant="h1">Wheeler Group</AppText>
-            <AppText variant="bodySmall" color={theme.colors.muted}>
-              {matchedRiders.length > 0
-                ? `Shared ride with ${matchedRiders.map((rider) => getDisplayName(rider)).join(", ")}`
-                : getStatusCopy(request?.status)}
-            </AppText>
+        <ScrollView
+          bounces={false}
+          contentContainerStyle={styles.sheetContent}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.sheetHeader}>
+            <View style={styles.sheetHeaderCopy}>
+              <AppText variant="monoSmall" color={theme.colors.orange}>
+                GROUP RIDE
+              </AppText>
+              <AppText variant="h1">Wheeler Group</AppText>
+              <AppText variant="bodySmall" color={theme.colors.muted}>
+                {displayMatchedRiders.length + 1} riders • {formatMinutes(displayRequest.plannedDurationSeconds)} min away
+              </AppText>
+            </View>
+            <View style={styles.rideIcon}>
+              <AppText style={styles.rideEmoji}>🛵</AppText>
+            </View>
           </View>
-          <View style={styles.rideIcon}>
-            <AppText style={styles.rideEmoji}>🛵</AppText>
-          </View>
-        </View>
 
-        {/* Price card */}
-        <Pressable onPress={expandSheet} style={styles.priceCard}>
-          <View style={styles.priceCardMain}>
-            <View style={styles.priceCopy}>
-              <View style={styles.metricRow}>
-                <MetricPill
-                  label={`${formatMinutes(request?.plannedDurationSeconds)} min trip`}
-                />
-                <MetricPill
-                  label={`${request?.plannedDistanceKm?.toFixed(1) ?? "--"} km`}
-                  muted
-                />
+          <Pressable onPress={expandSheet} style={styles.groupCard}>
+            <View style={styles.groupTopRow}>
+              <View style={styles.matchedAvatarRow}>
+                {displayMatchedRiders.slice(0, 3).map((rider, index) => (
+                  <View
+                    key={rider.userId}
+                    style={[styles.avatar, index > 0 ? styles.avatarOverlap : null]}
+                  >
+                    <AppText variant="monoSmall" color={theme.colors.black} style={styles.avatarText}>
+                      {getInitials(getDisplayName(rider))}
+                    </AppText>
+                  </View>
+                ))}
+                <View style={[styles.avatar, styles.avatarYou]}>
+                  <AppText variant="monoSmall" color={theme.colors.offWhite} style={styles.avatarText}>
+                    YOU
+                  </AppText>
+                </View>
               </View>
-              <AppText variant="h3" color={theme.colors.offWhite}>
-                Estimated fare
-              </AppText>
-              <AppText variant="bodySmall" color="rgba(255,255,255,0.65)">
-                Final split is locked once all riders are confirmed.
-              </AppText>
+              <View style={styles.priceBlock}>
+                <AppText variant="monoSmall" color="rgba(255,255,255,0.65)">
+                  NGN
+                </AppText>
+                <AppText variant="h2" color={theme.colors.offWhite}>
+                  {typeof displayRequest.fareEstimateUsdt === "number"
+                    ? displayRequest.fareEstimateUsdt.toFixed(2)
+                    : "--"}
+                </AppText>
+              </View>
             </View>
-            <View style={styles.priceBlock}>
-              <AppText variant="monoSmall" color="rgba(255,255,255,0.6)">
-                NGN
-              </AppText>
-              <AppText variant="h2" color={theme.colors.offWhite}>
-                {typeof request?.fareEstimateUsdt === "number"
-                  ? request.fareEstimateUsdt.toFixed(2)
-                  : "--"}
-              </AppText>
+
+            <View style={styles.tripMetaRow}>
+              <View style={styles.tripMetaPill}>
+                <AppText variant="monoSmall" color={theme.colors.black}>
+                  {formatMinutes(displayRequest.plannedDurationSeconds)} MIN
+                </AppText>
+              </View>
+              <View style={styles.tripMetaPill}>
+                <AppText variant="monoSmall" color={theme.colors.black}>
+                  {displayRequest.plannedDistanceKm?.toFixed(1) ?? "--"} KM
+                </AppText>
+              </View>
+              <View style={styles.tripMetaPill}>
+                <AppText variant="monoSmall" color={theme.colors.black}>
+                  SPLIT FARE
+                </AppText>
+              </View>
+            </View>
+          </Pressable>
+
+          <View style={styles.pickupCard}>
+            <View style={styles.routeLineRow}>
+              <View style={styles.pickupDot} />
+              <View style={styles.routeLineCopy}>
+                <AppText variant="monoSmall" color={theme.colors.muted}>
+                  PICKUP
+                </AppText>
+                <AppText variant="bodyMedium" numberOfLines={2}>
+                  {displayRequest.pickup.address}
+                </AppText>
+              </View>
+            </View>
+            <View style={styles.routeLineDivider} />
+            <View style={styles.routeLineRow}>
+              <View style={styles.destinationDot} />
+              <View style={styles.routeLineCopy}>
+                <AppText variant="monoSmall" color={theme.colors.muted}>
+                  DROP-OFF
+                </AppText>
+                <AppText variant="bodyMedium" numberOfLines={2}>
+                  {displayRequest.destination.address}
+                </AppText>
+              </View>
             </View>
           </View>
-        </Pressable>
 
-        {/* Ride group */}
-        <View style={styles.ridersCard}>
-          <View style={styles.ridersCardHeader}>
-            <MaterialIcons name="group" size={16} color={theme.colors.muted} />
-            <AppText variant="monoSmall" color={theme.colors.muted}>
-              YOUR RIDE GROUP
-            </AppText>
-          </View>
-          {matchedRiders.length > 0
-            ? matchedRiders.map((rider, index) => (
-                <View key={rider.userId}>
-                  <View style={styles.riderRow}>
-                    <View style={styles.riderAvatar}>
-                      <AppText
-                        variant="monoSmall"
-                        color={theme.colors.black}
-                        style={{ fontSize: 11 }}
-                      >
-                        {getInitials(getDisplayName(rider))}
-                      </AppText>
-                    </View>
-                    <View style={styles.riderInfo}>
-                      <AppText variant="bodyMedium">{getDisplayName(rider)}</AppText>
-                      <View style={styles.verifiedTag}>
-                        <MaterialIcons
-                          name="verified-user"
-                          size={11}
-                          color={theme.colors.green}
-                        />
-                        <AppText
-                          variant="monoSmall"
-                          color={theme.colors.green}
-                          style={{ fontSize: 10 }}
-                        >
-                          {rider.status}
-                        </AppText>
-                      </View>
-                    </View>
-                    <View style={styles.riderFare}>
-                      <AppText variant="bodySmall" color={theme.colors.muted}>
-                        {rider.destinationAddress}
-                      </AppText>
-                    </View>
-                  </View>
-                  {index < matchedRiders.length - 1 ? (
-                    <View style={styles.riderDivider} />
-                  ) : null}
-                </View>
-              ))
-            : routeRows.map((stop, index) => (
-                <View key={`${stop.address}-${index}`}>
-                  <View style={styles.riderRow}>
-                    <View style={styles.riderAvatar}>
-                      <AppText
-                        variant="monoSmall"
-                        color={theme.colors.black}
-                        style={{ fontSize: 11 }}
-                      >
-                        {index === 0
-                          ? "P"
-                          : index === routeRows.length - 1
-                            ? "D"
-                            : `S${index}`}
-                      </AppText>
-                    </View>
-                    <View style={styles.riderInfo}>
-                      <AppText variant="bodyMedium">{stop.address}</AppText>
-                      <View style={styles.verifiedTag}>
-                        <MaterialIcons
-                          name="verified-user"
-                          size={11}
-                          color={theme.colors.green}
-                        />
-                        <AppText
-                          variant="monoSmall"
-                          color={theme.colors.green}
-                          style={{ fontSize: 10 }}
-                        >
-                          {index === 0
-                            ? "PICKUP"
-                            : index === routeRows.length - 1
-                              ? "DESTINATION"
-                              : "STOP"}
-                        </AppText>
-                      </View>
-                    </View>
-                    <View style={styles.riderFare}>
-                      <AppText variant="bodySmall" color={theme.colors.muted}>
-                        {index === routeRows.length - 1
-                          ? formatUsdt(request?.fareEstimateUsdt)
-                          : ""}
-                      </AppText>
-                    </View>
-                  </View>
-                  {index < routeRows.length - 1 ? (
-                    <View style={styles.riderDivider} />
-                  ) : null}
-                </View>
-              ))}
-        </View>
-
-        <AppButton
-          title="Back to Home"
-          onPress={() => router.replace("/rider")}
-        />
+          <AppButton
+            title="Back to Home"
+            onPress={() => router.replace("/rider")}
+          />
+        </ScrollView>
       </Animated.View>
     </AppScreen>
-  );
-}
-
-function MetricPill({ label, muted }: { label: string; muted?: boolean }) {
-  return (
-    <View
-      style={[
-        styles.metricPill,
-        muted ? styles.metricPillMuted : styles.metricPillAccent,
-      ]}
-    >
-      <AppText variant="monoSmall" color={theme.colors.black}>
-        {label}
-      </AppText>
-    </View>
   );
 }
 
@@ -458,6 +440,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   mapChip: {
+    flexDirection: "row",
+    alignItems: "center",
     backgroundColor: theme.colors.white,
     borderWidth: theme.borders.thick,
     borderColor: theme.colors.black,
@@ -516,8 +500,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.spacing.gutter,
     paddingTop: theme.spacing.sm,
     paddingBottom: theme.spacing.xl,
+  },
+  sheetContent: {
     gap: theme.spacing.md,
-    minHeight: 500,
+    paddingBottom: theme.spacing.lg,
   },
   handleArea: {
     alignItems: "center",
@@ -552,43 +538,24 @@ const styles = StyleSheet.create({
   rideEmoji: {
     fontSize: 28,
   },
-  priceCard: {
+  groupCard: {
     backgroundColor: theme.colors.orange,
     borderWidth: theme.borders.thick,
     borderColor: theme.colors.black,
     borderRadius: theme.radius.lg,
     padding: theme.spacing.md,
+    gap: theme.spacing.md,
     ...theme.shadows.card,
   },
-  priceCardMain: {
+  groupTopRow: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-between",
     gap: theme.spacing.md,
   },
-  priceCopy: {
-    flex: 1,
-    gap: theme.spacing.xs,
-  },
-  metricRow: {
-    flexDirection: "row",
-    gap: theme.spacing.sm,
-    marginBottom: theme.spacing.xs,
-  },
-  metricPill: {
-    borderWidth: theme.borders.regular,
-    borderColor: theme.colors.black,
-    borderRadius: theme.radius.pill,
-    paddingHorizontal: theme.spacing.sm,
-    paddingVertical: 5,
-  },
-  metricPillAccent: {
-    backgroundColor: "#FFD1B5",
-  },
-  metricPillMuted: {
-    backgroundColor: theme.colors.white,
-  },
   priceBlock: {
-    minWidth: 118,
+    minWidth: 104,
+    maxWidth: 132,
     alignSelf: "stretch",
     borderWidth: theme.borders.regular,
     borderColor: theme.colors.black,
@@ -599,53 +566,59 @@ const styles = StyleSheet.create({
     alignItems: "flex-end",
     justifyContent: "center",
   },
-  ridersCard: {
+  tripMetaRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: theme.spacing.sm,
+  },
+  tripMetaPill: {
+    borderWidth: theme.borders.regular,
+    borderColor: theme.colors.black,
+    borderRadius: theme.radius.pill,
     backgroundColor: theme.colors.white,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: 5,
+  },
+  pickupCard: {
     borderWidth: theme.borders.thick,
     borderColor: theme.colors.black,
     borderRadius: theme.radius.lg,
+    backgroundColor: theme.colors.white,
     padding: theme.spacing.md,
     gap: theme.spacing.sm,
     ...theme.shadows.card,
   },
-  ridersCardHeader: {
+  routeLineRow: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing.xs,
-    marginBottom: theme.spacing.xs,
-  },
-  riderRow: {
-    flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     gap: theme.spacing.sm,
   },
-  riderAvatar: {
-    width: 34,
-    height: 34,
+  pickupDot: {
+    width: 12,
+    height: 12,
     borderRadius: theme.radius.pill,
-    backgroundColor: theme.colors.orangeLight,
     borderWidth: theme.borders.regular,
     borderColor: theme.colors.black,
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
+    backgroundColor: theme.colors.orange,
+    marginTop: 3,
   },
-  riderInfo: {
+  destinationDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 4,
+    borderWidth: theme.borders.regular,
+    borderColor: theme.colors.black,
+    backgroundColor: theme.colors.green,
+    marginTop: 3,
+  },
+  routeLineCopy: {
     flex: 1,
-    gap: 3,
+    minWidth: 0,
+    gap: 2,
   },
-  verifiedTag: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 3,
-  },
-  riderFare: {
-    alignItems: "flex-end",
-  },
-  riderDivider: {
+  routeLineDivider: {
     height: 1,
     backgroundColor: theme.colors.borderLight,
-    marginLeft: 46,
-    marginVertical: theme.spacing.sm,
+    marginLeft: 24,
   },
 });

@@ -1,5 +1,5 @@
 import * as Crypto from 'expo-crypto';
-import { usePrivy } from '@privy-io/expo';
+import { useAuth } from '@/lib/auth';
 import {
   createContext,
   useCallback,
@@ -21,7 +21,6 @@ import {
   type RideRouteSnapshot,
 } from '@/lib/api';
 import { resolvePlaceQuery } from '@/lib/google-places';
-import { getPrivyEthereumWalletAddress } from '@/lib/privy-user';
 import { serializeRideItinerary, type RideItinerary } from '@/lib/ride-route';
 
 type RideConnectionState = 'disconnected' | 'connecting' | 'connected';
@@ -82,6 +81,14 @@ type RideSessionContextValue = {
   currentRide: RiderRideState | null;
   error: string | null;
   requestRide: (itinerary: RideItinerary) => Promise<void>;
+  simulateMatchedRide: (input: {
+    itinerary: RideItinerary;
+    route?: RideRouteSnapshot | null;
+    fareEstimateNgn?: number;
+    fareEstimateUsdt?: number;
+    plannedDistanceKm?: number;
+    plannedDurationSeconds?: number;
+  }) => void;
   updateRideRoute: (itinerary: RideItinerary) => Promise<void>;
   cancelRide: (reason?: string) => Promise<void>;
   clearRide: () => void;
@@ -120,6 +127,7 @@ const defaultContext: RideSessionContextValue = {
   requestRide: async () => {
     throw new Error('Ride session is unavailable.');
   },
+  simulateMatchedRide: () => undefined,
   updateRideRoute: async () => {
     throw new Error('Ride session is unavailable.');
   },
@@ -242,7 +250,7 @@ async function resolveRideRoute(itinerary: RideItinerary): Promise<ResolvedRoute
 }
 
 export function RideSessionProvider({ children }: { children: ReactNode }) {
-  const { getAccessToken, isReady, user } = usePrivy();
+  const { getAccessToken, isReady, user } = useAuth();
   const [connectionState, setConnectionState] = useState<RideConnectionState>('disconnected');
   const [currentRide, setCurrentRide] = useState<RiderRideState | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -645,7 +653,7 @@ export function RideSessionProvider({ children }: { children: ReactNode }) {
           pickup: resolvedRoute.pickup,
           destination: resolvedRoute.destination,
           stops: resolvedRoute.stops,
-          riderWallet: user ? getPrivyEthereumWalletAddress(user) : undefined,
+          riderWallet: undefined,
           paymentMethod: 'wallet_balance',
         });
       } catch (requestError) {
@@ -658,6 +666,54 @@ export function RideSessionProvider({ children }: { children: ReactNode }) {
       }
     },
     [sendEnvelope, setRideState, user],
+  );
+
+  const simulateMatchedRide = useCallback(
+    (input: {
+      itinerary: RideItinerary;
+      route?: RideRouteSnapshot | null;
+      fareEstimateNgn?: number;
+      fareEstimateUsdt?: number;
+      plannedDistanceKm?: number;
+      plannedDurationSeconds?: number;
+    }) => {
+      const rideId = `mock-${Crypto.randomUUID()}`;
+      setError(null);
+      setRideState({
+        rideId,
+        status: 'matched',
+        itinerary: input.itinerary,
+        fareEstimateNgn: input.fareEstimateNgn,
+        fareEstimateUsdt: input.fareEstimateUsdt,
+        plannedDistanceKm: input.plannedDistanceKm,
+        plannedDurationSeconds: input.plannedDurationSeconds,
+        route: input.route ?? undefined,
+        driver: {
+          driverId: 'mock-driver-ade',
+          driverName: 'Ade Martins',
+          driverRating: 4.9,
+          driverWallet: 'mock-driver-wallet',
+          vehiclePlate: 'WLR 482 KT',
+          vehicleModel: 'Toyota Corolla',
+          etaSeconds: 240,
+          lockedFareNgn: input.fareEstimateNgn,
+          lockedFareUsdt: input.fareEstimateUsdt,
+        },
+        driverLocation: input.route?.pickup
+          ? {
+              lat: input.route.pickup.lat + 0.006,
+              lng: input.route.pickup.lng - 0.004,
+              distanceToNextStopKm: 1.2,
+              nextStopAddress: input.route.pickup.address,
+              nextStopOrder: 0,
+              remainingStopCount: input.itinerary.stops.length,
+              totalDistanceKm: input.plannedDistanceKm,
+              isStale: false,
+            }
+          : undefined,
+      });
+    },
+    [setRideState],
   );
 
   const updateRideRoute = useCallback(
@@ -705,7 +761,7 @@ export function RideSessionProvider({ children }: { children: ReactNode }) {
         rideId: activeRide.rideId,
         driverId: activeRide.driver?.driverId,
         driverWallet: activeRide.driver?.driverWallet,
-        riderWallet: user ? getPrivyEthereumWalletAddress(user) : undefined,
+        riderWallet: undefined,
         cancelStage: formatCancelStage(activeRide),
         reason,
       });
@@ -755,11 +811,21 @@ export function RideSessionProvider({ children }: { children: ReactNode }) {
       currentRide,
       error,
       requestRide,
+      simulateMatchedRide,
       updateRideRoute,
       cancelRide,
       clearRide,
     }),
-    [cancelRide, clearRide, connectionState, currentRide, error, requestRide, updateRideRoute],
+    [
+      cancelRide,
+      clearRide,
+      connectionState,
+      currentRide,
+      error,
+      requestRide,
+      simulateMatchedRide,
+      updateRideRoute,
+    ],
   );
 
   return (

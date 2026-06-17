@@ -1,4 +1,3 @@
-import { usePrivy } from "@privy-io/expo";
 import { MaterialIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -12,12 +11,13 @@ import { CrossShape, RingStack } from "@/components/decorative-shapes";
 import { FlowHeader } from "@/components/flow-header";
 import { FloatingView, RevealView } from "@/components/motion";
 import { getAccessTokenWithRetry } from "@/lib/access-token";
+import { useAuth } from "@/lib/auth";
 import { sendPhoneOtp } from "@/lib/api";
 import {
   storePendingPhoneVerification,
   storePhoneEntryStep,
 } from "@/lib/auth-state";
-import { isPrivyConfigured } from "@/lib/privy";
+import { getDisplayErrorMessage } from "@/lib/errors";
 import { theme } from "@/theme";
 
 type CountryDialOption = {
@@ -91,16 +91,8 @@ function toE164Phone(rawPhone: string, country: CountryDialOption): string {
 }
 
 export default function PhoneAuthScreen() {
-  if (!isPrivyConfigured) {
-    return <PrivyUnavailableScreen />;
-  }
-
-  return <PrivyPhoneAuthScreen />;
-}
-
-function PrivyPhoneAuthScreen() {
   const router = useRouter();
-  const { getAccessToken, isReady } = usePrivy();
+  const { getAccessToken, isReady } = useAuth();
   const [phone, setPhone] = useState("");
   const [selectedCountry, setSelectedCountry] = useState<CountryDialOption>(DEFAULT_COUNTRY);
   const [isCountryPickerVisible, setCountryPickerVisible] = useState(false);
@@ -153,11 +145,10 @@ function PrivyPhoneAuthScreen() {
       await storePendingPhoneVerification(response.phone);
       router.replace("/otp-verify");
     } catch (error) {
+      const fallback = "Could not send the WhatsApp verification code.";
       Alert.alert(
         "Code send failed",
-        error instanceof Error
-          ? error.message
-          : "Could not send the WhatsApp verification code.",
+        getDisplayErrorMessage(error, fallback) ?? fallback,
       );
     } finally {
       setIsSending(false);
@@ -341,25 +332,6 @@ function CountryCodePickerModal({
   );
 }
 
-function PrivyUnavailableScreen() {
-  const router = useRouter();
-
-  return (
-    <AppScreen
-      backgroundColor={theme.colors.offWhite}
-      contentStyle={styles.unavailableContainer}
-    >
-      <AppText variant="h3">Privy setup missing</AppText>
-      <AppText variant="bodySmall" color={theme.colors.muted}>
-        Add the Privy Expo env keys before opening phone verification.
-      </AppText>
-      <AppButton
-        title="Back to sign in"
-        onPress={() => router.replace("/role-selection")}
-      />
-    </AppScreen>
-  );
-}
 
 const styles = StyleSheet.create({
   container: {

@@ -1,6 +1,6 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { usePrivy } from "@privy-io/expo";
+import { useAuth } from "@/lib/auth";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -99,7 +99,7 @@ function isExactSearchMatch(place: PlaceSuggestion, query: string) {
 
 export default function DestinationSearchScreen() {
   const router = useRouter();
-  const { getAccessToken, isReady, user } = usePrivy();
+  const { getAccessToken, isReady, user } = useAuth();
   const { updateRideRoute } = useRideSession();
   const params = useLocalSearchParams<{
     flowMode?: string | string[];

@@ -1,5 +1,5 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
-import { usePrivy } from "@privy-io/expo";
+import { useAuth } from "@/lib/auth";
 import * as Clipboard from "expo-clipboard";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -27,12 +27,8 @@ import { getAccessTokenWithRetry } from "@/lib/access-token";
 import { createIdempotencyKey } from "@/lib/idempotency";
 import {
   createWalletWithdrawal,
-  createPouchOnramp,
   getWithdrawalBankNetworks,
-  getPouchRampStatus,
   isBackendConfigured,
-  type PouchPaymentInstruction,
-  type PouchRampStatusPayload,
   type WithdrawalBankNetwork,
   verifyWithdrawalBankAccount,
 } from "@/lib/api";
@@ -61,16 +57,6 @@ const walletPages = [
   },
 ] as const;
 
-const POUCH_SETTLED_STATUSES = new Set([
-  "COMPLETED",
-  "COMPLETE",
-  "SUCCESS",
-  "SUCCEEDED",
-  "PAID",
-  "SETTLED",
-  "FUNDED",
-]);
-
 function parseNgnAmount(value: string): number | null {
   const digitsOnly = value.replace(/\D/g, "");
   if (!digitsOnly) {
@@ -79,112 +65,6 @@ function parseNgnAmount(value: string): number | null {
 
   const amount = Number(digitsOnly);
   return Number.isFinite(amount) && amount > 0 ? amount : null;
-}
-
-function readPouchStatus(status: PouchRampStatusPayload | null): string | null {
-  return typeof status?.status === "string" && status.status.trim().length > 0
-    ? status.status.toUpperCase()
-    : null;
-}
-
-function formatPouchStatus(status: string | null): string {
-  if (!status) {
-    return "pending";
-  }
-
-  return status.toLowerCase().replace(/_/g, " ");
-}
-
-function isPouchSessionSettled(status: string | null): boolean {
-  return status != null && POUCH_SETTLED_STATUSES.has(status.toUpperCase());
-}
-
-async function waitForPouchSettlement(input: {
-  accessToken: string;
-  providerRef: string;
-  attempts?: number;
-  delayMs?: number;
-}) {
-  const attempts = input.attempts ?? 6;
-  const delayMs = input.delayMs ?? 3000;
-
-  let latestStatus = await getPouchRampStatus({
-    accessToken: input.accessToken,
-    providerRef: input.providerRef,
-    type: "ONRAMP",
-  });
-
-  for (let attempt = 1; attempt < attempts; attempt += 1) {
-    if (isPouchSessionSettled(readPouchStatus(latestStatus.status))) {
-      return latestStatus;
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, delayMs));
-    latestStatus = await getPouchRampStatus({
-      accessToken: input.accessToken,
-      providerRef: input.providerRef,
-      type: "ONRAMP",
-    });
-  }
-
-  return latestStatus;
-}
-
-function formatInstructionAmount(
-  instruction: PouchPaymentInstruction | null,
-): string | null {
-  if (!instruction?.amountLocal || !instruction.localCurrency) {
-    return null;
-  }
-
-  return `${instruction.localCurrency} ${instruction.amountLocal.toLocaleString("en-NG")}`;
-}
-
-function formatInstructionExpiry(
-  instruction: PouchPaymentInstruction | null,
-): string | null {
-  if (!instruction?.expiresAt) {
-    return null;
-  }
-
-  const parsed = new Date(instruction.expiresAt);
-  if (Number.isNaN(parsed.getTime())) {
-    return null;
-  }
-
-  return parsed.toLocaleString("en-NG", {
-    day: "numeric",
-    month: "short",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
-
-function getInstructionTimeLeftMs(
-  instruction: PouchPaymentInstruction | null,
-): number | null {
-  if (!instruction?.expiresAt) {
-    return null;
-  }
-
-  const expiry = new Date(instruction.expiresAt).getTime();
-  if (Number.isNaN(expiry)) {
-    return null;
-  }
-
-  return Math.max(0, expiry - Date.now());
-}
-
-function formatTimeLeft(ms: number | null): string | null {
-  if (ms == null) {
-    return null;
-  }
-
-  const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-
-  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
 function formatWalletCurrencyAmount(currency: string, amount: number): string {
@@ -199,7 +79,7 @@ function formatWalletCurrencyAmount(currency: string, amount: number): string {
 
 export default function WalletScreen() {
   const router = useRouter();
-  const { getAccessToken, isReady } = usePrivy();
+  const { getAccessToken, isReady } = useAuth();
   const insets = useSafeAreaInsets();
   const {
     overview,
@@ -216,12 +96,9 @@ export default function WalletScreen() {
   const [isWithdrawModalVisible, setWithdrawModalVisible] = useState(false);
   const [isWithdrawConfirmVisible, setWithdrawConfirmVisible] = useState(false);
   const [isBankPickerVisible, setBankPickerVisible] = useState(false);
-  const [isPaymentWidgetVisible, setPaymentWidgetVisible] = useState(false);
-  const [isLaunchingPouchDeposit, setLaunchingPouchDeposit] = useState(false);
   const [isCreatingWithdrawal, setCreatingWithdrawal] = useState(false);
   const [isLoadingBankNetworks, setLoadingBankNetworks] = useState(false);
   const [isVerifyingBankAccount, setVerifyingBankAccount] = useState(false);
-  const [isRefreshingPouchStatus, setRefreshingPouchStatus] = useState(false);
   const [blockingLoader, setBlockingLoader] = useState<WalletBlockingLoader>(
     null,
   );
@@ -239,21 +116,11 @@ export default function WalletScreen() {
     bankName: string;
     networkId: string;
   } | null>(null);
-  const [activePouchProviderRef, setActivePouchProviderRef] = useState<
-    string | null
-  >(null);
-  const [activePaymentInstruction, setActivePaymentInstruction] =
-    useState<PouchPaymentInstruction | null>(null);
-  const [activePouchStatus, setActivePouchStatus] = useState<string | null>(
-    null,
-  );
-  const [timeLeftMs, setTimeLeftMs] = useState<number | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const toastOpacity = useRef(new Animated.Value(0)).current;
   const handledRedirectRef = useRef<string | null>(null);
   const lastBankLookupKeyRef = useRef<string | null>(null);
   const hasPrefetchedBanksRef = useRef(false);
-  const depositIdempotencyKeyRef = useRef<string | null>(null);
   const withdrawalIdempotencyKeyRef = useRef<string | null>(null);
   const redirectReason = Array.isArray(params.redirectReason)
     ? params.redirectReason[0]
@@ -292,41 +159,6 @@ export default function WalletScreen() {
     toastOpacity.setValue(0);
     setToastMessage(message);
   };
-
-  const resetPaymentWidget = () => {
-    setPaymentWidgetVisible(false);
-    setActivePouchProviderRef(null);
-    setActivePaymentInstruction(null);
-    setActivePouchStatus(null);
-    setTimeLeftMs(null);
-  };
-
-  useEffect(() => {
-    if (!isPaymentWidgetVisible || !activePaymentInstruction?.expiresAt) {
-      setTimeLeftMs(null);
-      return;
-    }
-
-    const update = () => {
-      setTimeLeftMs(getInstructionTimeLeftMs(activePaymentInstruction));
-    };
-
-    update();
-    const interval = setInterval(update, 1000);
-
-    return () => clearInterval(interval);
-  }, [activePaymentInstruction, isPaymentWidgetVisible]);
-
-  useEffect(() => {
-    if (!isPaymentWidgetVisible || timeLeftMs == null || timeLeftMs > 0) {
-      return;
-    }
-
-    resetPaymentWidget();
-    showToast(
-      "Payment window expired. Start a new deposit for a fresh account number.",
-    );
-  }, [isPaymentWidgetVisible, timeLeftMs]);
 
   useEffect(() => {
     const rawDepositAmount = Array.isArray(params.depositAmount)
@@ -367,7 +199,6 @@ export default function WalletScreen() {
   ]);
 
   const handleDepositAmountChange = (value: string) => {
-    depositIdempotencyKeyRef.current = null;
     const digitsOnly = value.replace(/\D/g, "");
 
     if (!digitsOnly) {
@@ -384,9 +215,6 @@ export default function WalletScreen() {
   };
 
   const closeDepositModal = () => {
-    if (isLaunchingPouchDeposit) {
-      return;
-    }
     setDepositModalVisible(false);
   };
 
@@ -442,14 +270,6 @@ export default function WalletScreen() {
     setSelectedWithdrawBank(null);
     setVerifiedWithdrawAccount(null);
     setBankSearchQuery("");
-  };
-
-  const closePaymentWidget = () => {
-    if (isRefreshingPouchStatus) {
-      return;
-    }
-
-    resetPaymentWidget();
   };
 
   const maybeContinueDeferredRide = () => {
@@ -560,141 +380,9 @@ export default function WalletScreen() {
     setToastMessage(`${label} copied.`);
   };
 
-  const handleRefreshDepositStatus = async () => {
-    if (!activePouchProviderRef) {
-      showToast("Start a Pouch deposit first to refresh its status.");
-      return;
-    }
-
-    if (!isReady) {
-      showToast("Wait a moment for your account to finish loading.");
-      return;
-    }
-
-    const accessToken = await getAccessTokenWithRetry(getAccessToken);
-    if (!accessToken) {
-      showToast("Could not verify your session right now.");
-      return;
-    }
-
-    setRefreshingPouchStatus(true);
-
-    try {
-      const latestStatus = await waitForPouchSettlement({
-        accessToken,
-        providerRef: activePouchProviderRef,
-        attempts: 2,
-        delayMs: 2000,
-      });
-      const status = readPouchStatus(latestStatus.status);
-      setActivePouchStatus(status);
-
-      if (isPouchSessionSettled(status)) {
-        await refreshWalletOverview();
-        resetPaymentWidget();
-        showToast(
-          "Pouch deposit completed. Your wallet credit is being processed.",
-        );
-        maybeContinueDeferredRide();
-        return;
-      }
-
-      showToast(`Pouch deposit status: ${formatPouchStatus(status)}.`);
-    } catch (error) {
-      Alert.alert(
-        "Status refresh failed",
-        error instanceof Error
-          ? error.message
-          : "Could not refresh the Pouch deposit status.",
-      );
-    } finally {
-      setRefreshingPouchStatus(false);
-    }
-  };
-
-  const handleDepositContinue = async () => {
-    const amountLocal = parseNgnAmount(depositAmount);
-
-    if (!amountLocal) {
-      Alert.alert(
-        "Amount required",
-        "Enter the amount you want to deposit in Naira.",
-      );
-      return;
-    }
-
-    if (!isBackendConfigured()) {
-      showToast("Backend unavailable right now.");
-      return;
-    }
-
-    if (!isReady) {
-      showToast("Wait a moment for your account to finish loading.");
-      return;
-    }
-
-    const accessToken = await getAccessTokenWithRetry(getAccessToken);
-    if (!accessToken) {
-      showToast("Could not verify your session right now.");
-      return;
-    }
-
-    setDepositModalVisible(false);
-    setBlockingLoader({
-      title: "Preparing payment",
-      message: "Getting your bank transfer details ready.",
-    });
-    setLaunchingPouchDeposit(true);
-
-    try {
-      const response = await createPouchOnramp({
-        accessToken,
-        amountLocal,
-        idempotencyKey:
-          depositIdempotencyKeyRef.current ??
-          (depositIdempotencyKeyRef.current = createIdempotencyKey("wallet-deposit")),
-      });
-
-      const providerRef =
-        typeof response.providerRef === "string" &&
-        response.providerRef.trim().length > 0
-          ? response.providerRef
-          : null;
-
-      if (!providerRef) {
-        throw new Error("Pouch did not return a provider reference.");
-      }
-
-      setActivePouchProviderRef(providerRef);
-      setActivePaymentInstruction(response.paymentInstruction ?? null);
-      setActivePouchStatus("PENDING");
-      setDepositModalVisible(false);
-      setPaymentWidgetVisible(true);
-      setDepositAmount("");
-      depositIdempotencyKeyRef.current = null;
-
-      const instructionAmount = formatInstructionAmount(
-        response.paymentInstruction ?? null,
-      );
-      const instructionAccount = response.paymentInstruction?.accountNumber;
-
-      showToast(
-        instructionAccount
-          ? `Transfer ${instructionAmount ?? "the requested amount"} to ${instructionAccount}.`
-          : "Pouch deposit created. Use the returned bank transfer instruction to complete payment.",
-      );
-    } catch (error) {
-      setDepositModalVisible(true);
-      Alert.alert(
-        "Deposit failed",
-        error instanceof Error
-          ? error.message
-          : "Could not start the Pouch deposit.",
-      );
-    } finally {
-      setBlockingLoader(null);
-      setLaunchingPouchDeposit(false);
-    }
+  const handleDepositContinue = () => {
+    closeDepositModal();
+    showToast("Transfer funds to your virtual account number to deposit.");
   };
 
   const handleWithdrawContinue = async () => {
@@ -892,14 +580,6 @@ export default function WalletScreen() {
     Alert.alert("Withdrawals pending", "Withdraw pages are not active yet.");
   };
 
-  const displayedInstructionAmount = formatInstructionAmount(
-    activePaymentInstruction,
-  );
-  const displayedInstructionExpiry = formatInstructionExpiry(
-    activePaymentInstruction,
-  );
-  const displayedPouchStatus = formatPouchStatus(activePouchStatus);
-  const displayedTimeLeft = formatTimeLeft(timeLeftMs);
   const displayCurrency = overview?.displayCurrency ?? "NGN";
   const displayedWalletBalance = formatWalletCurrencyAmount(
     displayCurrency,
@@ -1027,7 +707,6 @@ export default function WalletScreen() {
               </View>
               <View style={styles.modalButtonSlot}>
                 <AppButton
-                  disabled={isLaunchingPouchDeposit}
                   onPress={handleDepositContinue}
                   title="Continue"
                 />
@@ -1315,110 +994,6 @@ export default function WalletScreen() {
         </View>
       </Modal>
 
-      <Modal
-        animationType="slide"
-        onRequestClose={closePaymentWidget}
-        transparent
-        visible={isPaymentWidgetVisible}
-      >
-        <View style={styles.paymentWidgetBackdrop}>
-          <View style={styles.paymentWidgetSheet}>
-            <View style={styles.paymentWidgetHeader}>
-              <View style={styles.pageCopy}>
-                <AppText variant="h3">Complete Payment</AppText>
-                <AppText variant="bodySmall" color={theme.colors.muted}>
-                  Transfer the exact amount to the bank account below.
-                </AppText>
-              </View>
-              <Pressable
-                onPress={closePaymentWidget}
-                style={styles.closeButton}
-              >
-                <MaterialIcons
-                  color={theme.colors.black}
-                  name="close"
-                  size={18}
-                />
-              </Pressable>
-            </View>
-
-            <View style={styles.widgetHero}>
-              <AppText variant="bodySmall" color={theme.colors.muted}>
-                Amount to Pay
-              </AppText>
-              <AppText variant="display">
-                {displayedInstructionAmount ?? "Pending"}
-              </AppText>
-              <View style={styles.widgetMetaRow}>
-                <View style={styles.statusPill}>
-                  <AppText variant="bodySmall">{displayedPouchStatus}</AppText>
-                </View>
-                {displayedTimeLeft ? (
-                  <View style={styles.timerPill}>
-                    <MaterialIcons
-                      color={theme.colors.black}
-                      name="schedule"
-                      size={14}
-                    />
-                    <AppText variant="bodySmall">
-                      Time left {displayedTimeLeft}
-                    </AppText>
-                  </View>
-                ) : null}
-              </View>
-              {displayedInstructionExpiry ? (
-                <AppText variant="bodySmall" color={theme.colors.muted}>
-                  Expires {displayedInstructionExpiry}
-                </AppText>
-              ) : null}
-            </View>
-
-            <AppCard
-              backgroundColor={theme.colors.white}
-              style={styles.paymentDetailsCard}
-            >
-              <InstructionRow
-                label="Bank Name"
-                value={activePaymentInstruction?.bankName ?? "Pending"}
-              />
-              <InstructionRow
-                label="Account Name"
-                value={activePaymentInstruction?.accountName ?? "Pending"}
-              />
-              <InstructionRow
-                label="Account Number"
-                value={activePaymentInstruction?.accountNumber ?? "Pending"}
-                actionLabel="Copy"
-                onActionPress={() =>
-                  handleCopyValue(
-                    "Account number",
-                    activePaymentInstruction?.accountNumber,
-                  )
-                }
-              />
-            </AppCard>
-
-            <View style={styles.widgetButtonStack}>
-              <AppButton
-                disabled={isRefreshingPouchStatus}
-                onPress={handleRefreshDepositStatus}
-                title={
-                  isRefreshingPouchStatus
-                    ? "Checking payment"
-                    : "I have paid, refresh status"
-                }
-              />
-              <AppButton
-                onPress={closePaymentWidget}
-                style={styles.cancelButton}
-                title="Close"
-                variant="ghost"
-              />
-            </View>
-          </View>
-        </View>
-      </Modal>
-
       {toastMessage ? (
         <Animated.View
           pointerEvents="none"
@@ -1537,15 +1112,6 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 2,
   },
-  statusPill: {
-    alignSelf: "flex-start",
-    borderWidth: theme.borders.regular,
-    borderColor: "#F4B28D",
-    borderRadius: theme.radii.pill,
-    backgroundColor: theme.colors.orangeLight,
-    paddingHorizontal: theme.spacing.sm,
-    paddingVertical: theme.spacing.xs,
-  },
   refreshChip: {
     flexDirection: "row",
     alignItems: "center",
@@ -1555,17 +1121,6 @@ const styles = StyleSheet.create({
     borderColor: theme.colors.black,
     borderRadius: theme.radii.pill,
     backgroundColor: theme.colors.orangeLight,
-    paddingHorizontal: theme.spacing.sm,
-    paddingVertical: theme.spacing.xs,
-  },
-  timerPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing.xs,
-    borderWidth: theme.borders.regular,
-    borderColor: theme.colors.black,
-    borderRadius: theme.radii.pill,
-    backgroundColor: "rgba(255,255,255,0.72)",
     paddingHorizontal: theme.spacing.sm,
     paddingVertical: theme.spacing.xs,
   },
@@ -1611,13 +1166,6 @@ const styles = StyleSheet.create({
     padding: theme.spacing.md,
     gap: theme.spacing.xs,
     ...theme.shadows.card,
-  },
-  widgetMetaRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: theme.spacing.sm,
-    flexWrap: "wrap",
   },
   paymentDetailsCard: {
     gap: theme.spacing.sm,

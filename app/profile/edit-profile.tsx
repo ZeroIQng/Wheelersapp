@@ -1,4 +1,4 @@
-import { usePrivy } from "@privy-io/expo";
+import { useAuth } from "@/lib/auth";
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useState } from "react";
@@ -11,7 +11,6 @@ import { AppText } from "@/components/app-text";
 import { BackArrow } from "@/components/back-arrow";
 import { getAccessTokenWithRetry } from "@/lib/access-token";
 import { getCurrentProfile, isBackendConfigured, updateCurrentProfile } from "@/lib/api";
-import { getPrivyEmail, getPrivyName } from "@/lib/privy-user";
 import { theme } from "@/theme";
 
 function normalizeUsernameInput(value: string): string {
@@ -20,12 +19,12 @@ function normalizeUsernameInput(value: string): string {
 
 export default function EditProfileScreen() {
   const router = useRouter();
-  const { getAccessToken, isReady, user } = usePrivy();
-  const fallbackEmail = user ? getPrivyEmail(user) ?? "" : "";
-  const fallbackName = user ? getPrivyName(user) ?? "" : "";
+  const { getAccessToken, isReady, user } = useAuth();
+  const fallbackEmail = "";
+  const fallbackName = "";
   const [username, setUsername] = useState("");
   const [fullName, setFullName] = useState("");
-  const [email, setEmail] = useState(user ? getPrivyEmail(user) ?? "" : "");
+  const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
@@ -34,7 +33,6 @@ export default function EditProfileScreen() {
       return;
     }
 
-    setEmail(getPrivyEmail(user) ?? "");
     setFullName((current) => current || fallbackName);
   }, [fallbackEmail, fallbackName, user]);
 

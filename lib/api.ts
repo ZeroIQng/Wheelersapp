@@ -69,28 +69,11 @@ export type BackendRole = "RIDER" | "DRIVER" | "BOTH";
 
 export interface BackendUser {
   id: string;
-  privyDid: string;
-  walletAddress: string | null;
   username: string | null;
   email: string | null;
   role: BackendRole;
   name: string | null;
   phone: string | null;
-}
-
-interface SyncPrivyAuthInput {
-  accessToken: string;
-  role?: BackendRole;
-  authMethod?: "email" | "google" | "apple" | "wallet";
-  email?: string;
-  name?: string;
-  phone?: string;
-  walletAddress?: string;
-}
-
-interface SyncPrivyAuthResponse {
-  created: boolean;
-  user: BackendUser;
 }
 
 interface UsernamePasswordAuthResponse {
@@ -339,63 +322,6 @@ export interface GroupRideFaceUploadDescriptor {
   mimeType: string;
 }
 
-export interface PouchInstructionFees {
-  networkFee?: number;
-  serviceFee?: number;
-  totalFees?: number;
-}
-
-export interface PouchPaymentInstruction {
-  accountNumber?: string;
-  accountName?: string;
-  bankName?: string;
-  amountUsd?: number;
-  amountLocal?: number;
-  localCurrency?: string;
-  fxRate?: number;
-  cryptoAmount?: number;
-  cryptoCurrency?: string;
-  cryptoNetwork?: string;
-  fees?: PouchInstructionFees;
-  reference?: string;
-  expiresAt?: string;
-}
-
-export interface PouchSettlementInfo {
-  transactionHash?: string;
-  senderAddress?: string;
-  walletAddress?: string;
-  cryptoAmount?: number;
-  cryptoCurrency?: string;
-  cryptoNetwork?: string;
-  expiresAt?: string;
-}
-
-export interface PouchOnrampResponse {
-  provider: "pouch";
-  type: "ONRAMP";
-  providerRef?: string;
-  destinationWalletAddress?: string;
-  paymentInstruction?: PouchPaymentInstruction;
-  walletCreditable: boolean;
-}
-
-export interface PouchRampStatusPayload {
-  providerRef?: string;
-  status?: string;
-  type?: "ONRAMP" | "OFFRAMP" | string;
-  transactionHash?: string;
-  settlementInfo?: PouchSettlementInfo;
-  details?: Record<string, unknown>;
-  failureReason?: string;
-}
-
-export interface PouchRampStatusResponse {
-  provider: "pouch";
-  status: PouchRampStatusPayload;
-  sessionSynced: boolean;
-}
-
 export interface WalletOverviewResponse {
   walletId: string;
   walletAddress: string;
@@ -436,45 +362,24 @@ export interface WalletWithdrawal {
   status: string;
   requestedAmountNgn: number;
   quotedAmountNgn: number | null;
-  reservedAmountUsdt: number;
-  quotedAmountUsd: number | null;
-  quotedCryptoAmount: number | null;
   displayCurrency: string;
-  displayExchangeRate: number;
   payoutCurrency: string;
-  cryptoCurrency: string;
-  cryptoNetwork: string;
   bankAccount: {
     accountNumber: string;
     accountName: string;
     networkId: string;
   };
   providerReference: string | null;
-  paymentId: string | null;
   failureReason: string | null;
   expiresAt: string | null;
   createdAt: string;
   updatedAt: string;
   settledAt: string | null;
   failedAt: string | null;
-  releasedAt: string | null;
 }
 
 export interface CreateWalletWithdrawalResponse {
   withdrawal: WalletWithdrawal | null;
-  provider: "pouch";
-  type: "OFFRAMP";
-  cryptoInstruction?: {
-    walletAddress?: string;
-    cryptoNetwork?: string;
-    cryptoCurrency?: string;
-    cryptoAmount?: number;
-    amountUsd?: number;
-    amountLocal?: number;
-    localCurrency?: string;
-    reference?: string;
-    expiresAt?: string;
-  };
 }
 
 export interface WithdrawalBankNetwork {
@@ -733,14 +638,6 @@ async function getJson<TResponse>(
   });
 }
 
-export async function syncPrivyAuth(
-  input: SyncPrivyAuthInput,
-): Promise<SyncPrivyAuthResponse> {
-  return postJson<SyncPrivyAuthResponse>("/auth/privy", input, {
-    fallbackError: "Could not sync your account with Wheelers.",
-  });
-}
-
 export async function signupWithUsernamePassword(input: {
   username: string;
   password: string;
@@ -856,57 +753,6 @@ export async function updateCurrentProfile(input: {
   );
 }
 
-export async function createPouchOnramp(input: {
-  accessToken: string;
-  amountLocal: number;
-  idempotencyKey?: string;
-  countryCode?: string;
-  currency?: string;
-  cryptoCurrency?: string;
-  cryptoNetwork?: string;
-  userKyc?: Record<string, unknown>;
-}): Promise<PouchOnrampResponse> {
-  return postJson<PouchOnrampResponse>(
-    "/payments/pouch/onramp",
-    {
-      amountLocal: input.amountLocal,
-      countryCode: input.countryCode ?? "NG",
-      currency: input.currency ?? "NGN",
-      cryptoCurrency: input.cryptoCurrency ?? "USDC",
-      cryptoNetwork: input.cryptoNetwork ?? "XLM",
-      userKyc: input.userKyc,
-    },
-    {
-      accessToken: input.accessToken,
-      idempotencyKey: input.idempotencyKey,
-      fallbackError: "Could not start the Pouch deposit.",
-    },
-  );
-}
-
-export async function getPouchRampStatus(input: {
-  accessToken: string;
-  providerRef: string;
-  type?: "ONRAMP" | "OFFRAMP";
-}): Promise<PouchRampStatusResponse> {
-  const params = new URLSearchParams();
-  if (input.type) {
-    params.set("type", input.type);
-  }
-
-  const path = `/payments/pouch/status/${encodeURIComponent(input.providerRef)}${
-    params.size > 0 ? `?${params.toString()}` : ""
-  }`;
-
-  return getJson<PouchRampStatusResponse>(
-    path,
-    {
-      accessToken: input.accessToken,
-      fallbackError: "Could not refresh the Pouch deposit status.",
-    },
-  );
-}
-
 export async function getWalletOverview(input: {
   accessToken: string;
 }): Promise<WalletOverviewResponse> {
@@ -996,8 +842,6 @@ export async function verifyWithdrawalBankAccount(input: {
   networkId: string;
   countryCode?: string;
   currency?: string;
-  cryptoCurrency?: string;
-  cryptoNetwork?: string;
 }): Promise<VerifyWithdrawalBankAccountResponse> {
   return postJson<VerifyWithdrawalBankAccountResponse>(
     "/wallet/withdrawals/verify-bank-account",
@@ -1006,8 +850,6 @@ export async function verifyWithdrawalBankAccount(input: {
       networkId: input.networkId,
       countryCode: input.countryCode ?? "NG",
       currency: input.currency ?? "NGN",
-      cryptoCurrency: input.cryptoCurrency ?? "USDC",
-      cryptoNetwork: input.cryptoNetwork ?? "XLM",
     },
     {
       accessToken: input.accessToken,

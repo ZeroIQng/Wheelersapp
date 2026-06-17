@@ -1,4 +1,3 @@
-import { usePrivy } from "@privy-io/expo";
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useRef, useState } from "react";
@@ -11,28 +10,21 @@ import { BlobShape, StarBurst } from "@/components/decorative-shapes";
 import { FlowHeader } from "@/components/flow-header";
 import { FloatingView, PulseView, RevealView } from "@/components/motion";
 import { getAccessTokenWithRetry } from "@/lib/access-token";
+import { useAuth } from "@/lib/auth";
 import { sendPhoneOtp, verifyPhoneOtp } from "@/lib/api";
 import {
   markStoredOnboardingComplete,
   readStoredAuthState,
   storePhoneEntryStep,
 } from "@/lib/auth-state";
-import { isPrivyConfigured } from "@/lib/privy";
+import { getDisplayErrorMessage } from "@/lib/errors";
 import { theme } from "@/theme";
 
 const OTP_LENGTH = 6;
 
 export default function OtpVerifyScreen() {
-  if (!isPrivyConfigured) {
-    return <PrivyUnavailableScreen />;
-  }
-
-  return <PrivyOtpVerifyScreen />;
-}
-
-function PrivyOtpVerifyScreen() {
   const router = useRouter();
-  const { getAccessToken, isReady } = usePrivy();
+  const { getAccessToken, isReady } = useAuth();
   const [digits, setDigits] = useState<string[]>(
     Array.from({ length: OTP_LENGTH }, () => ""),
   );
@@ -123,11 +115,10 @@ function PrivyOtpVerifyScreen() {
       await markStoredOnboardingComplete();
       router.replace("/rider");
     } catch (error) {
+      const fallback = "Could not verify the WhatsApp code. Please try again.";
       Alert.alert(
         "Verification failed",
-        error instanceof Error
-          ? error.message
-          : "Could not verify the WhatsApp code.",
+        getDisplayErrorMessage(error, fallback) ?? fallback,
       );
     } finally {
       setIsVerifying(false);
@@ -140,7 +131,7 @@ function PrivyOtpVerifyScreen() {
     }
 
     if (!isReady) {
-      Alert.alert("Try again", "Privy is still initializing. Try again in a moment.");
+      Alert.alert("Try again", "Authentication is still initializing. Try again in a moment.");
       return;
     }
 
@@ -155,11 +146,10 @@ function PrivyOtpVerifyScreen() {
     try {
       await sendPhoneOtp({ accessToken, phone: pendingPhone });
     } catch (error) {
+      const fallback = "Could not resend the WhatsApp verification code.";
       Alert.alert(
         "Resend failed",
-        error instanceof Error
-          ? error.message
-          : "Could not resend the WhatsApp verification code.",
+        getDisplayErrorMessage(error, fallback) ?? fallback,
       );
     } finally {
       setIsResending(false);
@@ -291,25 +281,6 @@ function PrivyOtpVerifyScreen() {
   );
 }
 
-function PrivyUnavailableScreen() {
-  const router = useRouter();
-
-  return (
-    <AppScreen
-      backgroundColor={theme.colors.offWhite}
-      contentStyle={styles.loadingContainer}
-    >
-      <AppText variant="h3">Privy setup missing</AppText>
-      <AppText variant="bodySmall" color={theme.colors.muted}>
-        Add the Privy Expo env keys before opening phone verification.
-      </AppText>
-      <AppButton
-        title="Back to sign in"
-        onPress={() => router.replace("/role-selection")}
-      />
-    </AppScreen>
-  );
-}
 
 const styles = StyleSheet.create({
   container: {

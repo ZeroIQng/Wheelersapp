@@ -1,9 +1,9 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
-import { usePrivy } from "@privy-io/expo";
+import * as Haptics from "expo-haptics";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useRef, useState } from "react";
-import { Alert, StyleSheet, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 import Animated, {
   Easing,
   FadeIn,
@@ -16,103 +16,28 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 
-import { AppButton } from "@/components/app-button";
 import { AppScreen } from "@/components/app-screen";
 import { AppText } from "@/components/app-text";
-import { getAccessTokenWithRetry } from "@/lib/access-token";
-import { createIdempotencyKey } from "@/lib/idempotency";
-import {
-  completeGroupRideFaceUpload,
-  createGroupRideFaceUploadUrl,
-  createGroupRideMatchRequest,
-  getGroupRideMatchRequest,
-  type GroupRideGenderPreference,
-  type GroupRideMatchRequest,
-} from "@/lib/api";
-import {
-  clearGroupRideFaceCapture,
-  getGroupRideFaceCapture,
-} from "@/lib/group-ride-draft";
-import { resolvePlaceQuery } from "@/lib/google-places";
+import { type GroupRideGenderPreference } from "@/lib/api";
 import { theme } from "@/theme";
 
-const MATCH_POLL_MS = 3000;
-
-function getGroupRideStatusCopy(status: GroupRideMatchRequest["status"] | null) {
-  switch (status) {
-    case "PENDING_FACE_UPLOAD":
-      return {
-        heading: "Uploading your\nverification",
-        body: "Securing your request before matching starts.",
-      };
-    case "READY_FOR_MATCH":
-      return {
-        heading: "Preparing\nyour match",
-        body: "Your route is queued for shared-ride matching.",
-      };
-    case "MATCHING":
-      return {
-        heading: "Finding other\nriders",
-        body: "Matching you with riders headed the same way.",
-      };
-    case "GROUPED":
-      return {
-        heading: "Riders found\nnearby",
-        body: "Wheelers is building the shared route now.",
-      };
-    case "BOOKED":
-      return {
-        heading: "Group ride\nbooked",
-        body: "Your shared ride is confirmed.",
-      };
-    case "EXPIRED":
-      return {
-        heading: "Match window\nexpired",
-        body: "No compatible riders were available in time.",
-      };
-    case "CANCELLED":
-      return {
-        heading: "Request\ncancelled",
-        body: "This group ride request is no longer active.",
-      };
-    default:
-      return {
-        heading: "Creating your\nrequest",
-        body: "Preparing your route and verification details.",
-      };
-  }
-}
-
-async function uploadFaceImage(uploadUrl: string, uri: string, mimeType: string) {
-  const fileResponse = await fetch(uri);
-  const blob = await fileResponse.blob();
-  const response = await fetch(uploadUrl, {
-    method: "PUT",
-    headers: {
-      "content-type": mimeType,
-    },
-    body: blob,
-  });
-
-  if (!response.ok) {
-    throw new Error("Could not upload the face verification image.");
-  }
-}
+const matchStages = [
+  { heading: "Verifying rider", body: "Securing your request before matching starts." },
+  { heading: "Preparing match", body: "Your route is queued for shared-ride matching." },
+  { heading: "Finding riders", body: "Matching riders heading the same way." },
+  { heading: "Riders found", body: "Building your shared route." },
+] as const;
 
 export default function GroupRideMatchingScreen() {
   const router = useRouter();
-  const { getAccessToken, isReady, user } = usePrivy();
   const params = useLocalSearchParams<{
     pickup?: string;
     destination?: string;
     genderPreference?: string;
   }>();
-  const [requestId, setRequestId] = useState<string | null>(null);
-  const [matchStatus, setMatchStatus] = useState<GroupRideMatchRequest["status"] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const lastErrorAlertRef = useRef<string | null>(null);
-  const createRequestIdempotencyKeyRef = useRef<string | null>(null);
   const genderPreference = normalizeGenderPreference(params.genderPreference);
+  const [stageIndex, setStageIndex] = useState(0);
+  const autoNavigatedRef = useRef(false);
 
   // Pulse rings
   const ring1 = useSharedValue(0);
@@ -205,142 +130,49 @@ export default function GroupRideMatchingScreen() {
     );
   }, [centerScale, dot1Y, dot2Y, dot3Y, ring1, ring2, ring3, rotation]);
 
+  // Cycle through match stages with haptic ticks
   useEffect(() => {
-    let cancelled = false;
-    let pollTimer: ReturnType<typeof setTimeout> | null = null;
-
-    async function pollRequest(accessToken: string, activeRequestId: string) {
-      const response = await getGroupRideMatchRequest({
-        accessToken,
-        requestId: activeRequestId,
+    const timer = setInterval(() => {
+      setStageIndex((current) => {
+        const next = current + 1;
+        if (next < matchStages.length) {
+          void Haptics.selectionAsync();
+          return next;
+        }
+        return current;
       });
+    }, 2000);
 
-      if (cancelled) {
-        return;
-      }
+    return () => clearInterval(timer);
+  }, []);
 
-      setMatchStatus(response.item.status);
-
-      if (response.item.status === "BOOKED") {
-        router.replace({
-          pathname: "/group-ride/ride-selection",
-          params: {
-            requestId: response.item.id,
-          },
-        });
-        return;
-      }
-
-      if (response.item.status === "EXPIRED") {
-        setError("No nearby riders were available for this group ride. Try again in a moment.");
-        return;
-      }
-
-      if (response.item.status === "CANCELLED") {
-        setError("This group ride request was cancelled.");
-        return;
-      }
-
-      pollTimer = setTimeout(() => {
-        void pollRequest(accessToken, activeRequestId);
-      }, MATCH_POLL_MS);
+  // Auto-navigate to ride-selection after all stages complete
+  useEffect(() => {
+    if (autoNavigatedRef.current) {
+      return;
     }
 
-    void (async () => {
-      try {
-        if (!isReady || !user) {
-          throw new Error("Sign in before requesting a group ride.");
-        }
+    const timer = setTimeout(() => {
+      if (autoNavigatedRef.current) {
+        return;
+      }
+      autoNavigatedRef.current = true;
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
-        const accessToken = await getAccessTokenWithRetry(getAccessToken);
-        if (!accessToken) {
-          throw new Error("Could not get a valid access token.");
-        }
-
-        const faceCapture = getGroupRideFaceCapture();
-        if (!faceCapture) {
-          throw new Error("Complete face verification before requesting a group ride.");
-        }
-
-        const [pickup, destination] = await Promise.all([
-          resolvePlaceQuery(params.pickup ?? ""),
-          resolvePlaceQuery(params.destination ?? ""),
-        ]);
-
-        const created = await createGroupRideMatchRequest({
-          accessToken,
-          idempotencyKey:
-            createRequestIdempotencyKeyRef.current ??
-            (createRequestIdempotencyKeyRef.current = createIdempotencyKey(
-              "group-ride-request",
-            )),
-          pickup,
-          destination,
-          stops: [],
+      router.replace({
+        pathname: "/group-ride/ride-selection",
+        params: {
+          mock: "1",
+          pickup: params.pickup ?? "",
+          destination: params.destination ?? "",
           genderPreference,
-          paymentMethod: "wallet_balance",
-        });
+        },
+      });
+    }, 8500);
 
-        if (cancelled) {
-          return;
-        }
-
-        setRequestId(created.item.id);
-        setMatchStatus(created.item.status);
-
-        const upload = await createGroupRideFaceUploadUrl({
-          accessToken,
-          requestId: created.item.id,
-          mimeType: faceCapture.mimeType,
-          capturedAt: faceCapture.capturedAt,
-        });
-
-        await uploadFaceImage(
-          upload.upload.uploadUrl,
-          faceCapture.uri,
-          faceCapture.mimeType,
-        );
-
-        const completed = await completeGroupRideFaceUpload({
-          accessToken,
-          requestId: created.item.id,
-          capturedAt: faceCapture.capturedAt,
-        });
-
-        clearGroupRideFaceCapture();
-
-        if (cancelled) {
-          return;
-        }
-
-        setMatchStatus(completed.item.status);
-        await pollRequest(accessToken, created.item.id);
-      } catch (matchingError) {
-        if (!cancelled) {
-          setError(
-            matchingError instanceof Error
-              ? matchingError.message
-              : "Could not start group ride matching.",
-          );
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-      if (pollTimer) {
-        clearTimeout(pollTimer);
-      }
-    };
-  }, [
-    genderPreference,
-    getAccessToken,
-    isReady,
-    params.destination,
-    params.pickup,
-    router,
-    user,
-  ]);
+    return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const ring1Style = useAnimatedStyle(() => ({
     opacity: 1 - ring1.value,
@@ -370,25 +202,12 @@ export default function GroupRideMatchingScreen() {
     transform: [{ translateY: dot3Y.value }],
   }));
 
-  useEffect(() => {
-    if (!error) {
-      lastErrorAlertRef.current = null;
-      return;
-    }
-
-    if (lastErrorAlertRef.current === error) {
-      return;
-    }
-
-    lastErrorAlertRef.current = error;
-    Alert.alert("Group ride failed", error);
-  }, [error]);
-  const statusCopy = getGroupRideStatusCopy(matchStatus);
+  const stage = matchStages[stageIndex];
 
   return (
     <AppScreen
       backgroundColor={theme.colors.black}
-      scroll={false}
+      scroll
       contentStyle={styles.container}
       safeAreaEdges={["top", "left", "right", "bottom"]}
     >
@@ -404,25 +223,21 @@ export default function GroupRideMatchingScreen() {
 
       {/* Radar animation */}
       <View style={styles.radarWrap}>
-        {/* Expanding rings */}
         <Animated.View style={[styles.ring, styles.ring1, ring1Style]} />
         <Animated.View style={[styles.ring, styles.ring2, ring2Style]} />
         <Animated.View style={[styles.ring, styles.ring3, ring3Style]} />
 
-        {/* Rotating sweep arm */}
         <Animated.View style={[styles.sweepArm, rotationStyle]} pointerEvents="none">
           <View style={styles.sweepLine} />
           <View style={styles.sweepDot} />
         </Animated.View>
 
-        {/* Center icon */}
         <Animated.View style={[styles.centerWrap, centerStyle]}>
           <View style={styles.centerDot}>
             <MaterialIcons name="group" size={28} color={theme.colors.black} />
           </View>
         </Animated.View>
 
-        {/* Floating rider dots */}
         <Animated.View style={[styles.floatDot, styles.floatDot1, dot1Style]}>
           <MaterialIcons name="person-pin" size={20} color={theme.colors.orange} />
         </Animated.View>
@@ -437,7 +252,7 @@ export default function GroupRideMatchingScreen() {
       {/* Status text */}
       <Animated.View entering={FadeIn.delay(300).duration(600)} style={styles.statusWrap}>
         <AppText variant="h1" color={theme.colors.offWhite} style={styles.heading}>
-          {statusCopy.heading}
+          {stage.heading}
         </AppText>
         <View style={styles.dotsRow}>
           <Animated.View style={[styles.pingDot, dot1Style]} />
@@ -445,49 +260,37 @@ export default function GroupRideMatchingScreen() {
           <Animated.View style={[styles.pingDot, dot3Style]} />
         </View>
         <AppText variant="bodySmall" color={theme.colors.muted} style={styles.subText}>
-          {statusCopy.body}
+          {stage.body}
         </AppText>
       </Animated.View>
 
       {/* Info card */}
       <Animated.View entering={FadeInDown.delay(500).duration(500)} style={styles.infoCard}>
-        <View style={styles.infoRow}>
+        <View style={styles.infoHeader}>
           <View style={styles.infoIcon}>
-            <MaterialIcons name="savings" size={18} color={theme.colors.orange} />
+            <MaterialIcons name="groups" size={18} color={theme.colors.black} />
           </View>
           <View style={styles.infoCopy}>
             <AppText variant="bodyMedium" color={theme.colors.offWhite}>
-              {requestId ? `Request ${requestId.slice(0, 8)}` : "Split the fare"}
+              Group ride matching
             </AppText>
             <AppText variant="bodySmall" color={theme.colors.muted}>
-              {matchStatus === "GROUPED" || matchStatus === "BOOKED"
-                ? "Shared route found and being finalised for your group."
-                : "Ride cost is shared between all matched riders."}
-            </AppText>
-          </View>
-        </View>
-        <View style={styles.infoDivider} />
-        <View style={styles.infoRow}>
-          <View style={styles.infoIcon}>
-            <MaterialIcons name="verified-user" size={18} color={theme.colors.green} />
-          </View>
-          <View style={styles.infoCopy}>
-            <AppText variant="bodyMedium" color={theme.colors.offWhite}>Face-verified riders only</AppText>
-            <AppText variant="bodySmall" color={theme.colors.muted}>
-              {`Matching preference: ${formatGenderPreference(genderPreference)}.`}
+              {formatGenderPreference(genderPreference)}
             </AppText>
           </View>
         </View>
       </Animated.View>
 
-      {error ? (
-        <View style={styles.actionWrap}>
-          <AppButton
-            title="Try again"
-            onPress={() => router.replace("/group-ride/destination")}
-          />
-        </View>
-      ) : null}
+      {/* Cancel */}
+      <Pressable
+        accessibilityRole="button"
+        onPress={() => router.replace("/rider")}
+        style={styles.cancelButton}
+      >
+        <AppText variant="bodyMedium" color={theme.colors.muted}>
+          Cancel
+        </AppText>
+      </Pressable>
     </AppScreen>
   );
 }
@@ -509,14 +312,14 @@ function formatGenderPreference(value: GroupRideGenderPreference): string {
   return "Any verified rider";
 }
 
-const RADAR_SIZE = 260;
+const RADAR_SIZE = 220;
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
+    flexGrow: 1,
     alignItems: "center",
     justifyContent: "center",
-    gap: theme.spacing.xxl,
+    gap: theme.spacing.xl,
     paddingHorizontal: theme.spacing.gutter,
     paddingBottom: theme.spacing.xxl,
   },
@@ -645,16 +448,13 @@ const styles = StyleSheet.create({
   infoCard: {
     width: "100%",
     borderWidth: theme.borders.thick,
-    borderColor: "rgba(255,255,255,0.12)",
+    borderColor: "rgba(255,255,255,0.14)",
     borderRadius: theme.radius.lg,
-    backgroundColor: "rgba(255,255,255,0.05)",
+    backgroundColor: "rgba(255,132,67,0.12)",
     padding: theme.spacing.md,
     gap: theme.spacing.sm,
   },
-  actionWrap: {
-    width: "100%",
-  },
-  infoRow: {
+  infoHeader: {
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing.sm,
@@ -663,9 +463,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: theme.radius.pill,
-    borderWidth: theme.borders.regular,
-    borderColor: "rgba(255,255,255,0.12)",
-    backgroundColor: "rgba(255,255,255,0.06)",
+    backgroundColor: theme.colors.orange,
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
@@ -674,8 +472,8 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 2,
   },
-  infoDivider: {
-    height: 1,
-    backgroundColor: "rgba(255,255,255,0.08)",
+  cancelButton: {
+    paddingVertical: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.lg,
   },
 });

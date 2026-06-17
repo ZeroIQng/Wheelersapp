@@ -1,4 +1,4 @@
-import { usePrivy } from "@privy-io/expo";
+import { useAuth } from "@/lib/auth";
 import Constants from "expo-constants";
 import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
@@ -51,7 +51,7 @@ Notifications.setNotificationHandler({
 });
 
 export function AppNotificationsProvider({ children }: { children: ReactNode }) {
-  const { getAccessToken, isReady, user } = usePrivy();
+  const { getAccessToken, isReady, user } = useAuth();
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [permissionGranted, setPermissionGranted] = useState(false);
 

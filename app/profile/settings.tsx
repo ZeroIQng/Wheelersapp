@@ -1,5 +1,5 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
-import { usePrivy } from "@privy-io/expo";
+import { useAuth } from "@/lib/auth";
 import { Href, useFocusEffect, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useState } from "react";
@@ -17,8 +17,6 @@ import {
   clearStoredAuthState,
   markLogoutPending,
 } from "@/lib/auth-state";
-import { isPrivyConfigured } from "@/lib/privy";
-import { getPrivyEmail, getPrivyName } from "@/lib/privy-user";
 import { theme } from "@/theme";
 
 const accountSettingIds = new Set([
@@ -124,48 +122,13 @@ function buildProfile(input?: {
 }
 
 export default function SettingsScreen() {
-  if (!isPrivyConfigured) {
-    return <LocalSettingsScreen />;
-  }
-
-  return <PrivySettingsScreen />;
-}
-
-function LocalSettingsScreen() {
   const router = useRouter();
-  const [isLoggingOut, setIsLoggingOut] = useState(false);
-
-  async function handleLogout() {
-    if (isLoggingOut) {
-      return;
-    }
-
-    setIsLoggingOut(true);
-    try {
-      await clearStoredAuthState();
-      router.replace("/role-selection");
-    } finally {
-      setIsLoggingOut(false);
-    }
-  }
-
-  return (
-    <SettingsScreenBody
-      isLoggingOut={isLoggingOut}
-      onLogout={handleLogout}
-      profile={buildProfile()}
-    />
-  );
-}
-
-function PrivySettingsScreen() {
-  const router = useRouter();
-  const { getAccessToken, logout, user, isReady } = usePrivy();
+  const { getAccessToken, logout, user, isReady } = useAuth();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [profile, setProfile] = useState<SettingsProfile>(
     buildProfile({
-      name: user ? getPrivyName(user) : undefined,
-      email: user ? getPrivyEmail(user) : undefined,
+      name: undefined,
+      email: undefined,
     }),
   );
 
@@ -173,8 +136,8 @@ function PrivySettingsScreen() {
     if (!isReady || !isBackendConfigured()) {
       setProfile(
         buildProfile({
-          name: user ? getPrivyName(user) : undefined,
-          email: user ? getPrivyEmail(user) : undefined,
+          name: undefined,
+          email: undefined,
         }),
       );
       return;
@@ -191,16 +154,16 @@ function PrivySettingsScreen() {
       const response = await getCurrentProfile({ accessToken });
       setProfile(
         buildProfile({
-          name: response.user.name ?? (user ? getPrivyName(user) : undefined),
-          email: response.user.email ?? (user ? getPrivyEmail(user) : undefined),
+          name: response.user.name ?? undefined,
+          email: response.user.email ?? undefined,
           username: response.user.username,
         }),
       );
     } catch {
       setProfile(
         buildProfile({
-          name: user ? getPrivyName(user) : undefined,
-          email: user ? getPrivyEmail(user) : undefined,
+          name: undefined,
+          email: undefined,
         }),
       );
     }
