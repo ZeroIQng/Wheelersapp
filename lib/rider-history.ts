@@ -70,8 +70,7 @@ function formatFare(ride: RiderHistoryRide): string {
     return `NGN ${Math.round(fareNgn).toLocaleString("en-NG")}`;
   }
 
-  const fareUsdt = ride.fareFinalUsdt ?? ride.fareEstimateUsdt;
-  return typeof fareUsdt === "number" ? `${fareUsdt.toFixed(2)} USDT` : "Fare pending";
+  return "Fare pending";
 }
 
 function mapIcon(ride: RiderHistoryRide): string {

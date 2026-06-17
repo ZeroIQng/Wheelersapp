@@ -19,14 +19,9 @@ import { theme } from "@/theme";
 
 function formatRideFare(params: {
   ngn?: number;
-  usdt?: number;
 }): string | null {
   if (typeof params.ngn === "number" && Number.isFinite(params.ngn)) {
     return `NGN ${Math.round(params.ngn).toLocaleString("en-NG")}`;
-  }
-
-  if (typeof params.usdt === "number" && Number.isFinite(params.usdt)) {
-    return `${params.usdt.toFixed(2)} USDT`;
   }
 
   return null;
@@ -64,7 +59,6 @@ export default function DriverFoundScreen() {
   const fareLabel =
     formatRideFare({
       ngn: liveDriver?.lockedFareNgn ?? currentRide?.fareEstimateNgn,
-      usdt: liveDriver?.lockedFareUsdt ?? currentRide?.fareEstimateUsdt,
     }) ?? "Fare pending";
   const vehicleLine = formatVehicleLine({
     rating: liveDriver?.driverRating,

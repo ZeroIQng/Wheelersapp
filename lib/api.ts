@@ -167,8 +167,7 @@ export interface RideRouteSnapshot {
 export interface RideEstimateResponse {
   plannedDistanceKm: number;
   plannedDurationSeconds: number;
-  fareEstimateUsdt: number;
-  fareEstimateNgn?: number;
+  fareEstimateNgn: number;
   pickup?: RideEstimateWaypoint;
   destination?: RideEstimateWaypoint;
   stops?: RideEstimateWaypoint[];
@@ -206,10 +205,8 @@ export interface RiderHistoryRide {
   status: "COMPLETED" | "CANCELLED";
   pickupAddress: string;
   destAddress: string;
-  fareEstimateUsdt: number | null;
-  fareEstimateNgn?: number | null;
-  fareFinalUsdt: number | null;
-  fareFinalNgn?: number | null;
+  fareEstimateNgn: number | null;
+  fareFinalNgn: number | null;
   distanceKm: number | null;
   durationSeconds: number | null;
   cancelReason: string | null;
@@ -230,13 +227,12 @@ export interface ScheduledRide {
   id: string;
   status: "SCHEDULED" | "DISPATCHING" | "DISPATCHED" | "CANCELLED" | "EXPIRED";
   scheduledFor: string;
-  paymentMethod: "wallet_balance" | "smart_account";
+  paymentMethod: "wallet_balance";
   pickupAddress: string;
   destAddress: string;
   plannedDistanceKm: number | null;
   plannedDurationSeconds: number | null;
-  fareEstimateUsdt: number | null;
-  fareEstimateNgn?: number | null;
+  fareEstimateNgn: number | null;
   requestedRideId: string | null;
   createdAt: string;
 }
@@ -288,9 +284,9 @@ export interface GroupRideMatchRequest {
   stops: RideEstimateWaypoint[];
   plannedDistanceKm: number | null;
   plannedDurationSeconds: number | null;
-  fareEstimateUsdt: number | null;
+  fareEstimateNgn: number | null;
   genderPreference: GroupRideGenderPreference;
-  paymentMethod: "wallet_balance" | "smart_account";
+  paymentMethod: "wallet_balance";
   readyForMatchAt: string | null;
   matchingStartedAt: string | null;
   groupedAt: string | null;
@@ -324,16 +320,8 @@ export interface GroupRideFaceUploadDescriptor {
 
 export interface WalletOverviewResponse {
   walletId: string;
-  walletAddress: string;
-  chain: string;
-  balanceUsdt: number;
-  lockedUsdt: number;
-  stakedUsdt: number;
   balanceNgn: number;
   lockedNgn: number;
-  stakedNgn: number;
-  displayCurrency: string;
-  displayExchangeRate: number;
   updatedAt: string;
 }
 
@@ -341,15 +329,11 @@ export interface WalletTransaction {
   id: string;
   type: string;
   direction: "CREDIT" | "DEBIT";
-  amountUsdt: number;
   amountNgn: number;
-  balanceAfterUsdt: number;
   balanceAfterNgn: number;
   referenceId: string;
   metadata: Record<string, unknown> | null;
   createdAt: string;
-  displayCurrency: string;
-  displayExchangeRate: number;
 }
 
 export interface WalletTransactionsResponse {
@@ -362,7 +346,6 @@ export interface WalletWithdrawal {
   status: string;
   requestedAmountNgn: number;
   quotedAmountNgn: number | null;
-  displayCurrency: string;
   payoutCurrency: string;
   bankAccount: {
     accountNumber: string;
@@ -784,6 +767,43 @@ export async function getWalletTransactions(input: {
   });
 }
 
+export interface WalletDepositInfoResponse {
+  accountNumber: string;
+  accountName: string;
+  bankName: string;
+  currency: string;
+}
+
+export interface ProvisionVirtualAccountResponse {
+  accountNumber: string;
+  accountName: string;
+  bankName: string;
+  currency: string;
+  alreadyProvisioned: boolean;
+}
+
+export async function getWalletDepositInfo(input: {
+  accessToken: string;
+}): Promise<WalletDepositInfoResponse> {
+  return getJson<WalletDepositInfoResponse>("/wallet/deposit-info", {
+    accessToken: input.accessToken,
+    fallbackError: "Could not load deposit information.",
+  });
+}
+
+export async function provisionVirtualAccount(input: {
+  accessToken: string;
+}): Promise<ProvisionVirtualAccountResponse> {
+  return postJson<ProvisionVirtualAccountResponse>(
+    "/wallet/provision-virtual-account",
+    {},
+    {
+      accessToken: input.accessToken,
+      fallbackError: "Could not provision virtual account.",
+    },
+  );
+}
+
 export async function createWalletWithdrawal(input: {
   accessToken: string;
   amountNgn: number;
@@ -929,7 +949,7 @@ export async function createScheduledRide(input: {
   pickup: RideEstimateWaypoint;
   destination: RideEstimateWaypoint;
   stops?: RideEstimateWaypoint[];
-  paymentMethod?: "wallet_balance" | "smart_account";
+  paymentMethod?: "wallet_balance";
 }): Promise<{ item: ScheduledRide }> {
   return postJson<{ item: ScheduledRide }>(
     "/scheduled-rides",
@@ -1047,7 +1067,7 @@ export async function createGroupRideMatchRequest(input: {
   destination: RideEstimateWaypoint;
   stops?: RideEstimateWaypoint[];
   genderPreference?: GroupRideGenderPreference;
-  paymentMethod?: "wallet_balance" | "smart_account";
+  paymentMethod?: "wallet_balance";
 }): Promise<{
   item: GroupRideMatchRequest;
   uploadRequired: boolean;

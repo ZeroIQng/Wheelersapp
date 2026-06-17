@@ -37,11 +37,9 @@ type RideDriver = {
   driverId: string;
   driverName?: string;
   driverRating?: number;
-  driverWallet?: string;
   vehiclePlate?: string;
   vehicleModel?: string;
   etaSeconds?: number;
-  lockedFareUsdt?: number;
   lockedFareNgn?: number;
 };
 
@@ -60,7 +58,6 @@ export type RiderRideState = {
   rideId: string;
   status: RideStatus;
   itinerary: RideItinerary;
-  fareEstimateUsdt?: number;
   fareEstimateNgn?: number;
   plannedDistanceKm?: number;
   plannedDurationSeconds?: number;
@@ -69,7 +66,6 @@ export type RiderRideState = {
   driverLocation?: RideDriverLocation;
   startedAt?: string;
   completedAt?: string;
-  completedFareUsdt?: number;
   completedFareNgn?: number;
   cancelReason?: string;
   cancelStage?: string;
@@ -85,7 +81,6 @@ type RideSessionContextValue = {
     itinerary: RideItinerary;
     route?: RideRouteSnapshot | null;
     fareEstimateNgn?: number;
-    fareEstimateUsdt?: number;
     plannedDistanceKm?: number;
     plannedDurationSeconds?: number;
   }) => void;
@@ -316,7 +311,6 @@ export function RideSessionProvider({ children }: { children: ReactNode }) {
               getNumber(payload.plannedDistanceKm) ?? previous.plannedDistanceKm,
             plannedDurationSeconds:
               getNumber(payload.plannedDurationSeconds) ?? previous.plannedDurationSeconds,
-            fareEstimateUsdt: getNumber(payload.fareEstimateUsdt) ?? previous.fareEstimateUsdt,
             fareEstimateNgn: getNumber(payload.fareEstimateNgn) ?? previous.fareEstimateNgn,
           };
         });
@@ -337,12 +331,9 @@ export function RideSessionProvider({ children }: { children: ReactNode }) {
               driverId: getString(payload.driverId) ?? previous.driver?.driverId ?? '',
               driverName: getString(payload.driverName) ?? previous.driver?.driverName,
               driverRating: getNumber(payload.driverRating) ?? previous.driver?.driverRating,
-              driverWallet: getString(payload.driverWallet) ?? previous.driver?.driverWallet,
               vehiclePlate: getString(payload.vehiclePlate) ?? previous.driver?.vehiclePlate,
               vehicleModel: getString(payload.vehicleModel) ?? previous.driver?.vehicleModel,
               etaSeconds: getNumber(payload.etaSeconds) ?? previous.driver?.etaSeconds,
-              lockedFareUsdt:
-                getNumber(payload.lockedFareUsdt) ?? previous.driver?.lockedFareUsdt,
               lockedFareNgn:
                 getNumber(payload.lockedFareNgn) ?? previous.driver?.lockedFareNgn,
             },
@@ -380,7 +371,6 @@ export function RideSessionProvider({ children }: { children: ReactNode }) {
               getNumber(payload.plannedDistanceKm) ?? previous.plannedDistanceKm,
             plannedDurationSeconds:
               getNumber(payload.plannedDurationSeconds) ?? previous.plannedDurationSeconds,
-            fareEstimateUsdt: getNumber(payload.fareEstimateUsdt) ?? previous.fareEstimateUsdt,
             fareEstimateNgn: getNumber(payload.fareEstimateNgn) ?? previous.fareEstimateNgn,
             route:
               pickup && updatedDestination && updatedStops && updatedRoute
@@ -456,7 +446,6 @@ export function RideSessionProvider({ children }: { children: ReactNode }) {
             ...previous,
             status: 'completed',
             completedAt: getString(payload.completedAt) ?? previous.completedAt,
-            completedFareUsdt: getNumber(payload.fareUsdt) ?? previous.completedFareUsdt,
             completedFareNgn: getNumber(payload.fareNgn) ?? previous.completedFareNgn,
             plannedDistanceKm:
               getNumber(payload.distanceKm) ?? previous.plannedDistanceKm,
@@ -653,7 +642,6 @@ export function RideSessionProvider({ children }: { children: ReactNode }) {
           pickup: resolvedRoute.pickup,
           destination: resolvedRoute.destination,
           stops: resolvedRoute.stops,
-          riderWallet: undefined,
           paymentMethod: 'wallet_balance',
         });
       } catch (requestError) {
@@ -673,7 +661,6 @@ export function RideSessionProvider({ children }: { children: ReactNode }) {
       itinerary: RideItinerary;
       route?: RideRouteSnapshot | null;
       fareEstimateNgn?: number;
-      fareEstimateUsdt?: number;
       plannedDistanceKm?: number;
       plannedDurationSeconds?: number;
     }) => {
@@ -684,7 +671,6 @@ export function RideSessionProvider({ children }: { children: ReactNode }) {
         status: 'matched',
         itinerary: input.itinerary,
         fareEstimateNgn: input.fareEstimateNgn,
-        fareEstimateUsdt: input.fareEstimateUsdt,
         plannedDistanceKm: input.plannedDistanceKm,
         plannedDurationSeconds: input.plannedDurationSeconds,
         route: input.route ?? undefined,
@@ -692,12 +678,10 @@ export function RideSessionProvider({ children }: { children: ReactNode }) {
           driverId: 'mock-driver-ade',
           driverName: 'Ade Martins',
           driverRating: 4.9,
-          driverWallet: 'mock-driver-wallet',
           vehiclePlate: 'WLR 482 KT',
           vehicleModel: 'Toyota Corolla',
           etaSeconds: 240,
           lockedFareNgn: input.fareEstimateNgn,
-          lockedFareUsdt: input.fareEstimateUsdt,
         },
         driverLocation: input.route?.pickup
           ? {
@@ -760,8 +744,6 @@ export function RideSessionProvider({ children }: { children: ReactNode }) {
       await sendEnvelope('ride:cancel', {
         rideId: activeRide.rideId,
         driverId: activeRide.driver?.driverId,
-        driverWallet: activeRide.driver?.driverWallet,
-        riderWallet: undefined,
         cancelStage: formatCancelStage(activeRide),
         reason,
       });

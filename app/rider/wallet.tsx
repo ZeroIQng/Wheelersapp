@@ -27,8 +27,11 @@ import { getAccessTokenWithRetry } from "@/lib/access-token";
 import { createIdempotencyKey } from "@/lib/idempotency";
 import {
   createWalletWithdrawal,
+  getWalletDepositInfo,
   getWithdrawalBankNetworks,
   isBackendConfigured,
+  provisionVirtualAccount,
+  type WalletDepositInfoResponse,
   type WithdrawalBankNetwork,
   verifyWithdrawalBankAccount,
 } from "@/lib/api";
@@ -93,6 +96,9 @@ export default function WalletScreen() {
   }>();
   const [depositAmount, setDepositAmount] = useState("");
   const [isDepositModalVisible, setDepositModalVisible] = useState(false);
+  const [depositInfo, setDepositInfo] = useState<WalletDepositInfoResponse | null>(null);
+  const [isLoadingDepositInfo, setLoadingDepositInfo] = useState(false);
+  const [depositInfoError, setDepositInfoError] = useState<string | null>(null);
   const [isWithdrawModalVisible, setWithdrawModalVisible] = useState(false);
   const [isWithdrawConfirmVisible, setWithdrawConfirmVisible] = useState(false);
   const [isBankPickerVisible, setBankPickerVisible] = useState(false);
@@ -209,9 +215,42 @@ export default function WalletScreen() {
     setDepositAmount(Number(digitsOnly).toLocaleString("en-NG"));
   };
 
-  const openDepositModal = () => {
+  const openDepositModal = async () => {
     setBlockingLoader(null);
     setDepositModalVisible(true);
+    setDepositInfoError(null);
+
+    if (depositInfo) return;
+
+    setLoadingDepositInfo(true);
+    try {
+      const accessToken = await getAccessTokenWithRetry(getAccessToken);
+      if (!accessToken) throw new Error("Not authenticated");
+
+      try {
+        const info = await getWalletDepositInfo({ accessToken });
+        setDepositInfo(info);
+      } catch (fetchError: any) {
+        // 404 means no VA yet — provision one
+        if (fetchError?.status === 404 || fetchError?.message?.includes("404")) {
+          const provisioned = await provisionVirtualAccount({ accessToken });
+          setDepositInfo({
+            accountNumber: provisioned.accountNumber,
+            accountName: provisioned.accountName,
+            bankName: provisioned.bankName,
+            currency: provisioned.currency,
+          });
+        } else {
+          throw fetchError;
+        }
+      }
+    } catch (error) {
+      setDepositInfoError(
+        error instanceof Error ? error.message : "Could not load deposit info.",
+      );
+    } finally {
+      setLoadingDepositInfo(false);
+    }
   };
 
   const closeDepositModal = () => {
@@ -378,11 +417,6 @@ export default function WalletScreen() {
 
     await Clipboard.setStringAsync(value);
     setToastMessage(`${label} copied.`);
-  };
-
-  const handleDepositContinue = () => {
-    closeDepositModal();
-    showToast("Transfer funds to your virtual account number to deposit.");
   };
 
   const handleWithdrawContinue = async () => {
@@ -580,7 +614,7 @@ export default function WalletScreen() {
     Alert.alert("Withdrawals pending", "Withdraw pages are not active yet.");
   };
 
-  const displayCurrency = overview?.displayCurrency ?? "NGN";
+  const displayCurrency = "NGN";
   const displayedWalletBalance = formatWalletCurrencyAmount(
     displayCurrency,
     overview?.balanceNgn ?? 0,
@@ -676,39 +710,58 @@ export default function WalletScreen() {
               <View>
                 <AppText variant="h3">Deposit in Naira</AppText>
                 <AppText variant="bodySmall" color={theme.colors.muted}>
-                  Enter the amount you want to fund, then we will generate your
-                  bank transfer instruction.
+                  Transfer NGN to this account. Your balance updates automatically.
                 </AppText>
               </View>
             </View>
 
-            <View style={styles.fieldGroup}>
-              <AppText variant="bodySmall" color={theme.colors.muted}>
-                Amount in NGN
-              </AppText>
-              <TextInput
-                keyboardType="number-pad"
-                onChangeText={handleDepositAmountChange}
-                placeholder="20,000"
-                placeholderTextColor="#B5ACA4"
-                style={styles.input}
-                value={depositAmount}
-              />
-            </View>
-
-            <View style={styles.modalButtonRow}>
-              <View style={styles.modalButtonSlot}>
+            {isLoadingDepositInfo ? (
+              <View style={styles.depositInfoLoading}>
+                <ActivityIndicator color={theme.colors.orange} size="small" />
+                <AppText variant="bodySmall" color={theme.colors.muted}>
+                  Loading account details...
+                </AppText>
+              </View>
+            ) : depositInfoError ? (
+              <View style={styles.depositInfoError}>
+                <AppText variant="bodySmall" color={theme.colors.orange}>
+                  {depositInfoError}
+                </AppText>
                 <AppButton
-                  onPress={closeDepositModal}
-                  style={styles.cancelButton}
-                  title="Cancel"
+                  onPress={() => { setDepositInfo(null); void openDepositModal(); }}
+                  title="Retry"
                   variant="ghost"
+                  style={{ marginTop: 8 }}
                 />
               </View>
-              <View style={styles.modalButtonSlot}>
+            ) : depositInfo ? (
+              <View style={styles.depositInfoContainer}>
+                <View style={styles.depositInfoRow}>
+                  <AppText variant="bodySmall" color={theme.colors.muted}>Bank</AppText>
+                  <AppText variant="mono">{depositInfo.bankName}</AppText>
+                </View>
+                <Pressable
+                  style={styles.depositInfoRow}
+                  onPress={() => handleCopyValue("Account number", depositInfo.accountNumber)}
+                >
+                  <AppText variant="bodySmall" color={theme.colors.muted}>Account Number</AppText>
+                  <View style={styles.depositCopyRow}>
+                    <AppText variant="monoLarge">{depositInfo.accountNumber}</AppText>
+                    <MaterialIcons name="content-copy" size={16} color={theme.colors.orange} />
+                  </View>
+                </Pressable>
+                <View style={styles.depositInfoRow}>
+                  <AppText variant="bodySmall" color={theme.colors.muted}>Account Name</AppText>
+                  <AppText variant="mono">{depositInfo.accountName}</AppText>
+                </View>
+              </View>
+            ) : null}
+
+            <View style={styles.modalButtonRow}>
+              <View style={{ flex: 1 }}>
                 <AppButton
-                  onPress={handleDepositContinue}
-                  title="Continue"
+                  onPress={closeDepositModal}
+                  title="Done"
                 />
               </View>
             </View>
@@ -1286,6 +1339,27 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.white,
   },
   fieldGroup: {
+    gap: theme.spacing.xs,
+  },
+  depositInfoLoading: {
+    alignItems: "center",
+    gap: theme.spacing.sm,
+    paddingVertical: theme.spacing.lg,
+  },
+  depositInfoError: {
+    alignItems: "center",
+    paddingVertical: theme.spacing.md,
+  },
+  depositInfoContainer: {
+    gap: theme.spacing.md,
+    paddingVertical: theme.spacing.sm,
+  },
+  depositInfoRow: {
+    gap: 4,
+  },
+  depositCopyRow: {
+    flexDirection: "row",
+    alignItems: "center",
     gap: theme.spacing.xs,
   },
   selectorInput: {

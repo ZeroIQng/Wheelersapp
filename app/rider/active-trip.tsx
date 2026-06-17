@@ -25,14 +25,9 @@ import { theme } from "@/theme";
 
 function formatRideFare(params: {
   ngn?: number;
-  usdt?: number;
 }): string | null {
   if (typeof params.ngn === "number" && Number.isFinite(params.ngn)) {
     return `NGN ${Math.round(params.ngn).toLocaleString("en-NG")}`;
-  }
-
-  if (typeof params.usdt === "number" && Number.isFinite(params.usdt)) {
-    return `${params.usdt.toFixed(2)} USDT`;
   }
 
   return null;
@@ -110,10 +105,6 @@ export default function RiderActiveTripScreen() {
             currentRide?.completedFareNgn ??
             currentRide?.driver?.lockedFareNgn ??
             currentRide?.fareEstimateNgn,
-          usdt:
-            currentRide?.completedFareUsdt ??
-            currentRide?.driver?.lockedFareUsdt ??
-            currentRide?.fareEstimateUsdt,
         }) ?? "Fare pending",
     },
   ];

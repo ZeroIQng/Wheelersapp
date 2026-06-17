@@ -109,7 +109,7 @@ function buildMockGroupRide(input: {
       ],
       plannedDistanceKm: 18.6,
       plannedDurationSeconds: 2100,
-      fareEstimateUsdt: 4200,
+      fareEstimateNgn: 4200,
       genderPreference: input.genderPreference,
       paymentMethod: "wallet_balance",
       readyForMatchAt: createdAt,
@@ -359,8 +359,8 @@ export default function GroupRideSelectionScreen() {
                   NGN
                 </AppText>
                 <AppText variant="h2" color={theme.colors.offWhite}>
-                  {typeof displayRequest.fareEstimateUsdt === "number"
-                    ? displayRequest.fareEstimateUsdt.toFixed(2)
+                  {typeof displayRequest.fareEstimateNgn === "number"
+                    ? Math.round(displayRequest.fareEstimateNgn).toLocaleString("en-NG")
                     : "--"}
                 </AppText>
               </View>

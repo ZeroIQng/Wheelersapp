@@ -50,8 +50,6 @@ function formatScheduledWhen(value: string): string {
 function formatFare(ride: ScheduledRide): string {
   return typeof ride.fareEstimateNgn === "number"
     ? `NGN ${Math.round(ride.fareEstimateNgn).toLocaleString("en-NG")}`
-    : typeof ride.fareEstimateUsdt === "number"
-      ? `${ride.fareEstimateUsdt.toFixed(2)} USDT`
     : "Fare pending";
 }
 

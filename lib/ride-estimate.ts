@@ -13,7 +13,6 @@ export function buildInstantRideEstimate(
   return {
     plannedDistanceKm: preview.distanceKm,
     plannedDurationSeconds: preview.etaMinutes * 60,
-    fareEstimateUsdt: 0,
     fareEstimateNgn: preview.priceNgn,
   };
 }
@@ -38,8 +37,8 @@ export function parseRideEstimateParam(
       !Number.isFinite(parsed.plannedDistanceKm) ||
       typeof parsed.plannedDurationSeconds !== "number" ||
       !Number.isFinite(parsed.plannedDurationSeconds) ||
-      typeof parsed.fareEstimateUsdt !== "number" ||
-      !Number.isFinite(parsed.fareEstimateUsdt)
+      typeof parsed.fareEstimateNgn !== "number" ||
+      !Number.isFinite(parsed.fareEstimateNgn)
     ) {
       return null;
     }
@@ -47,11 +46,7 @@ export function parseRideEstimateParam(
     return {
       plannedDistanceKm: parsed.plannedDistanceKm,
       plannedDurationSeconds: parsed.plannedDurationSeconds,
-      fareEstimateUsdt: parsed.fareEstimateUsdt,
-      fareEstimateNgn:
-        typeof parsed.fareEstimateNgn === "number" && Number.isFinite(parsed.fareEstimateNgn)
-          ? parsed.fareEstimateNgn
-          : undefined,
+      fareEstimateNgn: parsed.fareEstimateNgn,
       pickup: parseRideEstimateWaypoint(parsed.pickup) ?? undefined,
       destination: parseRideEstimateWaypoint(parsed.destination) ?? undefined,
       stops: Array.isArray(parsed.stops)

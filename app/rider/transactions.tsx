@@ -86,7 +86,7 @@ function getTransactionAmountColor(transaction: WalletTransaction): string {
 
 function getTransactionSignedAmount(transaction: WalletTransaction): string {
   const prefix = transaction.direction === "CREDIT" ? "+" : "-";
-  return `${prefix}${formatAmount(transaction.displayCurrency, transaction.amountNgn)}`;
+  return `${prefix}${formatAmount("NGN", transaction.amountNgn)}`;
 }
 
 function getTransactionMeta(transaction: WalletTransaction): string {
@@ -177,7 +177,7 @@ export default function RiderTransactionsScreen() {
                 {getTransactionSignedAmount(transaction)}
               </AppText>
               <AppText variant="bodySmall" color={theme.colors.muted}>
-                Balance {formatAmount(transaction.displayCurrency, transaction.balanceAfterNgn)}
+                Balance {formatAmount("NGN", transaction.balanceAfterNgn)}
               </AppText>
             </View>
           </AppCard>

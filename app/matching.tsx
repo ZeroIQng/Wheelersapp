@@ -109,7 +109,6 @@ export default function MatchingScreen() {
         itinerary,
         route: routeSnapshot,
         fareEstimateNgn: initialEstimate?.fareEstimateNgn,
-        fareEstimateUsdt: initialEstimate?.fareEstimateUsdt,
         plannedDistanceKm: initialEstimate?.plannedDistanceKm,
         plannedDurationSeconds: initialEstimate?.plannedDurationSeconds,
       });
