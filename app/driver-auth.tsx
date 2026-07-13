@@ -5,8 +5,6 @@ import Animated, { FadeInDown, ZoomIn } from "react-native-reanimated";
 import { Ionicons } from "@expo/vector-icons";
 import Svg, { Path } from "react-native-svg";
 import * as AppleAuthentication from "expo-apple-authentication";
-import { GoogleSignin } from "@react-native-google-signin/google-signin";
-import Constants from "expo-constants";
 
 import { AppScreen } from "@/components/app-screen";
 import { AppText } from "@/components/app-text";
@@ -14,16 +12,6 @@ import { theme } from "@/theme";
 import { signInWithApple, signInWithGoogle } from "@/lib/api";
 import { storeLocalAccessToken } from "@/lib/access-token";
 import { persistAuthenticatedRole } from "@/lib/auth-state";
-
-const GOOGLE_CLIENT_ID =
-  process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID ??
-  Constants.expoConfig?.extra?.googleClientId ??
-  "";
-
-GoogleSignin.configure({
-  iosClientId: GOOGLE_CLIENT_ID,
-  webClientId: GOOGLE_CLIENT_ID,
-});
 
 function GoogleIcon({ size = 20 }: { size?: number }) {
   return (
@@ -93,6 +81,14 @@ export default function DriverAuthScreen() {
   async function handleGoogleSignIn() {
     try {
       setLoading(true);
+
+      const { GoogleSignin } = await import("@react-native-google-signin/google-signin");
+
+      const googleClientId = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID ?? "";
+      GoogleSignin.configure({
+        iosClientId: googleClientId,
+        webClientId: googleClientId,
+      });
 
       await GoogleSignin.hasPlayServices();
       const response = await GoogleSignin.signIn();
