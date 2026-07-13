@@ -22,6 +22,7 @@ import {
 } from '@/lib/api';
 import { resolvePlaceQuery } from '@/lib/google-places';
 import { serializeRideItinerary, type RideItinerary } from '@/lib/ride-route';
+import { invalidateWalletCache } from '@/lib/wallet-overview';
 
 type RideConnectionState = 'disconnected' | 'connecting' | 'connected';
 type RideStatus =
@@ -71,10 +72,20 @@ export type RiderRideState = {
   cancelStage?: string;
 };
 
+export type RideChatMessage = {
+  id: string;
+  rideId: string;
+  senderId: string;
+  senderRole: 'RIDER' | 'DRIVER';
+  content: string;
+  createdAt: string;
+};
+
 type RideSessionContextValue = {
   isConfigured: boolean;
   connectionState: RideConnectionState;
   currentRide: RiderRideState | null;
+  chatMessages: RideChatMessage[];
   error: string | null;
   requestRide: (itinerary: RideItinerary) => Promise<void>;
   simulateMatchedRide: (input: {
@@ -86,6 +97,7 @@ type RideSessionContextValue = {
   }) => void;
   updateRideRoute: (itinerary: RideItinerary) => Promise<void>;
   cancelRide: (reason?: string) => Promise<void>;
+  sendChatMessage: (rideId: string, content: string) => Promise<void>;
   clearRide: () => void;
 };
 
@@ -118,6 +130,7 @@ const defaultContext: RideSessionContextValue = {
   isConfigured: false,
   connectionState: 'disconnected',
   currentRide: null,
+  chatMessages: [],
   error: null,
   requestRide: async () => {
     throw new Error('Ride session is unavailable.');
@@ -127,6 +140,9 @@ const defaultContext: RideSessionContextValue = {
     throw new Error('Ride session is unavailable.');
   },
   cancelRide: async () => {
+    throw new Error('Ride session is unavailable.');
+  },
+  sendChatMessage: async () => {
     throw new Error('Ride session is unavailable.');
   },
   clearRide: () => undefined,
@@ -248,6 +264,7 @@ export function RideSessionProvider({ children }: { children: ReactNode }) {
   const { getAccessToken, isReady, user } = useAuth();
   const [connectionState, setConnectionState] = useState<RideConnectionState>('disconnected');
   const [currentRide, setCurrentRide] = useState<RiderRideState | null>(null);
+  const [chatMessages, setChatMessages] = useState<RideChatMessage[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const socketRef = useRef<WebSocket | null>(null);
@@ -280,6 +297,7 @@ export function RideSessionProvider({ children }: { children: ReactNode }) {
   const clearRide = useCallback(() => {
     setError(null);
     setRideState(null);
+    setChatMessages([]);
   }, [setRideState]);
 
   const handleGatewayMessage = useCallback(
@@ -474,6 +492,59 @@ export function RideSessionProvider({ children }: { children: ReactNode }) {
 
       if (type === 'ride:driver_rejected') {
         setError('A driver skipped this request. Reassigning another nearby driver.');
+        return;
+      }
+
+      if (type === 'chat:message') {
+        const messageId = getString(payload.messageId);
+        const rideId = getString(payload.rideId);
+        const senderId = getString(payload.senderId);
+        const senderRole = getString(payload.senderRole) as 'RIDER' | 'DRIVER' | undefined;
+        const content = getString(payload.content);
+        const createdAt = getString(payload.createdAt);
+        if (!messageId || !rideId || !senderId || !senderRole || !content) return;
+
+        const msg: RideChatMessage = {
+          id: messageId,
+          rideId,
+          senderId,
+          senderRole,
+          content,
+          createdAt: createdAt ?? new Date().toISOString(),
+        };
+        setChatMessages((prev) => {
+          if (prev.some((m) => m.id === msg.id)) return prev;
+          return [...prev, msg];
+        });
+        return;
+      }
+
+      if (type === 'group-ride:driver-assigned') {
+        setError(null);
+        setRideState((previous) => {
+          if (!previous) {
+            return previous;
+          }
+
+          return {
+            ...previous,
+            status: 'matched',
+            driver: {
+              driverId: getString(payload.driverId) ?? previous.driver?.driverId ?? '',
+              driverName: getString(payload.driverName) ?? previous.driver?.driverName,
+              driverRating: getNumber(payload.driverRating) ?? previous.driver?.driverRating,
+              vehiclePlate: getString(payload.vehiclePlate) ?? previous.driver?.vehiclePlate,
+              vehicleModel: getString(payload.vehicleModel) ?? previous.driver?.vehicleModel,
+              etaSeconds: getNumber(payload.etaSeconds) ?? previous.driver?.etaSeconds,
+            },
+          };
+        });
+        return;
+      }
+
+      if (type === 'wallet:updated') {
+        invalidateWalletCache();
+        return;
       }
     },
     [setRideState],
@@ -751,6 +822,13 @@ export function RideSessionProvider({ children }: { children: ReactNode }) {
     [clearRide, sendEnvelope, user],
   );
 
+  const sendChatMessage = useCallback(
+    async (rideId: string, content: string): Promise<void> => {
+      await sendEnvelope('chat:send', { rideId, content });
+    },
+    [sendEnvelope],
+  );
+
   useEffect(() => {
     userRef.current = user;
   }, [user]);
@@ -791,20 +869,24 @@ export function RideSessionProvider({ children }: { children: ReactNode }) {
       isConfigured: isBackendConfigured(),
       connectionState,
       currentRide,
+      chatMessages,
       error,
       requestRide,
       simulateMatchedRide,
       updateRideRoute,
       cancelRide,
+      sendChatMessage,
       clearRide,
     }),
     [
       cancelRide,
+      chatMessages,
       clearRide,
       connectionState,
       currentRide,
       error,
       requestRide,
+      sendChatMessage,
       simulateMatchedRide,
       updateRideRoute,
     ],

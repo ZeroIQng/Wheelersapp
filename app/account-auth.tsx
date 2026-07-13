@@ -11,6 +11,13 @@ import { FlowHeader } from "@/components/flow-header";
 import { FloatingView, RevealView } from "@/components/motion";
 import { storeLocalAccessToken } from "@/lib/access-token";
 import {
+  appDisplayName,
+  isDriverApp,
+  isRoleAllowedInVariant,
+  publicEntryRoute,
+  targetAuthRole,
+} from "@/lib/app-variant";
+import {
   isBackendConfigured,
   signinWithUsernamePassword,
   signupWithUsernamePassword,
@@ -77,14 +84,26 @@ export default function AccountAuthScreen() {
         mode === "signup"
           ? await signupWithUsernamePassword({
               ...credentials,
-              role: "RIDER",
+              role: targetAuthRole,
             })
           : await signinWithUsernamePassword(credentials);
 
+      if (!isRoleAllowedInVariant(response.user.role)) {
+        throw new Error(
+          isDriverApp
+            ? "This account is for the rider app. Use a driver account to continue."
+            : "This account is for the driver app. Use a rider account to continue.",
+        );
+      }
+
+      const authenticatedRole =
+        response.user.role === "BOTH" ? targetAuthRole : response.user.role;
+
       await storeLocalAccessToken(response.accessToken);
 
-      const nextState = await persistAuthenticatedRole("RIDER", {
+      const nextState = await persistAuthenticatedRole(authenticatedRole, {
         phoneVerified:
+          authenticatedRole === "RIDER" &&
           typeof response.user.phone === "string" &&
           response.user.phone.length > 0,
       });
@@ -119,7 +138,7 @@ export default function AccountAuthScreen() {
               {mode === "signup" ? "Creating your account" : "Signing you in"}
             </AppText>
             <AppText variant="bodySmall" color={theme.colors.muted} style={styles.loadingText}>
-              Taking you to phone verification...
+              {isDriverApp ? "Taking you to your driver dashboard..." : "Taking you to phone verification..."}
             </AppText>
           </View>
         </RevealView>
@@ -143,10 +162,22 @@ export default function AccountAuthScreen() {
       <RevealView delay={40} from="down" style={styles.headerWrap}>
         <FlowHeader
           showBack
-          backHref="/role-selection"
-          overline="WHEELERS ACCOUNT"
-          title={mode === "signup" ? "Create your\naccount" : "Welcome\nback"}
-          subtitle="Use a username and password, then verify your WhatsApp number."
+          backHref={publicEntryRoute === "/role-selection" ? "/role-selection" : undefined}
+          overline={isDriverApp ? "WHEELERS DRIVER" : "WHEELERS ACCOUNT"}
+          title={
+            isDriverApp
+              ? mode === "signup"
+                ? "Create driver\naccount"
+                : "Driver\nsign in"
+              : mode === "signup"
+                ? "Create your\naccount"
+                : "Welcome\nback"
+          }
+          subtitle={
+            isDriverApp
+              ? `Use your ${appDisplayName} username and password.`
+              : "Use a username and password, then verify your WhatsApp number."
+          }
           progress={{ count: 5, active: 2 }}
         />
       </RevealView>
@@ -180,13 +211,13 @@ export default function AccountAuthScreen() {
 
           <View style={styles.fieldGroup}>
             <AppText variant="monoSmall" color={theme.colors.muted}>
-              NAME OR USERNAME
+              {isDriverApp ? "DRIVER USERNAME" : "NAME OR USERNAME"}
             </AppText>
             <TextInput
               autoCapitalize="none"
               autoCorrect={false}
               onChangeText={setUsername}
-              placeholder="Timilehin Olowu"
+              placeholder={isDriverApp ? "driver_username" : "Timilehin Olowu"}
               placeholderTextColor={theme.colors.mutedLight}
               selectionColor={theme.colors.orange}
               style={styles.textInput}

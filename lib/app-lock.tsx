@@ -22,6 +22,7 @@ import {
 
 import { AppButton } from "@/components/app-button";
 import { AppText } from "@/components/app-text";
+import { publicEntryRoute } from "@/lib/app-variant";
 import { clearStoredAuthState } from "@/lib/auth-state";
 import { theme } from "@/theme";
 
@@ -307,7 +308,7 @@ export function AppLockOverlay({
                 await clearPin();
                 await onForgotPin();
                 await clearStoredAuthState();
-                router.replace("/role-selection");
+                router.replace(publicEntryRoute);
               } finally {
                 setResetting(false);
               }

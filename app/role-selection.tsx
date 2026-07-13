@@ -1,4 +1,4 @@
-import { useRouter } from "expo-router";
+import { Redirect, useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 
@@ -11,6 +11,7 @@ import { FlowHeader } from "@/components/flow-header";
 import { FloatingView, PulseView, RevealView } from "@/components/motion";
 import { RoleMotionBadge } from "@/components/role-motion-badge";
 import { getAccessTokenWithRetry } from "@/lib/access-token";
+import { isDriverApp, publicEntryRoute } from "@/lib/app-variant";
 import {
   isBackendConfigured,
   getCurrentProfile,
@@ -75,6 +76,10 @@ export default function RoleSelectionScreen() {
       cancelled = true;
     };
   }, [getAccessToken, isReady, router, user]);
+
+  if (isDriverApp) {
+    return <Redirect href={publicEntryRoute} />;
+  }
 
   return <RoleSelectionScreenContent />;
 }

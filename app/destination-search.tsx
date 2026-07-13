@@ -528,6 +528,50 @@ export default function DestinationSearchScreen() {
     }
   };
 
+  // Eager prefetch: resolve geocodes + call getRideEstimate as soon as pickup & destination are set
+  useEffect(() => {
+    const pickup = pickupValue.trim();
+    const destination = destinationValue.trim();
+    if (!pickup || !destination || !isBackendConfigured()) return;
+
+    const requestId = ++estimateRequestRef.current;
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const accessToken = await getAccessTokenWithRetry(getAccessToken);
+        if (!accessToken || cancelled) return;
+
+        const [resolvedPickup, resolvedDest, ...resolvedStops] = await Promise.all([
+          resolvePlaceQuery(pickup),
+          resolvePlaceQuery(destination),
+          ...intermediateStops
+            .filter((s) => s.trim().length > 0)
+            .map((s) => resolvePlaceQuery(s)),
+        ]);
+
+        if (cancelled || estimateRequestRef.current !== requestId) return;
+
+        const response = await getRideEstimate({
+          accessToken,
+          pickup: resolvedPickup,
+          destination: resolvedDest,
+          stops: resolvedStops,
+        });
+
+        if (!cancelled && estimateRequestRef.current === requestId) {
+          setPrefetchedEstimate(response);
+        }
+      } catch {
+        // Non-blocking — ride-selection will fetch its own estimate
+      }
+    })();
+
+    return () => { cancelled = true; };
+  // Debounce: only re-trigger when the user settles on both fields
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pickupValue, destinationValue, intermediateStops.length]);
+
   const itinerary = useMemo<RideItinerary>(
     () => ({ pickup: pickupValue, stops: routeStops }),
     [pickupValue, routeStops],

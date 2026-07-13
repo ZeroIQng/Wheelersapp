@@ -18,6 +18,7 @@ import { AppScreen } from "@/components/app-screen";
 import { AppText } from "@/components/app-text";
 import { BlobShape, DiamondPair, StarBurst } from "@/components/decorative-shapes";
 import { getAccessTokenWithRetry } from "@/lib/access-token";
+import { publicEntryRoute, type VariantPublicRoute } from "@/lib/app-variant";
 import { useAuth } from "@/lib/auth";
 import {
   clearLogoutPending,
@@ -30,7 +31,7 @@ import { prefetchRiderHistory } from "@/lib/rider-history";
 import { prefetchWalletOverview } from "@/lib/wallet-overview";
 import { theme } from "@/theme";
 
-type SplashRoute = "/role-selection" | AuthenticatedRoute;
+type SplashRoute = VariantPublicRoute | AuthenticatedRoute;
 
 function prefetchHomeData(getAccessToken: () => Promise<string | null | undefined>) {
   void prefetchRiderHistory(getAccessToken);
@@ -57,7 +58,7 @@ export default function SplashScreen() {
       if (await readLogoutPending()) {
         await clearLogoutPending();
         if (!cancelled && !hasNavigated.current) {
-          navigate("/role-selection");
+          navigate(publicEntryRoute);
         }
         return;
       }
@@ -79,12 +80,12 @@ export default function SplashScreen() {
       if (cancelled || hasNavigated.current) return;
 
       if (!token) {
-        navigate("/role-selection");
+        navigate(publicEntryRoute);
         return;
       }
 
       // Have a token but no state — go to role selection to restore
-      navigate("/role-selection");
+      navigate(publicEntryRoute);
     })();
 
     return () => {
@@ -96,14 +97,14 @@ export default function SplashScreen() {
   useEffect(() => {
     const timer = setTimeout(() => {
       if (!hasNavigated.current) {
-        navigate("/role-selection");
+        navigate(publicEntryRoute);
       }
     }, 2000);
 
     return () => clearTimeout(timer);
   }, []);
 
-  return <SplashShell onContinue={() => navigate("/role-selection")} />;
+  return <SplashShell onContinue={() => navigate(publicEntryRoute)} />;
 }
 
 function SplashShell({ onContinue }: { onContinue: () => void }) {

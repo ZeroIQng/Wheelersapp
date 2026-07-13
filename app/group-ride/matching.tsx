@@ -2,7 +2,7 @@ import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import * as Haptics from "expo-haptics";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import Animated, {
   Easing,
@@ -18,8 +18,33 @@ import Animated, {
 
 import { AppScreen } from "@/components/app-screen";
 import { AppText } from "@/components/app-text";
-import { type GroupRideGenderPreference } from "@/lib/api";
+import {
+  cancelGroupRideMatchRequest,
+  createGroupRideMatchRequest,
+  getGroupRideMatchRequest,
+  type GroupRideGenderPreference,
+  type GroupRideMatchRequest,
+} from "@/lib/api";
+import { getAccessTokenWithRetry } from "@/lib/access-token";
+import { useAuth } from "@/lib/auth";
 import { theme } from "@/theme";
+
+function getStageForStatus(status: GroupRideMatchRequest["status"] | null): number {
+  if (!status) return 0;
+  switch (status) {
+    case "PENDING_FACE_UPLOAD":
+    case "READY_FOR_MATCH":
+      return 0;
+    case "MATCHING":
+      return 2;
+    case "GROUPED":
+      return 3;
+    case "BOOKED":
+      return 3;
+    default:
+      return 0;
+  }
+}
 
 const matchStages = [
   { heading: "Verifying rider", body: "Securing your request before matching starts." },
@@ -30,27 +55,28 @@ const matchStages = [
 
 export default function GroupRideMatchingScreen() {
   const router = useRouter();
+  const { getAccessToken } = useAuth();
   const params = useLocalSearchParams<{
     pickup?: string;
     destination?: string;
     genderPreference?: string;
+    requestId?: string;
   }>();
   const genderPreference = normalizeGenderPreference(params.genderPreference);
   const [stageIndex, setStageIndex] = useState(0);
+  const [requestId, setRequestId] = useState<string | null>(
+    typeof params.requestId === "string" ? params.requestId : null,
+  );
   const autoNavigatedRef = useRef(false);
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const creatingRef = useRef(false);
 
   // Pulse rings
   const ring1 = useSharedValue(0);
   const ring2 = useSharedValue(0);
   const ring3 = useSharedValue(0);
-
-  // Center dot pulse
   const centerScale = useSharedValue(1);
-
-  // Rotating radar sweep
   const rotation = useSharedValue(0);
-
-  // Floating dot positions
   const dot1Y = useSharedValue(0);
   const dot2Y = useSharedValue(0);
   const dot3Y = useSharedValue(0);
@@ -59,33 +85,22 @@ export default function GroupRideMatchingScreen() {
     const ringConfig = { duration: 2200, easing: Easing.out(Easing.cubic) };
 
     ring1.value = withRepeat(
-      withSequence(
-        withTiming(0, { duration: 0 }),
-        withTiming(1, ringConfig),
-      ),
+      withSequence(withTiming(0, { duration: 0 }), withTiming(1, ringConfig)),
       -1,
       false,
     );
-
     ring2.value = withDelay(
       600,
       withRepeat(
-        withSequence(
-          withTiming(0, { duration: 0 }),
-          withTiming(1, ringConfig),
-        ),
+        withSequence(withTiming(0, { duration: 0 }), withTiming(1, ringConfig)),
         -1,
         false,
       ),
     );
-
     ring3.value = withDelay(
       1200,
       withRepeat(
-        withSequence(
-          withTiming(0, { duration: 0 }),
-          withTiming(1, ringConfig),
-        ),
+        withSequence(withTiming(0, { duration: 0 }), withTiming(1, ringConfig)),
         -1,
         false,
       ),
@@ -130,49 +145,113 @@ export default function GroupRideMatchingScreen() {
     );
   }, [centerScale, dot1Y, dot2Y, dot3Y, ring1, ring2, ring3, rotation]);
 
-  // Cycle through match stages with haptic ticks
+  // Create match request on mount
   useEffect(() => {
-    const timer = setInterval(() => {
-      setStageIndex((current) => {
-        const next = current + 1;
-        if (next < matchStages.length) {
-          void Haptics.selectionAsync();
-          return next;
-        }
-        return current;
+    if (requestId || creatingRef.current) return;
+    creatingRef.current = true;
+
+    void (async () => {
+      try {
+        const accessToken = await getAccessTokenWithRetry(getAccessToken);
+        if (!accessToken) return;
+
+        const result = await createGroupRideMatchRequest({
+          accessToken,
+          pickup: {
+            lat: 0,
+            lng: 0,
+            address: params.pickup ?? "",
+          },
+          destination: {
+            lat: 0,
+            lng: 0,
+            address: params.destination ?? "",
+          },
+          genderPreference,
+          paymentMethod: "wallet_balance",
+        });
+
+        setRequestId(result.item.id);
+        setStageIndex(getStageForStatus(result.item.status));
+      } catch {
+        // If creation fails, stay on the screen — user can cancel
+      }
+    })();
+  }, [requestId, getAccessToken, params.pickup, params.destination, genderPreference]);
+
+  // Poll for status updates
+  const pollStatus = useCallback(async () => {
+    if (!requestId || autoNavigatedRef.current) return;
+
+    try {
+      const accessToken = await getAccessTokenWithRetry(getAccessToken);
+      if (!accessToken) return;
+
+      const result = await getGroupRideMatchRequest({
+        accessToken,
+        requestId,
       });
-    }, 2000);
 
-    return () => clearInterval(timer);
-  }, []);
+      const status = result.item.status;
+      setStageIndex(getStageForStatus(status));
 
-  // Auto-navigate to ride-selection after all stages complete
+      if (status === "GROUPED" || status === "BOOKED") {
+        if (autoNavigatedRef.current) return;
+        autoNavigatedRef.current = true;
+
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+        router.replace({
+          pathname: "/group-ride/ride-selection",
+          params: {
+            requestId,
+            pickup: params.pickup ?? "",
+            destination: params.destination ?? "",
+            genderPreference,
+          },
+        });
+      } else if (status === "EXPIRED" || status === "CANCELLED") {
+        if (autoNavigatedRef.current) return;
+        autoNavigatedRef.current = true;
+        router.replace("/rider");
+      }
+    } catch {
+      // Non-blocking — retry on next tick
+    }
+  }, [requestId, getAccessToken, params.pickup, params.destination, genderPreference, router]);
+
   useEffect(() => {
-    if (autoNavigatedRef.current) {
-      return;
+    if (!requestId) return;
+
+    // Initial poll
+    void pollStatus();
+
+    pollingRef.current = setInterval(pollStatus, 3000);
+    return () => {
+      if (pollingRef.current) clearInterval(pollingRef.current);
+    };
+  }, [requestId, pollStatus]);
+
+  const handleCancel = async () => {
+    if (pollingRef.current) clearInterval(pollingRef.current);
+
+    if (requestId) {
+      try {
+        const accessToken = await getAccessTokenWithRetry(getAccessToken);
+        if (accessToken) {
+          await cancelGroupRideMatchRequest({
+            accessToken,
+            requestId,
+            reason: "rider_cancelled",
+          });
+        }
+      } catch {
+        // Best-effort cancel
+      }
     }
 
-    const timer = setTimeout(() => {
-      if (autoNavigatedRef.current) {
-        return;
-      }
-      autoNavigatedRef.current = true;
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-
-      router.replace({
-        pathname: "/group-ride/ride-selection",
-        params: {
-          mock: "1",
-          pickup: params.pickup ?? "",
-          destination: params.destination ?? "",
-          genderPreference,
-        },
-      });
-    }, 8500);
-
-    return () => clearTimeout(timer);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    router.replace("/rider");
+  };
 
   const ring1Style = useAnimatedStyle(() => ({
     opacity: 1 - ring1.value,
@@ -284,7 +363,7 @@ export default function GroupRideMatchingScreen() {
       {/* Cancel */}
       <Pressable
         accessibilityRole="button"
-        onPress={() => router.replace("/rider")}
+        onPress={handleCancel}
         style={styles.cancelButton}
       >
         <AppText variant="bodyMedium" color={theme.colors.muted}>

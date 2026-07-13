@@ -1149,3 +1149,151 @@ export async function cancelGroupRideMatchRequest(input: {
     },
   );
 }
+
+// ─── Driver API ──────────────────────────────────────────────────
+
+export interface DriverStatsResponse {
+  driverId: string;
+  userId: string;
+  status: string;
+  kycStatus: string;
+  rating: number;
+  totalRides: number;
+  totalEarningsNgn: number;
+  vehicleMake: string | null;
+  vehicleModel: string | null;
+  vehiclePlate: string | null;
+  vehicleYear: number | null;
+  balanceNgn: number;
+  lockedNgn: number;
+}
+
+export interface DriverEarningItem {
+  id: string;
+  amountNgn: number;
+  referenceId: string;
+  createdAt: string;
+}
+
+export interface DriverEarningsResponse {
+  period: string;
+  totalEarningsNgn: number;
+  rideCount: number;
+  items: DriverEarningItem[];
+}
+
+export interface DriverHistoryRide {
+  id: string;
+  status: string;
+  pickupAddress: string;
+  destAddress: string;
+  fareEstimateNgn: number;
+  fareFinalNgn: number | null;
+  distanceKm: number | null;
+  durationSeconds: number | null;
+  matchedAt: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  cancelledAt: string | null;
+  cancelReason: string | null;
+  createdAt: string;
+}
+
+export interface DriverRideHistoryResponse {
+  items: DriverHistoryRide[];
+  nextCursor: string | null;
+}
+
+export async function getDriverStats(input: {
+  accessToken: string;
+}): Promise<DriverStatsResponse> {
+  return getJson<DriverStatsResponse>("/drivers/me/stats", {
+    accessToken: input.accessToken,
+    fallbackError: "Could not load driver stats.",
+  });
+}
+
+export async function getDriverEarnings(input: {
+  accessToken: string;
+  period?: "today" | "week" | "month";
+}): Promise<DriverEarningsResponse> {
+  const params = new URLSearchParams();
+  if (input.period) {
+    params.set("period", input.period);
+  }
+
+  const path =
+    params.size > 0
+      ? `/drivers/me/earnings?${params.toString()}`
+      : "/drivers/me/earnings";
+
+  return getJson<DriverEarningsResponse>(path, {
+    accessToken: input.accessToken,
+    fallbackError: "Could not load driver earnings.",
+  });
+}
+
+export async function getDriverRideHistory(input: {
+  accessToken: string;
+  limit?: number;
+  cursor?: string;
+}): Promise<DriverRideHistoryResponse> {
+  const params = new URLSearchParams();
+  if (input.limit) {
+    params.set("limit", String(input.limit));
+  }
+  if (input.cursor) {
+    params.set("cursor", input.cursor);
+  }
+
+  const path =
+    params.size > 0
+      ? `/drivers/me/rides/history?${params.toString()}`
+      : "/drivers/me/rides/history";
+
+  return getJson<DriverRideHistoryResponse>(path, {
+    accessToken: input.accessToken,
+    fallbackError: "Could not load driver ride history.",
+  });
+}
+
+// ── Chat ──────────────────────────────────────────────────────────
+
+export interface ChatMessageResponse {
+  id: string;
+  rideId: string;
+  senderId: string;
+  senderRole: "RIDER" | "DRIVER";
+  content: string;
+  createdAt: string;
+}
+
+export interface ChatMessagesResponse {
+  items: ChatMessageResponse[];
+  nextCursor: string | null;
+}
+
+export async function getRideChatMessages(input: {
+  accessToken: string;
+  rideId: string;
+  limit?: number;
+  cursor?: string;
+}): Promise<ChatMessagesResponse> {
+  const params = new URLSearchParams();
+  if (input.limit) {
+    params.set("limit", String(input.limit));
+  }
+  if (input.cursor) {
+    params.set("cursor", input.cursor);
+  }
+
+  const path =
+    params.size > 0
+      ? `/rides/${input.rideId}/messages?${params.toString()}`
+      : `/rides/${input.rideId}/messages`;
+
+  return getJson<ChatMessagesResponse>(path, {
+    accessToken: input.accessToken,
+    fallbackError: "Could not load chat messages.",
+  });
+}

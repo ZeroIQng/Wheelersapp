@@ -4,17 +4,26 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 import { AppButton } from '@/components/app-button';
 import { AppText } from '@/components/app-text';
 import { SectionHeader } from '@/components/SectionHeader';
-import { incomingRideRequest } from '@/data/mock';
 import { theme } from '@/theme';
 
+type RideRequestData = {
+  riderName: string;
+  distanceAwayKm: string;
+  estimatedFare: string;
+  rideDistanceKm: string;
+  expiresInSeconds: number;
+  pickupLabel: string;
+  destinationLabel: string;
+};
+
 type RideRequestSheetProps = {
-  request?: typeof incomingRideRequest;
+  request: RideRequestData;
   onAccept?: () => void;
   onDecline?: () => void;
 };
 
 export function RideRequestSheet({
-  request = incomingRideRequest,
+  request,
   onAccept,
   onDecline,
 }: RideRequestSheetProps) {
@@ -43,7 +52,7 @@ export function RideRequestSheet({
       </View>
       <View style={styles.actions}>
         <AppButton title="Decline" variant="ghost" onPress={onDecline} style={styles.actionGhost} />
-        <AppButton title="Accept ride ↗" onPress={onAccept} style={styles.actionPrimary} />
+        <AppButton title="Accept ride" onPress={onAccept} style={styles.actionPrimary} />
       </View>
     </Animated.View>
   );

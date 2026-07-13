@@ -1,8 +1,9 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   PanResponder,
   Pressable,
   ScrollView,
@@ -24,10 +25,13 @@ import { BackArrow } from "@/components/back-arrow";
 import { LiveMap } from "@/components/live-map";
 import { FloatingView } from "@/components/motion";
 import {
+  getGroupRideMatchRequest,
   type GroupRideGenderPreference,
   type GroupRideMatchRequest,
   type GroupRideMatchedRider,
 } from "@/lib/api";
+import { getAccessTokenWithRetry } from "@/lib/access-token";
+import { useAuth } from "@/lib/auth";
 import { theme } from "@/theme";
 
 function formatMinutes(value: number | null | undefined): string {
@@ -63,134 +67,62 @@ function getInitials(value: string): string {
     .join("");
 }
 
-function normalizeGenderPreference(
-  value: string | string[] | undefined,
-): GroupRideGenderPreference {
-  const raw = Array.isArray(value) ? value[0] : value;
-  if (raw === "women_only" || raw === "men_only" || raw === "any") {
-    return raw;
-  }
-
-  return "any";
-}
-
-function buildMockGroupRide(input: {
-  pickup?: string;
-  destination?: string;
-  genderPreference: GroupRideGenderPreference;
-}): {
-  request: GroupRideMatchRequest;
-  matchedRiders: GroupRideMatchedRider[];
-} {
-  const pickupAddress = input.pickup?.trim() || "Current pickup";
-  const destinationAddress = input.destination?.trim() || "Selected destination";
-  const createdAt = new Date().toISOString();
-
-  return {
-    request: {
-      id: "mock-group-ride",
-      userId: "mock-current-rider",
-      status: "BOOKED",
-      groupId: "mock-group",
-      matchedRideIds: ["mock-ride-ama", "mock-ride-tola", "mock-ride-ife"],
-      pickup: {
-        lat: 6.5244,
-        lng: 3.3792,
-        address: pickupAddress,
-      },
-      destination: {
-        lat: 6.4698,
-        lng: 3.5852,
-        address: destinationAddress,
-      },
-      stops: [
-        { lat: 6.5054, lng: 3.3941, address: "Lekki Phase 1 pickup" },
-        { lat: 6.4971, lng: 3.4632, address: "Oniru shared stop" },
-      ],
-      plannedDistanceKm: 18.6,
-      plannedDurationSeconds: 2100,
-      fareEstimateNgn: 4200,
-      genderPreference: input.genderPreference,
-      paymentMethod: "wallet_balance",
-      readyForMatchAt: createdAt,
-      matchingStartedAt: createdAt,
-      groupedAt: createdAt,
-      bookedAt: createdAt,
-      expiredAt: null,
-      cancelledAt: null,
-      cancelReason: null,
-      faceVerification: {
-        id: "mock-face-verification",
-        uploadStatus: "STORED",
-        mimeType: "image/jpeg",
-        sizeBytes: 248000,
-        capturedAt: createdAt,
-        storedAt: createdAt,
-        failedAt: null,
-        failureReason: null,
-      },
-      createdAt,
-      updatedAt: createdAt,
-    },
-    matchedRiders: [
-      {
-        rideId: "mock-ride-ama",
-        userId: "mock-user-ama",
-        name: "Ama Bello",
-        username: "ama",
-        photoUrl: null,
-        pickupAddress: "Lekki Phase 1 pickup",
-        destinationAddress,
-        status: "BOOKED",
-      },
-      {
-        rideId: "mock-ride-tola",
-        userId: "mock-user-tola",
-        name: "Tola James",
-        username: "tola",
-        photoUrl: null,
-        pickupAddress: "Oniru shared stop",
-        destinationAddress,
-        status: "BOOKED",
-      },
-      {
-        rideId: "mock-ride-ife",
-        userId: "mock-user-ife",
-        name: "Ife Okafor",
-        username: "ife",
-        photoUrl: null,
-        pickupAddress: pickupAddress,
-        destinationAddress,
-        status: "BOOKED",
-      },
-    ],
-  };
-}
-
 export default function GroupRideSelectionScreen() {
   const router = useRouter();
+  const { getAccessToken } = useAuth();
   const { height } = useWindowDimensions();
   const params = useLocalSearchParams<{
+    requestId?: string | string[];
     pickup?: string | string[];
     destination?: string | string[];
     genderPreference?: string | string[];
   }>();
-  const mockPickup = Array.isArray(params.pickup) ? params.pickup[0] : params.pickup;
-  const mockDestination = Array.isArray(params.destination)
-    ? params.destination[0]
-    : params.destination;
-  const mockGroupRide = useMemo(
-    () =>
-      buildMockGroupRide({
-        pickup: mockPickup,
-        destination: mockDestination,
-        genderPreference: normalizeGenderPreference(params.genderPreference),
-      }),
-    [mockDestination, mockPickup, params.genderPreference],
-  );
 
-  const displayRequest = mockGroupRide.request;
-  const displayMatchedRiders = mockGroupRide.matchedRiders;
+  const requestId = Array.isArray(params.requestId)
+    ? params.requestId[0]
+    : params.requestId;
+
+  const [loading, setLoading] = useState(true);
+  const [request, setRequest] = useState<GroupRideMatchRequest | null>(null);
+  const [matchedRiders, setMatchedRiders] = useState<GroupRideMatchedRider[]>([]);
+
+  // Fetch real group ride data
+  useEffect(() => {
+    if (!requestId) {
+      setLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const accessToken = await getAccessTokenWithRetry(getAccessToken);
+        if (!accessToken || cancelled) return;
+
+        const result = await getGroupRideMatchRequest({
+          accessToken,
+          requestId,
+        });
+
+        if (!cancelled) {
+          setRequest(result.item);
+          setMatchedRiders(result.matchedRiders);
+        }
+      } catch {
+        // Non-blocking — show whatever we have
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [requestId, getAccessToken]);
+
+  const displayRequest = request;
+  const displayMatchedRiders = matchedRiders;
 
   const SHEET_MIN_HEIGHT = Math.min(430, Math.max(340, Math.floor(height * 0.48)));
   const SHEET_MAX_HEIGHT = Math.min(Math.max(400, Math.floor(height * 0.66)), height - 76);
@@ -237,6 +169,37 @@ export default function GroupRideSelectionScreen() {
   const sheetAnimatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: sheetOffset.value }],
   }));
+
+  if (loading) {
+    return (
+      <AppScreen
+        backgroundColor={theme.colors.mapBase}
+        contentStyle={styles.loadingContainer}
+      >
+        <StatusBar style="dark" />
+        <ActivityIndicator size="large" color={theme.colors.orange} />
+        <AppText variant="bodyMedium" color={theme.colors.muted}>
+          Loading group ride...
+        </AppText>
+      </AppScreen>
+    );
+  }
+
+  if (!displayRequest) {
+    return (
+      <AppScreen
+        backgroundColor={theme.colors.offWhite}
+        contentStyle={styles.loadingContainer}
+      >
+        <StatusBar style="dark" />
+        <AppText variant="h3">Group ride not found</AppText>
+        <AppText variant="bodySmall" color={theme.colors.muted}>
+          The group ride request could not be loaded.
+        </AppText>
+        <AppButton title="Back to Home" onPress={() => router.replace("/rider")} />
+      </AppScreen>
+    );
+  }
 
   return (
     <AppScreen
@@ -426,6 +389,12 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 0,
     paddingBottom: 0,
+  },
+  loadingContainer: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: theme.spacing.md,
   },
   mapWrap: {
     flex: 1,

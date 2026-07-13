@@ -152,13 +152,13 @@ export const riderTripDetails = {
   progress: 0.45,
   etaMinutes: 12,
   distanceKmLeft: 6.4,
-  fare: '$1.85',
+  fare: 'NGN 2,960',
   pickup: 'Lekki Phase 1',
   destination: 'Victoria Island',
   metrics: [
     { id: 'eta', label: 'MIN LEFT', value: '12', accent: 'orange' },
     { id: 'distance', label: 'KM LEFT', value: '6.4' },
-    { id: 'fare', label: 'FARE', value: '$1.85' },
+    { id: 'fare', label: 'FARE', value: 'NGN 2,960' },
   ] satisfies MetricStat[],
 } as const;
 
@@ -170,7 +170,7 @@ export const driverDetails = {
   plate: 'ABJ-234KL',
   avatarColor: '#FF5C00',
   etaMinutes: 2,
-  fare: '$1.85',
+  fare: 'NGN 2,960',
   tripMinutes: 18,
 } as const;
 
@@ -192,35 +192,34 @@ export const riderProfileSnippets: RiderSnippet[] = [
 ];
 
 export const walletOverview = {
-  balance: '$1.95',
-  fiatApprox: '≈ ₦3,150',
+  balance: 'NGN 3,120',
   accountDetails: {
     bankName: 'WheelerPay MFB',
     accountNumber: '1023847561',
     accountName: 'Wheelers Rider',
   },
-  yieldToday: '+$0.42',
+  yieldToday: '+NGN 672',
   apy: '8.2%',
   recentTransactions: [
     {
       id: 'ride-lekki',
       title: 'Ride to Lekki',
       timestamp: 'Today, 2:14 PM',
-      amount: '-$1.85',
+      amount: '-NGN 2,960',
       direction: 'debit',
     },
     {
       id: 'deposit-ngn',
       title: 'NGN deposit',
       timestamp: 'Yesterday',
-      amount: '+$30.00',
+      amount: '+NGN 48,000',
       direction: 'credit',
     },
     {
       id: 'yield',
       title: 'Daily yield',
       timestamp: 'Yesterday, 11:59 PM',
-      amount: '+$0.42',
+      amount: '+NGN 672',
       direction: 'credit',
     },
   ] satisfies WalletTransaction[],
@@ -231,7 +230,7 @@ export const driverDashboardSummary = {
   statusLabel: 'ACTIVE',
   nearbyLabel: 'Looking for rides nearby...',
   metrics: [
-    { id: 'today', label: 'Today', value: '$12.40', accent: 'orange' },
+    { id: 'today', label: 'Today', value: 'NGN 19,840', accent: 'orange' },
     { id: 'rides', label: 'Rides', value: '7' },
     { id: 'rating', label: 'Rating', value: '4.9⭐' },
   ] satisfies MetricStat[],
@@ -241,7 +240,7 @@ export const incomingRideRequest = {
   riderId: riderProfileSnippets[0].id,
   riderName: riderProfileSnippets[0].name,
   distanceAwayKm: 2.1,
-  estimatedFare: '$3.20',
+  estimatedFare: 'NGN 5,120',
   rideDistanceKm: '8.4km',
   expiresInSeconds: 12,
   pickupLabel: 'Lekki Toll Gate',
@@ -253,7 +252,7 @@ export const driverNavigationDetails = {
   metrics: [
     { id: 'away', label: 'MIN AWAY', value: '3', accent: 'orange' },
     { id: 'distance', label: 'KM LEFT', value: '1.2' },
-    { id: 'fare', label: 'FARE', value: '$3.20' },
+    { id: 'fare', label: 'FARE', value: 'NGN 5,120' },
   ] satisfies MetricStat[],
   instruction: {
     icon: '↖',
@@ -274,7 +273,7 @@ export const driverActiveTripDetails = {
   metrics: [
     { id: 'time', label: 'MIN LEFT', value: '18', accent: 'orange' },
     { id: 'distance', label: 'KM LEFT', value: '14.2' },
-    { id: 'earnings', label: 'EARNING', value: '$3.20' },
+    { id: 'earnings', label: 'EARNING', value: 'NGN 5,120' },
   ] satisfies MetricStat[],
   instruction: {
     icon: '↗',
@@ -284,23 +283,22 @@ export const driverActiveTripDetails = {
 } as const;
 
 export const driverPayoutSummary = {
-  payout: '$3.11',
-  fiatApprox: '≈ ₦5,038',
-  grossFare: '$3.20',
-  platformFee: '-$0.09',
+  payout: 'NGN 4,976',
+  grossFare: 'NGN 5,120',
+  platformFee: '-NGN 15',
   platformFeeLabel: 'Platform fee (0.3%)',
-  finalPayout: '$3.11',
+  finalPayout: 'NGN 4,976',
 } as const;
 
 export const earningsSummary = {
   tabs: ['Today', 'Week', 'Month'],
   activeTab: 'Today',
-  total: '$12.40',
+  total: 'NGN 19,840',
   growth: '+18% vs yesterday',
   stats: [
     { id: 'rides', label: 'Rides', value: '7', accent: 'orange' },
-    { id: 'avg-fare', label: 'Avg fare', value: '$1.77' },
-    { id: 'fees-paid', label: 'Fees paid', value: '$0.04' },
+    { id: 'avg-fare', label: 'Avg fare', value: 'NGN 2,832' },
+    { id: 'fees-paid', label: 'Fees paid', value: 'NGN 64' },
   ] satisfies MetricStat[],
 } as const;
 
@@ -338,21 +336,21 @@ export const riderHomeHistory: RideHistoryEntry[] = [
     id: 'marina-lekki',
     title: 'Marina to Lekki Phase 1',
     meta: 'Today, 2:14 PM',
-    fare: '$1.85',
+    fare: 'NGN 2,960',
     icon: 'history',
   },
   {
     id: 'airport-pickup',
     title: 'Airport pickup',
     meta: 'Yesterday, 8:05 PM',
-    fare: '$3.40',
+    fare: 'NGN 5,440',
     icon: 'schedule',
   },
   {
     id: 'vi-dropoff',
     title: 'Victoria Island dropoff',
     meta: 'Yesterday, 1:23 PM',
-    fare: '$2.25',
+    fare: 'NGN 3,600',
     icon: 'directions-car',
   },
 ];
@@ -363,7 +361,7 @@ export const rideOptions = [
     emoji: '🛵',
     name: 'Economy',
     meta: '4 min · 2 seats',
-    price: '$1.20',
+    price: 'NGN 1,920',
     accent: false,
   },
   {
@@ -371,7 +369,7 @@ export const rideOptions = [
     emoji: '🚗',
     name: 'Comfort',
     meta: '2 min · 4 seats',
-    price: '$1.85',
+    price: 'NGN 2,960',
     accent: true,
   },
   {
@@ -379,7 +377,7 @@ export const rideOptions = [
     emoji: '🚌',
     name: 'XL / Bus',
     meta: '6 min · 6 seats',
-    price: '$2.40',
+    price: 'NGN 3,840',
     accent: false,
   },
 ];
@@ -431,7 +429,7 @@ export const notificationsFeed = {
       id: 'yield-credit',
       icon: '💰',
       title: 'Yield credited',
-      message: '+$0.42 added to your wallet balance.',
+      message: '+NGN 672 added to your wallet balance.',
       timestamp: '1 hr ago',
       unread: true,
       accent: 'green',
@@ -562,7 +560,7 @@ export const driverDocuments = {
 
 export const tokenPortfolio = {
   balance: '1,240 WHE',
-  fiatApprox: '≈ $18.60 USDT',
+  fiatApprox: '≈ NGN 29,760',
   stakedBalance: '840 WHE',
   apy: '12.4%',
   dailyEarnings: '+4.20',
@@ -595,12 +593,12 @@ export const referralProgram = {
   headline: 'Refer & Earn',
   supportingText: 'Invite friends. Both of you get rewarded.',
   rewards: [
-    { id: 'you', title: 'You get', value: '$2.00', icon: '🎁', accent: true },
-    { id: 'friend', title: 'They get', value: '$1.00', icon: '🤝', accent: false },
+    { id: 'you', title: 'You get', value: 'NGN 3,200', icon: '🎁', accent: true },
+    { id: 'friend', title: 'They get', value: 'NGN 1,600', icon: '🤝', accent: false },
   ],
   referralCode: 'WHE-CHINWE',
   successfulReferrals: 12,
-  totalEarned: '$24.00',
+  totalEarned: 'NGN 38,400',
 } as const;
 
 export const promoCodes = {
@@ -617,7 +615,7 @@ export const promoCodes = {
     {
       id: 'friend',
       title: 'FREE RIDE',
-      description: 'Up to $3.00',
+      description: 'Up to NGN 4,800',
       code: 'FRIEND',
       expiry: 'Expires in 14 days',
     },
@@ -794,30 +792,30 @@ export const mapScenes = {
 } as const satisfies Record<string, MapScene>;
 
 export const driverWalletOverview = {
-  availableBalance: '$42.80',
-  pendingPayouts: '$6.20',
-  lifetimeEarnings: '$318.40',
+  availableBalance: 'NGN 68,480',
+  pendingPayouts: 'NGN 9,920',
+  lifetimeEarnings: 'NGN 509,440',
   instantCashout: 'Available',
   activity: [
     {
       id: 'ride-payout',
       title: 'Ride payout',
       timestamp: 'Today, 5:40 PM',
-      amount: '+$3.11',
+      amount: '+NGN 4,976',
       direction: 'credit',
     },
     {
       id: 'cashout',
       title: 'Instant cashout',
       timestamp: 'Yesterday, 9:15 PM',
-      amount: '-$12.00',
+      amount: '-NGN 19,200',
       direction: 'debit',
     },
     {
       id: 'bonus',
       title: 'Driver bonus',
       timestamp: 'Yesterday',
-      amount: '+$4.50',
+      amount: '+NGN 7,200',
       direction: 'credit',
     },
   ] satisfies DriverWalletEntry[],
