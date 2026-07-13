@@ -4,9 +4,15 @@
   "version": "1.0.0",
   "scripts": {
     "start": "expo start",
+    "start:rider": "APP_VARIANT=rider EXPO_PUBLIC_APP_VARIANT=rider expo start",
+    "start:driver": "APP_VARIANT=driver EXPO_PUBLIC_APP_VARIANT=driver expo start",
     "reset-project": "node ./scripts/reset-project.js",
     "android": "expo run:android",
+    "android:rider": "APP_VARIANT=rider EXPO_PUBLIC_APP_VARIANT=rider expo run:android",
+    "android:driver": "APP_VARIANT=driver EXPO_PUBLIC_APP_VARIANT=driver expo run:android",
     "ios": "expo run:ios",
+    "ios:rider": "APP_VARIANT=rider EXPO_PUBLIC_APP_VARIANT=rider expo run:ios",
+    "ios:driver": "APP_VARIANT=driver EXPO_PUBLIC_APP_VARIANT=driver expo run:ios",
     "web": "expo start --web",
     "lint": "expo lint"
   },
@@ -41,6 +47,7 @@
     "expo-font": "~14.0.11",
     "expo-haptics": "~15.0.8",
     "expo-image": "~3.0.11",
+    "expo-image-picker": "~17.0.11",
     "expo-linear-gradient": "~15.0.8",
     "expo-linking": "~8.0.11",
     "expo-location": "~19.0.7",

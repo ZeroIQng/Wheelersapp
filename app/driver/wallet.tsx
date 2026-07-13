@@ -1,5 +1,6 @@
 import { Href, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { AppButton } from '@/components/app-button';
@@ -7,19 +8,48 @@ import { AppCard } from '@/components/app-card';
 import { AppScreen } from '@/components/app-screen';
 import { AppText } from '@/components/app-text';
 import { SectionHeader } from '@/components/SectionHeader';
-import { driverWalletOverview } from '@/data/mock';
+import { SkeletonCard, SkeletonLine } from '@/components/SkeletonLoader';
+import { useAuth } from '@/lib/auth';
+import { getAccessTokenWithRetry } from '@/lib/access-token';
+import { getWalletTransactions, type WalletTransaction } from '@/lib/api';
+import { useWalletOverview } from '@/lib/wallet-overview';
 import { theme } from '@/theme';
+
+function formatNgn(amount: number): string {
+  return `NGN ${Math.round(amount).toLocaleString('en-NG')}`;
+}
 
 export default function DriverWalletScreen() {
   const router = useRouter();
-  const dashboardRoute = '/driver/dashboard' as Href;
+  const { getAccessToken } = useAuth();
+  const { overview } = useWalletOverview();
+  const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
+  const [isLoadingTxns, setIsLoadingTxns] = useState(true);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const accessToken = await getAccessTokenWithRetry(getAccessToken);
+        if (!accessToken) return;
+        const data = await getWalletTransactions({ accessToken, limit: 10 });
+        setTransactions(data.items);
+      } catch {
+        // non-blocking
+      } finally {
+        setIsLoadingTxns(false);
+      }
+    })();
+  }, [getAccessToken]);
+
+  const balanceNgn = overview?.balanceNgn ?? 0;
+  const lockedNgn = overview?.lockedNgn ?? 0;
 
   return (
     <AppScreen backgroundColor={theme.colors.offWhite} scroll contentStyle={styles.container}>
       <StatusBar style="dark" backgroundColor={theme.colors.offWhite} />
       <SectionHeader
         actionLabel="Dashboard"
-        onActionPress={() => router.replace(dashboardRoute)}
+        onActionPress={() => router.replace('/driver/dashboard' as Href)}
         subtitle="Driver balance and payout activity"
         title="Wallet"
         titleVariant="h1"
@@ -30,52 +60,54 @@ export default function DriverWalletScreen() {
           Available balance
         </AppText>
         <AppText variant="display" color={theme.colors.offWhite}>
-          {driverWalletOverview.availableBalance}
+          {formatNgn(balanceNgn)}
         </AppText>
-        <AppText variant="bodySmall" color="#9C948D">
-          Instant cashout: {driverWalletOverview.instantCashout}
-        </AppText>
+        {lockedNgn > 0 && (
+          <AppText variant="bodySmall" color="#9C948D">
+            Locked: {formatNgn(lockedNgn)}
+          </AppText>
+        )}
       </AppCard>
 
-      <View style={styles.metricsRow}>
-        <AppCard backgroundColor={theme.colors.orangeLight} borderColor={theme.colors.orange} style={styles.metricCard}>
-          <AppText variant="monoLarge" color={theme.colors.orange}>
-            {driverWalletOverview.pendingPayouts}
-          </AppText>
-          <AppText variant="bodySmall" color={theme.colors.muted}>
-            Pending payouts
-          </AppText>
+      {isLoadingTxns && transactions.length === 0 ? (
+        <View style={styles.activityCard}>
+          <SkeletonLine width="45%" height={18} />
+          <SkeletonCard lines={2} style={{ marginTop: 12 }} />
+          <SkeletonCard lines={2} style={{ marginTop: 8 }} />
+          <SkeletonCard lines={2} style={{ marginTop: 8 }} />
+        </View>
+      ) : transactions.length > 0 ? (
+        <AppCard style={styles.activityCard}>
+          <AppText variant="h3">Recent wallet activity</AppText>
+          {transactions.map((entry, index) => {
+            const isCredit = entry.direction === 'CREDIT';
+            return (
+              <View
+                key={entry.id}
+                style={[styles.activityRow, index < transactions.length - 1 ? styles.divider : null]}>
+                <View style={styles.activityCopy}>
+                  <AppText variant="bodyMedium">{entry.type.replace(/_/g, ' ')}</AppText>
+                  <AppText variant="bodySmall" color={theme.colors.muted}>
+                    {new Date(entry.createdAt).toLocaleDateString('en-NG', {
+                      day: 'numeric',
+                      month: 'short',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </AppText>
+                </View>
+                <AppText
+                  variant="mono"
+                  color={isCredit ? theme.colors.green : theme.colors.danger}>
+                  {isCredit ? '+' : '-'}{formatNgn(Math.abs(entry.amountNgn))}
+                </AppText>
+              </View>
+            );
+          })}
         </AppCard>
-        <AppCard style={styles.metricCard}>
-          <AppText variant="monoLarge">{driverWalletOverview.lifetimeEarnings}</AppText>
-          <AppText variant="bodySmall" color={theme.colors.muted}>
-            Lifetime earnings
-          </AppText>
-        </AppCard>
-      </View>
+      ) : null}
 
-      <AppCard style={styles.activityCard}>
-        <AppText variant="h3">Recent wallet activity</AppText>
-        {driverWalletOverview.activity.map((entry, index) => (
-          <View
-            key={entry.id}
-            style={[styles.activityRow, index < driverWalletOverview.activity.length - 1 ? styles.divider : null]}>
-            <View style={styles.activityCopy}>
-              <AppText variant="bodyMedium">{entry.title}</AppText>
-              <AppText variant="bodySmall" color={theme.colors.muted}>
-                {entry.timestamp}
-              </AppText>
-            </View>
-            <AppText
-              variant="mono"
-              color={entry.direction === 'credit' ? theme.colors.green : theme.colors.danger}>
-              {entry.amount}
-            </AppText>
-          </View>
-        ))}
-      </AppCard>
-
-      <AppButton onPress={() => router.push('/driver/earnings' as Href)} title="View earnings ↗" />
+      <AppButton onPress={() => router.push('/driver/earnings' as Href)} title="View earnings" />
     </AppScreen>
   );
 }
@@ -87,16 +119,6 @@ const styles = StyleSheet.create({
   },
   balanceCard: {
     gap: theme.spacing.xxs,
-  },
-  metricsRow: {
-    flexDirection: 'row',
-    gap: theme.spacing.sm,
-  },
-  metricCard: {
-    flex: 1,
-    minHeight: 100,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   activityCard: {
     gap: theme.spacing.sm,

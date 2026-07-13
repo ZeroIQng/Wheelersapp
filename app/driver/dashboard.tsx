@@ -1,6 +1,6 @@
 import { Href, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { AppButton } from '@/components/app-button';
@@ -11,87 +11,153 @@ import { MapMock } from '@/components/MapMock';
 import { MetricCard } from '@/components/MetricCard';
 import { SectionHeader } from '@/components/SectionHeader';
 import { StatusPill } from '@/components/StatusPill';
-import { driverDashboardSummary, driverWalletOverview } from '@/data/mock';
+import { SkeletonCard, SkeletonLine, SkeletonMetricRow } from '@/components/SkeletonLoader';
+import { useAuth } from '@/lib/auth';
+import { getAccessTokenWithRetry } from '@/lib/access-token';
+import { getDriverStats, getDriverEarnings, type DriverStatsResponse } from '@/lib/api';
+import { useDriverSession } from '@/lib/driver-session';
 import { useAppLocation } from '@/lib/location';
 import { useAppNotifications } from '@/lib/notifications';
+import { useWalletOverview } from '@/lib/wallet-overview';
 import { theme } from '@/theme';
+
+function formatNgn(amount: number): string {
+  return `NGN ${Math.round(amount).toLocaleString('en-NG')}`;
+}
 
 export default function DriverDashboardScreen() {
   const router = useRouter();
+  const { getAccessToken } = useAuth();
+  const { session, goOnline, goOffline, connectionState } = useDriverSession();
+  const { overview } = useWalletOverview();
   const { permissionState, requestLocationAccess } = useAppLocation();
   const { permissionGranted, requestNotificationAccess } = useAppNotifications();
-  const requestRoute = '/driver/incoming-request' as Href;
-  const walletRoute = '/driver/wallet' as Href;
   const notificationPromptedRef = useRef(false);
 
-  useEffect(() => {
-    if (permissionState !== 'idle') {
-      return;
-    }
+  const [stats, setStats] = useState<DriverStatsResponse | null>(null);
+  const [todayEarnings, setTodayEarnings] = useState<number>(0);
+  const [isLoadingStats, setIsLoadingStats] = useState(true);
 
+  useEffect(() => {
+    if (permissionState !== 'idle') return;
     void requestLocationAccess();
   }, [permissionState, requestLocationAccess]);
 
   useEffect(() => {
-    if (notificationPromptedRef.current || permissionGranted) {
-      return;
-    }
-
+    if (notificationPromptedRef.current || permissionGranted) return;
     notificationPromptedRef.current = true;
     void requestNotificationAccess();
   }, [permissionGranted, requestNotificationAccess]);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const accessToken = await getAccessTokenWithRetry(getAccessToken);
+        if (!accessToken) return;
+        const [driverStats, earnings] = await Promise.all([
+          getDriverStats({ accessToken }),
+          getDriverEarnings({ accessToken, period: 'today' }),
+        ]);
+        setStats(driverStats);
+        setTodayEarnings(earnings.totalEarningsNgn);
+      } catch {
+        // stats will remain null — non-blocking
+      } finally {
+        setIsLoadingStats(false);
+      }
+    })();
+  }, [getAccessToken]);
+
+  useEffect(() => {
+    if (session.status === 'offered' && session.currentOffer) {
+      router.push('/driver/incoming-request' as Href);
+    }
+  }, [session.status, session.currentOffer, router]);
+
+  const isOnline = session.status !== 'offline';
+  const statusLabel = isOnline ? 'Online' : 'Offline';
+  const statusVariant = isOnline ? 'green' as const : 'outline' as const;
+  const balanceNgn = overview?.balanceNgn ?? stats?.balanceNgn ?? 0;
+
+  const handleToggleOnline = async () => {
+    if (isOnline) {
+      await goOffline();
+    } else {
+      await goOnline();
+    }
+  };
 
   return (
     <AppScreen backgroundColor={theme.colors.offWhite} scroll contentStyle={styles.container}>
       <StatusBar style="dark" backgroundColor={theme.colors.offWhite} />
       <View style={styles.topRow}>
-        <SectionHeader subtitle="Ready to pick up nearby riders" title="Online" />
-        <StatusPill label={driverDashboardSummary.statusLabel} variant="green" />
+        <SectionHeader
+          subtitle={isOnline ? 'Ready to pick up nearby riders' : 'Go online to start accepting rides'}
+          title={isOnline ? 'Online' : 'Offline'}
+        />
+        <StatusPill label={statusLabel} variant={statusVariant} />
       </View>
 
-      <View style={styles.metricsRow}>
-        {driverDashboardSummary.metrics.map((metric) => (
+      {isLoadingStats && !stats ? (
+        <SkeletonMetricRow count={3} />
+      ) : (
+        <View style={styles.metricsRow}>
           <MetricCard
-            accent={metric.accent}
-            backgroundColor={metric.id === 'today' ? theme.colors.orangeLight : theme.colors.white}
-            key={metric.id}
-            label={metric.label}
-            value={metric.value}
+            accent="orange"
+            backgroundColor={theme.colors.orangeLight}
+            label="Today"
+            value={formatNgn(todayEarnings)}
           />
-        ))}
-      </View>
+          <MetricCard
+            accent="black"
+            backgroundColor={theme.colors.white}
+            label="Rating"
+            value={stats ? stats.rating.toFixed(1) : '--'}
+          />
+          <MetricCard
+            accent="black"
+            backgroundColor={theme.colors.white}
+            label="Rides"
+            value={stats ? String(stats.totalRides) : '--'}
+          />
+        </View>
+      )}
 
-      <Pressable onPress={() => router.push(requestRoute)} style={styles.mapPressable}>
+      <Pressable style={styles.mapPressable}>
         <MapMock height={220} showPulse variant="driverDashboard" />
         <AppText variant="bodySmall" color={theme.colors.muted} style={styles.nearbyLabel}>
-          {driverDashboardSummary.nearbyLabel}
+          {isOnline ? 'Waiting for ride requests nearby...' : 'Go online to see ride requests'}
         </AppText>
       </Pressable>
 
-      <Pressable onPress={() => router.push(walletRoute)}>
+      <Pressable onPress={() => router.push('/driver/wallet' as Href)}>
         <AppCard backgroundColor={theme.colors.orangeLight} borderColor={theme.colors.orange} style={styles.walletCard}>
           <View style={styles.walletCopy}>
             <AppText variant="h3">Driver wallet</AppText>
             <AppText variant="bodySmall" color={theme.colors.muted}>
-              Balance, payouts, and recent transfers ↗
+              Balance, payouts, and recent transfers
             </AppText>
           </View>
           <AppText variant="monoLarge" color={theme.colors.orange}>
-            {driverWalletOverview.availableBalance}
+            {formatNgn(balanceNgn)}
           </AppText>
         </AppCard>
       </Pressable>
 
-      <AppButton title="Open incoming request ↗" onPress={() => router.push(requestRoute)} />
+      <AppButton
+        onPress={() => router.push('/driver/earnings' as Href)}
+        title="View earnings"
+        variant="ghost"
+      />
       <AppButton
         onPress={() => router.push('/driver/docs' as Href)}
-        title="Manage docs ↗"
+        title="Manage docs"
         variant="ghost"
       />
 
-      <Pressable style={styles.offlineButton}>
+      <Pressable style={[styles.toggleButton, isOnline && styles.toggleButtonOffline]} onPress={handleToggleOnline}>
         <AppText variant="label" color={theme.colors.offWhite}>
-          Go offline
+          {isOnline ? 'Go offline' : 'Go online'}
         </AppText>
       </Pressable>
     </AppScreen>
@@ -136,14 +202,18 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 2,
   },
-  offlineButton: {
+  toggleButton: {
     minHeight: 52,
     borderRadius: theme.radii.sm,
     borderWidth: theme.borders.thick,
-    borderColor: theme.colors.black,
-    backgroundColor: theme.colors.black,
+    borderColor: theme.colors.orange,
+    backgroundColor: theme.colors.orange,
     alignItems: 'center',
     justifyContent: 'center',
     ...theme.shadows.card,
+  },
+  toggleButtonOffline: {
+    borderColor: theme.colors.black,
+    backgroundColor: theme.colors.black,
   },
 });

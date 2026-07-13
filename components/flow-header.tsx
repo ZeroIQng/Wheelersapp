@@ -10,7 +10,7 @@ type FlowHeaderProps = {
   title: string;
   subtitle?: string;
   showBack?: boolean;
-  backHref?: '/role-selection' | '/phone-auth';
+  backHref?: string;
   align?: 'left' | 'center';
   progress?: {
     count: number;

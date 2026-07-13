@@ -1,8 +1,8 @@
-import { usePrivy } from "@privy-io/expo";
+import { MaterialIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useState } from "react";
-import { Alert, StyleSheet, TextInput, View } from "react-native";
+import { Alert, Modal, Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
 
 import { AppButton } from "@/components/app-button";
 import { AppScreen } from "@/components/app-screen";
@@ -10,50 +10,92 @@ import { AppText } from "@/components/app-text";
 import { CrossShape, RingStack } from "@/components/decorative-shapes";
 import { FlowHeader } from "@/components/flow-header";
 import { FloatingView, RevealView } from "@/components/motion";
+import { getAccessTokenWithRetry } from "@/lib/access-token";
+import { useAuth } from "@/lib/auth";
 import { sendPhoneOtp } from "@/lib/api";
 import {
   storePendingPhoneVerification,
   storePhoneEntryStep,
 } from "@/lib/auth-state";
-import { isPrivyConfigured } from "@/lib/privy";
+import { getDisplayErrorMessage } from "@/lib/errors";
 import { theme } from "@/theme";
 
-function toLocalPhoneDigits(phone: string): string {
-  const digits = phone.replace(/\D/g, "");
-  if (digits.startsWith("234") && digits.length > 3) {
-    return digits.slice(3);
+type CountryDialOption = {
+  code: string;
+  name: string;
+  flag: string;
+  dialCode: string;
+  example: string;
+};
+
+const COUNTRY_DIAL_OPTIONS: CountryDialOption[] = [
+  { code: "NG", name: "Nigeria", flag: "🇳🇬", dialCode: "+234", example: "801 234 5678" },
+  { code: "GH", name: "Ghana", flag: "🇬🇭", dialCode: "+233", example: "24 123 4567" },
+  { code: "KE", name: "Kenya", flag: "🇰🇪", dialCode: "+254", example: "712 345 678" },
+  { code: "ZA", name: "South Africa", flag: "🇿🇦", dialCode: "+27", example: "82 123 4567" },
+  { code: "UG", name: "Uganda", flag: "🇺🇬", dialCode: "+256", example: "701 234 567" },
+  { code: "TZ", name: "Tanzania", flag: "🇹🇿", dialCode: "+255", example: "712 345 678" },
+  { code: "RW", name: "Rwanda", flag: "🇷🇼", dialCode: "+250", example: "78 123 4567" },
+  { code: "CM", name: "Cameroon", flag: "🇨🇲", dialCode: "+237", example: "6 71 23 45 67" },
+  { code: "CI", name: "Cote d'Ivoire", flag: "🇨🇮", dialCode: "+225", example: "07 12 34 56 78" },
+  { code: "SN", name: "Senegal", flag: "🇸🇳", dialCode: "+221", example: "77 123 45 67" },
+  { code: "US", name: "United States", flag: "🇺🇸", dialCode: "+1", example: "415 555 2671" },
+  { code: "CA", name: "Canada", flag: "🇨🇦", dialCode: "+1", example: "416 555 2671" },
+  { code: "GB", name: "United Kingdom", flag: "🇬🇧", dialCode: "+44", example: "7123 456789" },
+  { code: "IE", name: "Ireland", flag: "🇮🇪", dialCode: "+353", example: "85 123 4567" },
+  { code: "FR", name: "France", flag: "🇫🇷", dialCode: "+33", example: "6 12 34 56 78" },
+  { code: "DE", name: "Germany", flag: "🇩🇪", dialCode: "+49", example: "151 23456789" },
+  { code: "NL", name: "Netherlands", flag: "🇳🇱", dialCode: "+31", example: "6 12345678" },
+  { code: "ES", name: "Spain", flag: "🇪🇸", dialCode: "+34", example: "612 345 678" },
+  { code: "IT", name: "Italy", flag: "🇮🇹", dialCode: "+39", example: "312 345 6789" },
+  { code: "AE", name: "United Arab Emirates", flag: "🇦🇪", dialCode: "+971", example: "50 123 4567" },
+  { code: "SA", name: "Saudi Arabia", flag: "🇸🇦", dialCode: "+966", example: "50 123 4567" },
+  { code: "IN", name: "India", flag: "🇮🇳", dialCode: "+91", example: "98765 43210" },
+  { code: "CN", name: "China", flag: "🇨🇳", dialCode: "+86", example: "131 2345 6789" },
+  { code: "BR", name: "Brazil", flag: "🇧🇷", dialCode: "+55", example: "11 91234 5678" },
+];
+
+const DEFAULT_COUNTRY = COUNTRY_DIAL_OPTIONS[0];
+
+function getDialDigits(country: CountryDialOption): string {
+  return country.dialCode.replace(/\D/g, "");
+}
+
+function toLocalPhoneDigits(phone: string, country: CountryDialOption): string {
+  let digits = phone.replace(/\D/g, "");
+  const dialDigits = getDialDigits(country);
+
+  if (digits.startsWith(`00${dialDigits}`)) {
+    digits = digits.slice(dialDigits.length + 2);
+  } else if (digits.startsWith(dialDigits) && digits.length > dialDigits.length) {
+    digits = digits.slice(dialDigits.length);
   }
 
-  if (digits.startsWith("0") && digits.length > 1) {
-    return digits.slice(1);
+  while (digits.startsWith("0") && digits.length > 1) {
+    digits = digits.slice(1);
   }
 
   return digits;
 }
 
-function toE164Phone(rawPhone: string): string {
-  const digits = rawPhone.replace(/\D/g, "");
-  const localDigits = toLocalPhoneDigits(digits);
+function toE164Phone(rawPhone: string, country: CountryDialOption): string {
+  const localDigits = toLocalPhoneDigits(rawPhone, country);
+  const normalizedPhone = `${country.dialCode}${localDigits}`;
+  const normalizedDigits = normalizedPhone.replace(/\D/g, "");
 
-  if (!/^\d{10}$/.test(localDigits)) {
-    throw new Error("Enter a valid Nigerian phone number.");
+  if (!localDigits || !/^\+[1-9]\d{7,14}$/.test(normalizedPhone)) {
+    throw new Error(`Enter a valid ${country.name} phone number.`);
   }
 
-  return `+234${localDigits}`;
+  return `+${normalizedDigits}`;
 }
 
 export default function PhoneAuthScreen() {
-  if (!isPrivyConfigured) {
-    return <PrivyUnavailableScreen />;
-  }
-
-  return <PrivyPhoneAuthScreen />;
-}
-
-function PrivyPhoneAuthScreen() {
   const router = useRouter();
-  const { getAccessToken, isReady } = usePrivy();
+  const { getAccessToken, isReady } = useAuth();
   const [phone, setPhone] = useState("");
+  const [selectedCountry, setSelectedCountry] = useState<CountryDialOption>(DEFAULT_COUNTRY);
+  const [isCountryPickerVisible, setCountryPickerVisible] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const backgroundColor = theme.colors.offWhite;
   const textColor = theme.colors.black;
@@ -72,13 +114,13 @@ function PrivyPhoneAuthScreen() {
     }
 
     if (!isReady) {
-      Alert.alert("Try again", "Privy is still initializing. Try again in a moment.");
+      Alert.alert("Try again", "Authentication is still initializing. Try again in a moment.");
       return;
     }
 
     let normalizedPhone: string;
     try {
-      normalizedPhone = toE164Phone(phone);
+      normalizedPhone = toE164Phone(phone, selectedCountry);
     } catch (error) {
       Alert.alert(
         "Invalid phone number",
@@ -87,9 +129,9 @@ function PrivyPhoneAuthScreen() {
       return;
     }
 
-    const accessToken = await getAccessToken();
+    const accessToken = await getAccessTokenWithRetry(getAccessToken);
     if (!accessToken) {
-      Alert.alert("Authentication required", "Could not get a Privy access token.");
+      Alert.alert("Authentication required", "Could not verify your session.");
       return;
     }
 
@@ -103,11 +145,10 @@ function PrivyPhoneAuthScreen() {
       await storePendingPhoneVerification(response.phone);
       router.replace("/otp-verify");
     } catch (error) {
+      const fallback = "Could not send the WhatsApp verification code.";
       Alert.alert(
         "Code send failed",
-        error instanceof Error
-          ? error.message
-          : "Could not send the WhatsApp verification code.",
+        getDisplayErrorMessage(error, fallback) ?? fallback,
       );
     } finally {
       setIsSending(false);
@@ -144,7 +185,10 @@ function PrivyPhoneAuthScreen() {
               { borderColor, backgroundColor: fieldBackground },
             ]}
           >
-            <View
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Select phone country code"
+              onPress={() => setCountryPickerVisible(true)}
               style={[
                 styles.prefix,
                 {
@@ -153,15 +197,16 @@ function PrivyPhoneAuthScreen() {
                 },
               ]}
             >
-              <AppText style={styles.flag}>🇳🇬</AppText>
-              <AppText variant="mono" color={textColor}>
-                +234
+              <AppText style={styles.flag}>{selectedCountry.flag}</AppText>
+              <AppText variant="mono" color={textColor} style={styles.dialCode}>
+                {selectedCountry.dialCode}
               </AppText>
-            </View>
+              <MaterialIcons name="keyboard-arrow-down" size={18} color={textColor} />
+            </Pressable>
             <TextInput
               keyboardType="number-pad"
               onChangeText={setPhone}
-              placeholder="801 234 5678"
+              placeholder={selectedCountry.example}
               selectionColor={theme.colors.orange}
               placeholderTextColor={mutedColor}
               style={[styles.input, { color: textColor }]}
@@ -188,29 +233,105 @@ function PrivyPhoneAuthScreen() {
           By continuing you agree to our Terms.
         </AppText>
       </RevealView>
-    </AppScreen>
-  );
-}
 
-function PrivyUnavailableScreen() {
-  const router = useRouter();
-
-  return (
-    <AppScreen
-      backgroundColor={theme.colors.offWhite}
-      contentStyle={styles.unavailableContainer}
-    >
-      <AppText variant="h3">Privy setup missing</AppText>
-      <AppText variant="bodySmall" color={theme.colors.muted}>
-        Add the Privy Expo env keys before opening phone verification.
-      </AppText>
-      <AppButton
-        title="Back to sign in"
-        onPress={() => router.replace("/role-selection")}
+      <CountryCodePickerModal
+        selectedCountry={selectedCountry}
+        visible={isCountryPickerVisible}
+        onClose={() => setCountryPickerVisible(false)}
+        onSelect={(country) => {
+          setSelectedCountry(country);
+          setCountryPickerVisible(false);
+        }}
       />
     </AppScreen>
   );
 }
+
+function CountryCodePickerModal({
+  selectedCountry,
+  visible,
+  onClose,
+  onSelect,
+}: {
+  selectedCountry: CountryDialOption;
+  visible: boolean;
+  onClose: () => void;
+  onSelect: (country: CountryDialOption) => void;
+}) {
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      onRequestClose={onClose}
+    >
+      <View style={styles.modalBackdrop}>
+        <Pressable style={styles.modalDismissArea} onPress={onClose} />
+        <View style={styles.countrySheet}>
+          <View style={styles.sheetHandle} />
+          <View style={styles.sheetHeader}>
+            <View>
+              <AppText variant="monoSmall" color={theme.colors.orange}>
+                COUNTRY CODE
+              </AppText>
+              <AppText variant="h3" color={theme.colors.black}>
+                Select your country
+              </AppText>
+            </View>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Close country selector"
+              onPress={onClose}
+              style={styles.sheetCloseButton}
+            >
+              <MaterialIcons name="close" size={18} color={theme.colors.black} />
+            </Pressable>
+          </View>
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.countryList}
+          >
+            {COUNTRY_DIAL_OPTIONS.map((country) => {
+              const isSelected = country.code === selectedCountry.code;
+              return (
+                <Pressable
+                  accessibilityRole="button"
+                  key={`${country.code}-${country.dialCode}`}
+                  onPress={() => onSelect(country)}
+                  style={[
+                    styles.countryOption,
+                    isSelected && styles.countryOptionSelected,
+                  ]}
+                >
+                  <View style={styles.countryOptionLeft}>
+                    <AppText style={styles.countryFlag}>{country.flag}</AppText>
+                    <View style={styles.countryCopy}>
+                      <AppText variant="label" color={theme.colors.black}>
+                        {country.name}
+                      </AppText>
+                      <AppText variant="bodySmall" color={theme.colors.muted}>
+                        {country.code}
+                      </AppText>
+                    </View>
+                  </View>
+                  <View style={styles.countryOptionRight}>
+                    <AppText variant="mono" color={theme.colors.black}>
+                      {country.dialCode}
+                    </AppText>
+                    {isSelected ? (
+                      <MaterialIcons name="check" size={18} color={theme.colors.orange} />
+                    ) : null}
+                  </View>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 
 const styles = StyleSheet.create({
   container: {
@@ -244,9 +365,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.spacing.md,
     paddingVertical: theme.spacing.md,
     borderRightWidth: theme.borders.thick,
+    minWidth: 118,
   },
   flag: {
     fontSize: 15,
+  },
+  dialCode: {
+    minWidth: 34,
   },
   input: {
     flex: 1,
@@ -265,5 +390,92 @@ const styles = StyleSheet.create({
   },
   terms: {
     textAlign: "center",
+  },
+  modalBackdrop: {
+    flex: 1,
+    justifyContent: "flex-end",
+    backgroundColor: "rgba(13,13,13,0.42)",
+  },
+  modalDismissArea: {
+    flex: 1,
+  },
+  countrySheet: {
+    maxHeight: "76%",
+    backgroundColor: theme.colors.offWhite,
+    borderTopLeftRadius: theme.radius.lg,
+    borderTopRightRadius: theme.radius.lg,
+    borderTopWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    paddingHorizontal: theme.spacing.lg,
+    paddingTop: theme.spacing.md,
+    paddingBottom: theme.spacing.xl,
+  },
+  sheetHandle: {
+    alignSelf: "center",
+    width: 42,
+    height: 5,
+    borderRadius: theme.radius.pill,
+    backgroundColor: theme.colors.borderLight,
+    marginBottom: theme.spacing.md,
+  },
+  sheetHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: theme.spacing.md,
+    marginBottom: theme.spacing.md,
+  },
+  sheetCloseButton: {
+    width: 36,
+    height: 36,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: theme.radius.sm,
+    borderWidth: theme.borders.regular,
+    borderColor: theme.colors.black,
+    backgroundColor: theme.colors.white,
+  },
+  countryList: {
+    gap: theme.spacing.sm,
+    paddingBottom: theme.spacing.sm,
+  },
+  countryOption: {
+    minHeight: 58,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: theme.spacing.md,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.sm,
+    borderRadius: theme.radius.sm,
+    borderWidth: theme.borders.regular,
+    borderColor: theme.colors.borderLight,
+    backgroundColor: theme.colors.white,
+  },
+  countryOptionSelected: {
+    borderColor: theme.colors.orange,
+    backgroundColor: theme.colors.orangeLight,
+  },
+  countryOptionLeft: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing.md,
+  },
+  countryFlag: {
+    width: 28,
+    fontSize: 20,
+  },
+  countryCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  countryOptionRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: theme.spacing.sm,
+    minWidth: 78,
   },
 });

@@ -11,13 +11,13 @@ import { StatusPill } from "@/components/StatusPill";
 import { driverDetails } from "@/data/mock";
 import { theme } from "@/theme";
 
-const tips = ["$0.50", "$1.00", "$2.00", "Skip"];
+const tips = ["NGN 100", "NGN 200", "NGN 500", "Skip"];
 
 export default function TripRatingScreen() {
   const router = useRouter();
   const walletRoute = "/rider/wallet" as Href;
   const [rating, setRating] = useState(4);
-  const [tip, setTip] = useState("$1.00");
+  const [tip, setTip] = useState("NGN 200");
 
   return (
     <AppScreen

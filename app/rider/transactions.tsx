@@ -8,6 +8,7 @@ import { AppScreen } from "@/components/app-screen";
 import { AppText } from "@/components/app-text";
 import { BackArrow } from "@/components/back-arrow";
 import { SectionHeader } from "@/components/SectionHeader";
+import { SkeletonCard } from "@/components/SkeletonLoader";
 import { useWalletTransactions } from "@/lib/wallet-transactions";
 import { type WalletTransaction } from "@/lib/api";
 import { theme } from "@/theme";
@@ -86,7 +87,7 @@ function getTransactionAmountColor(transaction: WalletTransaction): string {
 
 function getTransactionSignedAmount(transaction: WalletTransaction): string {
   const prefix = transaction.direction === "CREDIT" ? "+" : "-";
-  return `${prefix}${formatAmount(transaction.displayCurrency, transaction.amountNgn)}`;
+  return `${prefix}${formatAmount("NGN", transaction.amountNgn)}`;
 }
 
 function getTransactionMeta(transaction: WalletTransaction): string {
@@ -139,9 +140,12 @@ export default function RiderTransactionsScreen() {
 
       <View style={styles.list}>
         {isLoading && items.length === 0 ? (
-          <AppText variant="bodySmall" color={theme.colors.muted}>
-            Loading wallet transactions...
-          </AppText>
+          <>
+            <SkeletonCard lines={3} />
+            <SkeletonCard lines={3} />
+            <SkeletonCard lines={3} />
+            <SkeletonCard lines={3} />
+          </>
         ) : null}
 
         {displayError ? (
@@ -177,7 +181,7 @@ export default function RiderTransactionsScreen() {
                 {getTransactionSignedAmount(transaction)}
               </AppText>
               <AppText variant="bodySmall" color={theme.colors.muted}>
-                Balance {formatAmount(transaction.displayCurrency, transaction.balanceAfterNgn)}
+                Balance {formatAmount("NGN", transaction.balanceAfterNgn)}
               </AppText>
             </View>
           </AppCard>

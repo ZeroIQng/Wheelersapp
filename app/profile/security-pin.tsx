@@ -1,4 +1,4 @@
-import { usePrivy } from "@privy-io/expo";
+import { useAuth } from "@/lib/auth";
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useState } from "react";
@@ -16,7 +16,7 @@ import { theme } from "@/theme";
 
 export default function SecurityPinScreen() {
   const router = useRouter();
-  const { logout } = usePrivy();
+  const { logout } = useAuth();
   const { hasPin, appLockEnabled, createPin, changePin, clearPin, setAppLockEnabled } =
     useAppLock();
   const [pin, setPin] = useState("");

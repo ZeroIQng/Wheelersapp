@@ -1,4 +1,3 @@
-import { usePrivy, type User } from "@privy-io/expo";
 import { useRouter } from "expo-router";
 import { useEffect, useRef } from "react";
 import { StatusBar } from "expo-status-bar";
@@ -19,215 +18,93 @@ import { AppScreen } from "@/components/app-screen";
 import { AppText } from "@/components/app-text";
 import { BlobShape, DiamondPair, StarBurst } from "@/components/decorative-shapes";
 import { getAccessTokenWithRetry } from "@/lib/access-token";
-import { isBackendConfigured, syncPrivyAuth } from "@/lib/api";
+import { publicEntryRoute, type VariantPublicRoute } from "@/lib/app-variant";
+import { useAuth } from "@/lib/auth";
 import {
   clearLogoutPending,
-  clearStoredAuthState,
   getAuthenticatedRoute,
-  persistAuthenticatedRole,
   readLogoutPending,
   readStoredAuthState,
   type AuthenticatedRoute,
 } from "@/lib/auth-state";
-import { isPrivyConfigured } from "@/lib/privy";
-import {
-  getPrivyEmail,
-  getPrivyEthereumWalletAddress,
-  getPrivyName,
-} from "@/lib/privy-user";
 import { prefetchRiderHistory } from "@/lib/rider-history";
 import { prefetchWalletOverview } from "@/lib/wallet-overview";
 import { theme } from "@/theme";
 
-type SplashRoute = "/role-selection" | AuthenticatedRoute;
-type AccessTokenGetter = () => Promise<string | null | undefined>;
+type SplashRoute = VariantPublicRoute | AuthenticatedRoute;
 
-const SESSION_RESTORE_GRACE_MS = 800;
-
-function prefetchHomeData(getAccessToken: AccessTokenGetter) {
+function prefetchHomeData(getAccessToken: () => Promise<string | null | undefined>) {
   void prefetchRiderHistory(getAccessToken);
   void prefetchWalletOverview(getAccessToken);
 }
 
-async function resolvePrivyDestination({
-  user,
-  getAccessToken,
-}: {
-  user: User;
-  getAccessToken: AccessTokenGetter;
-}): Promise<SplashRoute> {
-  if (await readLogoutPending()) {
-    return "/role-selection";
-  }
-
-  const storedAuthState = await readStoredAuthState();
-  if (storedAuthState) {
-    const route = getAuthenticatedRoute(storedAuthState);
-    if (route === "/rider") {
-      prefetchHomeData(getAccessToken);
-    }
-    return route;
-  }
-
-  if (!isBackendConfigured()) {
-    return "/role-selection";
-  }
-
-  const accessToken = await getAccessTokenWithRetry(getAccessToken);
-  if (!accessToken) {
-    return "/role-selection";
-  }
-
-  try {
-    const response = await syncPrivyAuth({
-      accessToken,
-      authMethod: "google",
-      email: getPrivyEmail(user),
-      name: getPrivyName(user),
-      walletAddress: getPrivyEthereumWalletAddress(user),
-    });
-    const nextState = await persistAuthenticatedRole(
-      response.user.role === "DRIVER" ? "DRIVER" : "RIDER",
-      {
-        phoneVerified:
-          response.user.role !== "DRIVER" &&
-          typeof response.user.phone === "string" &&
-          response.user.phone.length > 0,
-      },
-    );
-    const route = getAuthenticatedRoute(nextState);
-    if (route === "/rider") {
-      prefetchHomeData(getAccessToken);
-    }
-    return route;
-  } catch {
-    return "/role-selection";
-  }
-}
-
 export default function SplashScreen() {
-  if (!isPrivyConfigured) {
-    return <GuestSplashScreen />;
-  }
-
-  return <PrivyAwareSplashScreen />;
-}
-
-function GuestSplashScreen() {
   const router = useRouter();
+  const { getAccessToken, isReady } = useAuth();
   const hasNavigated = useRef(false);
 
   function navigate(href: SplashRoute) {
-    if (hasNavigated.current) {
-      return;
-    }
-
+    if (hasNavigated.current) return;
     hasNavigated.current = true;
     router.replace(href);
   }
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      if (hasNavigated.current) {
-        return;
-      }
-
-      hasNavigated.current = true;
-      router.replace("/role-selection");
-    }, 900);
-
-    return () => clearTimeout(timer);
-  }, [router]);
-
-  return <SplashShell onContinue={() => navigate("/role-selection")} />;
-}
-
-function PrivyAwareSplashScreen() {
-  const router = useRouter();
-  const { getAccessToken, isReady, user } = usePrivy();
-  const hasNavigated = useRef(false);
-
-  function navigate(href: SplashRoute) {
-    if (hasNavigated.current) {
-      return;
-    }
-
-    hasNavigated.current = true;
-    router.replace(href);
-  }
-
-  useEffect(() => {
-    if (!isReady || hasNavigated.current) {
-      return;
-    }
+    if (!isReady || hasNavigated.current) return;
 
     let cancelled = false;
 
-    if (!user) {
-      const timer = setTimeout(() => {
-        if (cancelled || hasNavigated.current) {
-          return;
-        }
-
-        void (async () => {
-          await clearLogoutPending();
-          await clearStoredAuthState();
-
-          if (cancelled || hasNavigated.current) {
-            return;
-          }
-
-          hasNavigated.current = true;
-          router.replace("/role-selection");
-        })();
-      }, SESSION_RESTORE_GRACE_MS);
-
-      return () => {
-        cancelled = true;
-        clearTimeout(timer);
-      };
-    }
-
     void (async () => {
-      const destination = await resolvePrivyDestination({
-        user,
-        getAccessToken,
-      });
-
-      if (cancelled || hasNavigated.current) {
+      if (await readLogoutPending()) {
+        await clearLogoutPending();
+        if (!cancelled && !hasNavigated.current) {
+          navigate(publicEntryRoute);
+        }
         return;
       }
 
-      hasNavigated.current = true;
-      router.replace(destination);
+      const storedAuthState = await readStoredAuthState();
+      if (cancelled || hasNavigated.current) return;
+
+      if (storedAuthState) {
+        const route = getAuthenticatedRoute(storedAuthState);
+        if (route === "/rider") {
+          prefetchHomeData(getAccessToken);
+        }
+        navigate(route);
+        return;
+      }
+
+      // No stored state — check if we have a valid token
+      const token = await getAccessToken();
+      if (cancelled || hasNavigated.current) return;
+
+      if (!token) {
+        navigate(publicEntryRoute);
+        return;
+      }
+
+      // Have a token but no state — go to role selection to restore
+      navigate(publicEntryRoute);
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [getAccessToken, isReady, router, user]);
+  }, [getAccessToken, isReady, router]);
 
-  function handleContinue() {
-    if (!isReady || hasNavigated.current) {
-      return;
-    }
+  // Fallback timer in case auth check takes too long
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (!hasNavigated.current) {
+        navigate(publicEntryRoute);
+      }
+    }, 2000);
 
-    if (!user) {
-      navigate("/role-selection");
-      return;
-    }
+    return () => clearTimeout(timer);
+  }, []);
 
-    void (async () => {
-      navigate(
-        await resolvePrivyDestination({
-          user,
-          getAccessToken,
-        }),
-      );
-    })();
-  }
-
-  return <SplashShell onContinue={handleContinue} />;
+  return <SplashShell onContinue={() => navigate(publicEntryRoute)} />;
 }
 
 function SplashShell({ onContinue }: { onContinue: () => void }) {

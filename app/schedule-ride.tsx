@@ -1,6 +1,6 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { LinearGradient } from "expo-linear-gradient";
-import { usePrivy } from "@privy-io/expo";
+import { useAuth } from "@/lib/auth";
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -675,7 +675,7 @@ function RouteSummaryRow({
 
 export default function ScheduleRideScreen() {
   const router = useRouter();
-  const { getAccessToken, isReady, user } = usePrivy();
+  const { getAccessToken, isReady, user } = useAuth();
 
   const formScrollRef = useRef<ScrollView>(null);
   const searchInputRef = useRef<TextInput>(null);

@@ -8,13 +8,33 @@ import { AppScreen } from '@/components/app-screen';
 import { AppText } from '@/components/app-text';
 import { FloatingView } from '@/components/motion';
 import { SectionHeader } from '@/components/SectionHeader';
-import { driverPayoutSummary } from '@/data/mock';
+import { useDriverSession } from '@/lib/driver-session';
 import { theme } from '@/theme';
+
+const PLATFORM_FEE_RATE = 0.003; // 0.3%
+
+function formatNgn(amount: number): string {
+  return `NGN ${Math.round(amount).toLocaleString('en-NG')}`;
+}
 
 export default function DriverPayoutScreen() {
   const router = useRouter();
-  const earningsRoute = '/driver/earnings' as Href;
-  const dashboardRoute = '/driver/dashboard' as Href;
+  const { session, goOffline, clearCompleted } = useDriverSession();
+  const ride = session.currentRide;
+
+  const grossFare = ride?.completedFareNgn ?? ride?.fareNgn ?? 0;
+  const platformFee = Math.round(grossFare * PLATFORM_FEE_RATE);
+  const finalPayout = grossFare - platformFee;
+
+  const handleNextRide = () => {
+    clearCompleted();
+    router.replace('/driver/dashboard' as Href);
+  };
+
+  const handleGoOffline = async () => {
+    await goOffline();
+    router.replace('/driver/dashboard' as Href);
+  };
 
   return (
     <AppScreen backgroundColor={theme.colors.offWhite} contentStyle={styles.container}>
@@ -25,8 +45,7 @@ export default function DriverPayoutScreen() {
 
       <SectionHeader
         actionLabel="View earnings"
-        onActionPress={() => router.push(earningsRoute)}
-        subtitle={driverPayoutSummary.fiatApprox}
+        onActionPress={() => router.push('/driver/earnings' as Href)}
         title="Ride complete"
       />
 
@@ -35,27 +54,33 @@ export default function DriverPayoutScreen() {
           YOU EARNED
         </AppText>
         <AppText variant="display" color={theme.colors.orange} style={styles.amount}>
-          {driverPayoutSummary.payout}
+          {formatNgn(finalPayout)}
         </AppText>
       </View>
 
       <AppCard style={styles.summaryCard}>
-        <SummaryRow label="Gross fare" value={driverPayoutSummary.grossFare} />
+        <SummaryRow label="Gross fare" value={formatNgn(grossFare)} />
         <SummaryRow
           color={theme.colors.danger}
-          label={driverPayoutSummary.platformFeeLabel}
-          value={driverPayoutSummary.platformFee}
+          label={`Platform fee (${(PLATFORM_FEE_RATE * 100).toFixed(1)}%)`}
+          value={`-${formatNgn(platformFee)}`}
         />
+        {ride?.distanceKm != null && (
+          <SummaryRow label="Distance" value={`${ride.distanceKm.toFixed(1)} km`} />
+        )}
+        {ride?.durationSeconds != null && (
+          <SummaryRow label="Duration" value={`${Math.ceil(ride.durationSeconds / 60)} min`} />
+        )}
         <View style={styles.totalRow}>
           <AppText variant="bodyMedium">You receive</AppText>
           <AppText variant="monoLarge" color={theme.colors.orange}>
-            {driverPayoutSummary.finalPayout}
+            {formatNgn(finalPayout)}
           </AppText>
         </View>
       </AppCard>
 
-      <AppButton title="Next ride ↗" onPress={() => router.replace(dashboardRoute)} />
-      <Pressable style={styles.offlineButton}>
+      <AppButton title="Next ride" onPress={handleNextRide} />
+      <Pressable style={styles.offlineButton} onPress={handleGoOffline}>
         <AppText variant="label" color={theme.colors.offWhite}>
           Go offline
         </AppText>

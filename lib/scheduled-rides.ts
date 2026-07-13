@@ -1,4 +1,4 @@
-import { usePrivy } from "@privy-io/expo";
+import { useAuth } from "@/lib/auth";
 import { useCallback, useEffect, useState } from "react";
 
 import { getAccessTokenWithRetry } from "@/lib/access-token";
@@ -50,8 +50,6 @@ function formatScheduledWhen(value: string): string {
 function formatFare(ride: ScheduledRide): string {
   return typeof ride.fareEstimateNgn === "number"
     ? `NGN ${Math.round(ride.fareEstimateNgn).toLocaleString("en-NG")}`
-    : typeof ride.fareEstimateUsdt === "number"
-      ? `${ride.fareEstimateUsdt.toFixed(2)} USDT`
     : "Fare pending";
 }
 
@@ -90,7 +88,7 @@ export function useScheduledRides(limit = 20): {
   refresh: () => Promise<void>;
   cancelItem: (scheduledRideId: string, reason?: string) => Promise<void>;
 } {
-  const { getAccessToken, isReady, user } = usePrivy();
+  const { getAccessToken, isReady, user } = useAuth();
   const [rawItems, setRawItems] = useState<ScheduledRide[]>([]);
   const [items, setItems] = useState<ScheduledRideListItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);

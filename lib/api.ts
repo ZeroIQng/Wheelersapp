@@ -69,8 +69,6 @@ export type BackendRole = "RIDER" | "DRIVER" | "BOTH";
 
 export interface BackendUser {
   id: string;
-  privyDid: string;
-  walletAddress: string | null;
   username: string | null;
   email: string | null;
   role: BackendRole;
@@ -78,18 +76,10 @@ export interface BackendUser {
   phone: string | null;
 }
 
-interface SyncPrivyAuthInput {
+interface UsernamePasswordAuthResponse {
+  created?: boolean;
   accessToken: string;
-  role?: BackendRole;
-  authMethod?: "email" | "google" | "apple" | "wallet";
-  email?: string;
-  name?: string;
-  phone?: string;
-  walletAddress?: string;
-}
-
-interface SyncPrivyAuthResponse {
-  created: boolean;
+  tokenType: "Bearer";
   user: BackendUser;
 }
 
@@ -177,8 +167,7 @@ export interface RideRouteSnapshot {
 export interface RideEstimateResponse {
   plannedDistanceKm: number;
   plannedDurationSeconds: number;
-  fareEstimateUsdt: number;
-  fareEstimateNgn?: number;
+  fareEstimateNgn: number;
   pickup?: RideEstimateWaypoint;
   destination?: RideEstimateWaypoint;
   stops?: RideEstimateWaypoint[];
@@ -216,10 +205,8 @@ export interface RiderHistoryRide {
   status: "COMPLETED" | "CANCELLED";
   pickupAddress: string;
   destAddress: string;
-  fareEstimateUsdt: number | null;
-  fareEstimateNgn?: number | null;
-  fareFinalUsdt: number | null;
-  fareFinalNgn?: number | null;
+  fareEstimateNgn: number | null;
+  fareFinalNgn: number | null;
   distanceKm: number | null;
   durationSeconds: number | null;
   cancelReason: string | null;
@@ -240,13 +227,12 @@ export interface ScheduledRide {
   id: string;
   status: "SCHEDULED" | "DISPATCHING" | "DISPATCHED" | "CANCELLED" | "EXPIRED";
   scheduledFor: string;
-  paymentMethod: "wallet_balance" | "smart_account";
+  paymentMethod: "wallet_balance";
   pickupAddress: string;
   destAddress: string;
   plannedDistanceKm: number | null;
   plannedDurationSeconds: number | null;
-  fareEstimateUsdt: number | null;
-  fareEstimateNgn?: number | null;
+  fareEstimateNgn: number | null;
   requestedRideId: string | null;
   createdAt: string;
 }
@@ -298,9 +284,9 @@ export interface GroupRideMatchRequest {
   stops: RideEstimateWaypoint[];
   plannedDistanceKm: number | null;
   plannedDurationSeconds: number | null;
-  fareEstimateUsdt: number | null;
+  fareEstimateNgn: number | null;
   genderPreference: GroupRideGenderPreference;
-  paymentMethod: "wallet_balance" | "smart_account";
+  paymentMethod: "wallet_balance";
   readyForMatchAt: string | null;
   matchingStartedAt: string | null;
   groupedAt: string | null;
@@ -332,75 +318,10 @@ export interface GroupRideFaceUploadDescriptor {
   mimeType: string;
 }
 
-export interface PouchInstructionFees {
-  networkFee?: number;
-  serviceFee?: number;
-  totalFees?: number;
-}
-
-export interface PouchPaymentInstruction {
-  accountNumber?: string;
-  accountName?: string;
-  bankName?: string;
-  amountUsd?: number;
-  amountLocal?: number;
-  localCurrency?: string;
-  fxRate?: number;
-  cryptoAmount?: number;
-  cryptoCurrency?: string;
-  cryptoNetwork?: string;
-  fees?: PouchInstructionFees;
-  reference?: string;
-  expiresAt?: string;
-}
-
-export interface PouchSettlementInfo {
-  transactionHash?: string;
-  senderAddress?: string;
-  walletAddress?: string;
-  cryptoAmount?: number;
-  cryptoCurrency?: string;
-  cryptoNetwork?: string;
-  expiresAt?: string;
-}
-
-export interface PouchOnrampResponse {
-  provider: "pouch";
-  type: "ONRAMP";
-  providerRef?: string;
-  destinationWalletAddress?: string;
-  paymentInstruction?: PouchPaymentInstruction;
-  walletCreditable: boolean;
-}
-
-export interface PouchRampStatusPayload {
-  providerRef?: string;
-  status?: string;
-  type?: "ONRAMP" | "OFFRAMP" | string;
-  transactionHash?: string;
-  settlementInfo?: PouchSettlementInfo;
-  details?: Record<string, unknown>;
-  failureReason?: string;
-}
-
-export interface PouchRampStatusResponse {
-  provider: "pouch";
-  status: PouchRampStatusPayload;
-  sessionSynced: boolean;
-}
-
 export interface WalletOverviewResponse {
   walletId: string;
-  walletAddress: string;
-  chain: string;
-  balanceUsdt: number;
-  lockedUsdt: number;
-  stakedUsdt: number;
   balanceNgn: number;
   lockedNgn: number;
-  stakedNgn: number;
-  displayCurrency: string;
-  displayExchangeRate: number;
   updatedAt: string;
 }
 
@@ -408,15 +329,11 @@ export interface WalletTransaction {
   id: string;
   type: string;
   direction: "CREDIT" | "DEBIT";
-  amountUsdt: number;
   amountNgn: number;
-  balanceAfterUsdt: number;
   balanceAfterNgn: number;
   referenceId: string;
   metadata: Record<string, unknown> | null;
   createdAt: string;
-  displayCurrency: string;
-  displayExchangeRate: number;
 }
 
 export interface WalletTransactionsResponse {
@@ -429,45 +346,23 @@ export interface WalletWithdrawal {
   status: string;
   requestedAmountNgn: number;
   quotedAmountNgn: number | null;
-  reservedAmountUsdt: number;
-  quotedAmountUsd: number | null;
-  quotedCryptoAmount: number | null;
-  displayCurrency: string;
-  displayExchangeRate: number;
   payoutCurrency: string;
-  cryptoCurrency: string;
-  cryptoNetwork: string;
   bankAccount: {
     accountNumber: string;
     accountName: string;
     networkId: string;
   };
   providerReference: string | null;
-  paymentId: string | null;
   failureReason: string | null;
   expiresAt: string | null;
   createdAt: string;
   updatedAt: string;
   settledAt: string | null;
   failedAt: string | null;
-  releasedAt: string | null;
 }
 
 export interface CreateWalletWithdrawalResponse {
   withdrawal: WalletWithdrawal | null;
-  provider: "pouch";
-  type: "OFFRAMP";
-  cryptoInstruction?: {
-    walletAddress?: string;
-    cryptoNetwork?: string;
-    cryptoCurrency?: string;
-    cryptoAmount?: number;
-    amountUsd?: number;
-    amountLocal?: number;
-    localCurrency?: string;
-    reference?: string;
-    expiresAt?: string;
-  };
 }
 
 export interface WithdrawalBankNetwork {
@@ -726,12 +621,38 @@ async function getJson<TResponse>(
   });
 }
 
-export async function syncPrivyAuth(
-  input: SyncPrivyAuthInput,
-): Promise<SyncPrivyAuthResponse> {
-  return postJson<SyncPrivyAuthResponse>("/auth/privy", input, {
-    fallbackError: "Could not sync your account with Wheelers.",
-  });
+export async function signupWithUsernamePassword(input: {
+  username: string;
+  password: string;
+  role?: BackendRole;
+}): Promise<UsernamePasswordAuthResponse> {
+  return postJson<UsernamePasswordAuthResponse>(
+    "/auth/signup",
+    {
+      username: input.username,
+      password: input.password,
+      role: input.role ?? "RIDER",
+    },
+    {
+      fallbackError: "Could not create your account.",
+    },
+  );
+}
+
+export async function signinWithUsernamePassword(input: {
+  username: string;
+  password: string;
+}): Promise<UsernamePasswordAuthResponse> {
+  return postJson<UsernamePasswordAuthResponse>(
+    "/auth/signin",
+    {
+      username: input.username,
+      password: input.password,
+    },
+    {
+      fallbackError: "Could not sign in.",
+    },
+  );
 }
 
 export async function sendPhoneOtp(
@@ -815,57 +736,6 @@ export async function updateCurrentProfile(input: {
   );
 }
 
-export async function createPouchOnramp(input: {
-  accessToken: string;
-  amountLocal: number;
-  idempotencyKey?: string;
-  countryCode?: string;
-  currency?: string;
-  cryptoCurrency?: string;
-  cryptoNetwork?: string;
-  userKyc?: Record<string, unknown>;
-}): Promise<PouchOnrampResponse> {
-  return postJson<PouchOnrampResponse>(
-    "/payments/pouch/onramp",
-    {
-      amountLocal: input.amountLocal,
-      countryCode: input.countryCode ?? "NG",
-      currency: input.currency ?? "NGN",
-      cryptoCurrency: input.cryptoCurrency ?? "USDC",
-      cryptoNetwork: input.cryptoNetwork ?? "XLM",
-      userKyc: input.userKyc,
-    },
-    {
-      accessToken: input.accessToken,
-      idempotencyKey: input.idempotencyKey,
-      fallbackError: "Could not start the Pouch deposit.",
-    },
-  );
-}
-
-export async function getPouchRampStatus(input: {
-  accessToken: string;
-  providerRef: string;
-  type?: "ONRAMP" | "OFFRAMP";
-}): Promise<PouchRampStatusResponse> {
-  const params = new URLSearchParams();
-  if (input.type) {
-    params.set("type", input.type);
-  }
-
-  const path = `/payments/pouch/status/${encodeURIComponent(input.providerRef)}${
-    params.size > 0 ? `?${params.toString()}` : ""
-  }`;
-
-  return getJson<PouchRampStatusResponse>(
-    path,
-    {
-      accessToken: input.accessToken,
-      fallbackError: "Could not refresh the Pouch deposit status.",
-    },
-  );
-}
-
 export async function getWalletOverview(input: {
   accessToken: string;
 }): Promise<WalletOverviewResponse> {
@@ -895,6 +765,43 @@ export async function getWalletTransactions(input: {
     accessToken: input.accessToken,
     fallbackError: "Could not load wallet transactions.",
   });
+}
+
+export interface WalletDepositInfoResponse {
+  accountNumber: string;
+  accountName: string;
+  bankName: string;
+  currency: string;
+}
+
+export interface ProvisionVirtualAccountResponse {
+  accountNumber: string;
+  accountName: string;
+  bankName: string;
+  currency: string;
+  alreadyProvisioned: boolean;
+}
+
+export async function getWalletDepositInfo(input: {
+  accessToken: string;
+}): Promise<WalletDepositInfoResponse> {
+  return getJson<WalletDepositInfoResponse>("/wallet/deposit-info", {
+    accessToken: input.accessToken,
+    fallbackError: "Could not load deposit information.",
+  });
+}
+
+export async function provisionVirtualAccount(input: {
+  accessToken: string;
+}): Promise<ProvisionVirtualAccountResponse> {
+  return postJson<ProvisionVirtualAccountResponse>(
+    "/wallet/provision-virtual-account",
+    {},
+    {
+      accessToken: input.accessToken,
+      fallbackError: "Could not provision virtual account.",
+    },
+  );
 }
 
 export async function createWalletWithdrawal(input: {
@@ -955,8 +862,6 @@ export async function verifyWithdrawalBankAccount(input: {
   networkId: string;
   countryCode?: string;
   currency?: string;
-  cryptoCurrency?: string;
-  cryptoNetwork?: string;
 }): Promise<VerifyWithdrawalBankAccountResponse> {
   return postJson<VerifyWithdrawalBankAccountResponse>(
     "/wallet/withdrawals/verify-bank-account",
@@ -965,8 +870,6 @@ export async function verifyWithdrawalBankAccount(input: {
       networkId: input.networkId,
       countryCode: input.countryCode ?? "NG",
       currency: input.currency ?? "NGN",
-      cryptoCurrency: input.cryptoCurrency ?? "USDC",
-      cryptoNetwork: input.cryptoNetwork ?? "XLM",
     },
     {
       accessToken: input.accessToken,
@@ -1046,7 +949,7 @@ export async function createScheduledRide(input: {
   pickup: RideEstimateWaypoint;
   destination: RideEstimateWaypoint;
   stops?: RideEstimateWaypoint[];
-  paymentMethod?: "wallet_balance" | "smart_account";
+  paymentMethod?: "wallet_balance";
 }): Promise<{ item: ScheduledRide }> {
   return postJson<{ item: ScheduledRide }>(
     "/scheduled-rides",
@@ -1164,7 +1067,7 @@ export async function createGroupRideMatchRequest(input: {
   destination: RideEstimateWaypoint;
   stops?: RideEstimateWaypoint[];
   genderPreference?: GroupRideGenderPreference;
-  paymentMethod?: "wallet_balance" | "smart_account";
+  paymentMethod?: "wallet_balance";
 }): Promise<{
   item: GroupRideMatchRequest;
   uploadRequired: boolean;
@@ -1245,4 +1148,152 @@ export async function cancelGroupRideMatchRequest(input: {
       fallbackError: "Could not cancel the group ride request.",
     },
   );
+}
+
+// ─── Driver API ──────────────────────────────────────────────────
+
+export interface DriverStatsResponse {
+  driverId: string;
+  userId: string;
+  status: string;
+  kycStatus: string;
+  rating: number;
+  totalRides: number;
+  totalEarningsNgn: number;
+  vehicleMake: string | null;
+  vehicleModel: string | null;
+  vehiclePlate: string | null;
+  vehicleYear: number | null;
+  balanceNgn: number;
+  lockedNgn: number;
+}
+
+export interface DriverEarningItem {
+  id: string;
+  amountNgn: number;
+  referenceId: string;
+  createdAt: string;
+}
+
+export interface DriverEarningsResponse {
+  period: string;
+  totalEarningsNgn: number;
+  rideCount: number;
+  items: DriverEarningItem[];
+}
+
+export interface DriverHistoryRide {
+  id: string;
+  status: string;
+  pickupAddress: string;
+  destAddress: string;
+  fareEstimateNgn: number;
+  fareFinalNgn: number | null;
+  distanceKm: number | null;
+  durationSeconds: number | null;
+  matchedAt: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  cancelledAt: string | null;
+  cancelReason: string | null;
+  createdAt: string;
+}
+
+export interface DriverRideHistoryResponse {
+  items: DriverHistoryRide[];
+  nextCursor: string | null;
+}
+
+export async function getDriverStats(input: {
+  accessToken: string;
+}): Promise<DriverStatsResponse> {
+  return getJson<DriverStatsResponse>("/drivers/me/stats", {
+    accessToken: input.accessToken,
+    fallbackError: "Could not load driver stats.",
+  });
+}
+
+export async function getDriverEarnings(input: {
+  accessToken: string;
+  period?: "today" | "week" | "month";
+}): Promise<DriverEarningsResponse> {
+  const params = new URLSearchParams();
+  if (input.period) {
+    params.set("period", input.period);
+  }
+
+  const path =
+    params.size > 0
+      ? `/drivers/me/earnings?${params.toString()}`
+      : "/drivers/me/earnings";
+
+  return getJson<DriverEarningsResponse>(path, {
+    accessToken: input.accessToken,
+    fallbackError: "Could not load driver earnings.",
+  });
+}
+
+export async function getDriverRideHistory(input: {
+  accessToken: string;
+  limit?: number;
+  cursor?: string;
+}): Promise<DriverRideHistoryResponse> {
+  const params = new URLSearchParams();
+  if (input.limit) {
+    params.set("limit", String(input.limit));
+  }
+  if (input.cursor) {
+    params.set("cursor", input.cursor);
+  }
+
+  const path =
+    params.size > 0
+      ? `/drivers/me/rides/history?${params.toString()}`
+      : "/drivers/me/rides/history";
+
+  return getJson<DriverRideHistoryResponse>(path, {
+    accessToken: input.accessToken,
+    fallbackError: "Could not load driver ride history.",
+  });
+}
+
+// ── Chat ──────────────────────────────────────────────────────────
+
+export interface ChatMessageResponse {
+  id: string;
+  rideId: string;
+  senderId: string;
+  senderRole: "RIDER" | "DRIVER";
+  content: string;
+  createdAt: string;
+}
+
+export interface ChatMessagesResponse {
+  items: ChatMessageResponse[];
+  nextCursor: string | null;
+}
+
+export async function getRideChatMessages(input: {
+  accessToken: string;
+  rideId: string;
+  limit?: number;
+  cursor?: string;
+}): Promise<ChatMessagesResponse> {
+  const params = new URLSearchParams();
+  if (input.limit) {
+    params.set("limit", String(input.limit));
+  }
+  if (input.cursor) {
+    params.set("cursor", input.cursor);
+  }
+
+  const path =
+    params.size > 0
+      ? `/rides/${input.rideId}/messages?${params.toString()}`
+      : `/rides/${input.rideId}/messages`;
+
+  return getJson<ChatMessagesResponse>(path, {
+    accessToken: input.accessToken,
+    fallbackError: "Could not load chat messages.",
+  });
 }

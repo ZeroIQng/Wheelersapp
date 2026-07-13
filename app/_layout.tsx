@@ -1,12 +1,10 @@
 import "fast-text-encoding";
 import "react-native-reanimated";
 
-import { PrivyProvider, usePrivy } from "@privy-io/expo";
 import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
-import { useEffect } from "react";
 import { Text, TextInput, useColorScheme } from "react-native";
 
 // Cap Dynamic Type scaling globally so layouts don't break on devices
@@ -21,11 +19,10 @@ import { Text, TextInput, useColorScheme } from "react-native";
 };
 
 import { AppLockOverlay, AppLockProvider } from "@/lib/app-lock";
+import { AuthProvider, useAuth } from "@/lib/auth";
 import { LocationProvider } from "@/lib/location";
 import { AppNotificationsProvider } from "@/lib/notifications";
 import { RideSessionProvider } from "@/lib/ride-session";
-import { isPrivyConfigured, privyAppId, privyClientId } from "@/lib/privy";
-import { ThirdwebProvider } from "@/lib/thirdweb-runtime";
 import { theme } from "@/theme";
 
 SplashScreen.preventAutoHideAsync();
@@ -67,45 +64,24 @@ export default function RootLayout() {
     </>
   );
 
-  const withWalletKit = <ThirdwebProvider>{layout}</ThirdwebProvider>;
-
-  if (!isPrivyConfigured || !privyAppId || !privyClientId) {
-    return (
-      <AppLockProvider>
-        {withWalletKit}
-        <AppLockOverlay onForgotPin={async () => undefined} />
-      </AppLockProvider>
-    );
-  }
-
   return (
-    <PrivyProvider
-      appId={privyAppId}
-      clientId={privyClientId}
-      config={{
-        embedded: {
-          ethereum: {
-            createOnLogin: "users-without-wallets",
-          },
-        },
-      }}
-    >
+    <AuthProvider>
       <LocationProvider>
         <RideSessionProvider>
           <AppNotificationsProvider>
             <AppLockProvider>
-              {withWalletKit}
-              <PrivyAppLockOverlay />
+              {layout}
+              <AuthAppLockOverlay />
             </AppLockProvider>
           </AppNotificationsProvider>
         </RideSessionProvider>
       </LocationProvider>
-    </PrivyProvider>
+    </AuthProvider>
   );
 }
 
-function PrivyAppLockOverlay() {
-  const { logout } = usePrivy();
+function AuthAppLockOverlay() {
+  const { logout } = useAuth();
 
   return <AppLockOverlay onForgotPin={logout} />;
 }

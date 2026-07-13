@@ -1,7 +1,6 @@
-import { useLoginWithOAuth, usePrivy, type User } from "@privy-io/expo";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { Redirect, useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-import { Alert, Pressable, StyleSheet, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 
 import { AppButton } from "@/components/app-button";
 import { AppCard } from "@/components/app-card";
@@ -9,237 +8,88 @@ import { AppScreen } from "@/components/app-screen";
 import { AppText } from "@/components/app-text";
 import { RingStack, StarBurst } from "@/components/decorative-shapes";
 import { FlowHeader } from "@/components/flow-header";
-import { getAccessTokenWithRetry } from "@/lib/access-token";
-import { getDisplayErrorMessage, isIgnorableUserCancelledError } from "@/lib/errors";
 import { FloatingView, PulseView, RevealView } from "@/components/motion";
 import { RoleMotionBadge } from "@/components/role-motion-badge";
-import { isBackendConfigured, syncPrivyAuth, type BackendRole } from "@/lib/api";
+import { getAccessTokenWithRetry } from "@/lib/access-token";
+import { isDriverApp, publicEntryRoute } from "@/lib/app-variant";
+import {
+  isBackendConfigured,
+  getCurrentProfile,
+} from "@/lib/api";
 import {
   getAuthenticatedRoute,
   persistAuthenticatedRole,
-  readLogoutPending,
+  readStoredAuthState,
 } from "@/lib/auth-state";
-import { isPrivyConfigured, privyOAuthRedirectPath } from "@/lib/privy";
-import {
-  getPrivyEmail,
-  getPrivyEthereumWalletAddress,
-  getPrivyName,
-} from "@/lib/privy-user";
-import {
-  isThirdwebConfigured,
-  thirdwebAppMetadata,
-  thirdwebChain,
-  thirdwebClient,
-  thirdwebWallets,
-} from "@/lib/thirdweb";
-import {
-  ConnectButton,
-  isThirdwebRuntimeAvailable,
-} from "@/lib/thirdweb-runtime";
+import { useAuth } from "@/lib/auth";
 import { theme } from "@/theme";
 
-type Role = "ride" | "drive";
-type AccessTokenGetter = () => Promise<string | null | undefined>;
-
-function hasGoogleAccount(user: User): boolean {
-  return user.linked_accounts.some((account) => account.type === "google_oauth");
-}
-
-async function resolveAuthenticatedRoute({
-  authenticatedUser,
-  getAccessToken,
-  requestedRole,
-}: {
-  authenticatedUser: User;
-  getAccessToken: AccessTokenGetter;
-  requestedRole?: BackendRole;
-}) {
-  const accessToken = await getAccessTokenWithRetry(getAccessToken);
-  if (!accessToken) {
-    throw new Error("Could not get a Privy access token.");
-  }
-
-  const response = await syncPrivyAuth({
-    accessToken,
-    authMethod: "google",
-    role: requestedRole,
-    email: getPrivyEmail(authenticatedUser),
-    name: getPrivyName(authenticatedUser),
-    walletAddress: getPrivyEthereumWalletAddress(authenticatedUser),
-  });
-
-  const resolvedRole = response.user.role === "DRIVER" ? "DRIVER" : "RIDER";
-  const nextState = await persistAuthenticatedRole(resolvedRole, {
-    phoneVerified:
-      resolvedRole === "RIDER" &&
-      typeof response.user.phone === "string" &&
-      response.user.phone.length > 0,
-  });
-
-  return getAuthenticatedRoute(nextState);
-}
-
-const walletConnectTheme = {
-  type: "light" as const,
-  fontFamily: theme.fonts.headingAlt,
-  colors: {
-    accentButtonBg: theme.colors.orange,
-    accentButtonText: theme.colors.white,
-    accentText: theme.colors.orange,
-    borderColor: theme.colors.black,
-    connectedButtonBg: theme.colors.white,
-    connectedButtonBgHover: theme.colors.orangeLight,
-    danger: theme.colors.danger,
-    inputAutofillBg: theme.colors.offWhite,
-    modalBg: theme.colors.white,
-    modalOverlayBg: "rgba(13,13,13,0.78)",
-    primaryButtonBg: theme.colors.white,
-    primaryButtonText: theme.colors.black,
-    primaryText: theme.colors.black,
-    scrollbarBg: theme.colors.orangeLight,
-    secondaryButtonBg: theme.colors.offWhite,
-    secondaryButtonHoverBg: theme.colors.orangeLight,
-    secondaryButtonText: theme.colors.black,
-    secondaryIconColor: theme.colors.muted,
-    secondaryIconHoverBg: theme.colors.orangeLight,
-    secondaryIconHoverColor: theme.colors.black,
-    secondaryText: theme.colors.muted,
-    selectedTextBg: theme.colors.black,
-    selectedTextColor: theme.colors.white,
-    separatorLine: theme.colors.borderLight,
-    skeletonBg: theme.colors.borderLight,
-    success: theme.colors.green,
-    tertiaryBg: theme.colors.orangeLight,
-    tooltipBg: theme.colors.black,
-    tooltipText: theme.colors.white,
-  },
-};
+type Role = "ride";
 
 export default function RoleSelectionScreen() {
-  if (!isPrivyConfigured) {
-    return <RoleSelectionScreenContent />;
-  }
-
-  return <PrivyRoleSelectionScreen />;
-}
-
-function PrivyRoleSelectionScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ logout?: string | string[] }>();
-  const { getAccessToken, isReady, user } = usePrivy();
-  const [selectedRole, setSelectedRole] = useState<Role>("ride");
-  const [restoreError, setRestoreError] = useState<string | null>(null);
-  const [logoutPending, setLogoutPending] = useState(false);
-  const [isManualAuthFlow, setIsManualAuthFlow] = useState(false);
-  const lastRestoreAlertRef = useRef<string | null>(null);
-  const logoutRequested =
-    (Array.isArray(params.logout) ? params.logout[0] : params.logout) === "1";
-  const shouldSuppressRestore = logoutRequested || logoutPending;
+  const { getAccessToken, isReady, user } = useAuth();
+  const hasNavigated = useRef(false);
 
+  // If user already has a stored session, redirect them
   useEffect(() => {
+    if (!isReady || !user) return;
+
     let cancelled = false;
 
     void (async () => {
-      const pending = await readLogoutPending();
-      if (!cancelled) {
-        setLogoutPending(pending);
+      const storedState = await readStoredAuthState();
+      if (cancelled || hasNavigated.current) return;
+
+      if (storedState) {
+        hasNavigated.current = true;
+        router.replace(getAuthenticatedRoute(storedState));
+        return;
       }
-    })();
 
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+      // Have a token but no stored state — try to restore from backend
+      if (!isBackendConfigured()) return;
 
-  useEffect(() => {
-    if (!isPrivyConfigured || !isReady || !user || shouldSuppressRestore || isManualAuthFlow) {
-      return;
-    }
+      const accessToken = await getAccessTokenWithRetry(getAccessToken);
+      if (!accessToken || cancelled || hasNavigated.current) return;
 
-    let cancelled = false;
-
-    if (!isBackendConfigured()) {
-      setRestoreError("Set EXPO_PUBLIC_API_BASE_URL before continuing.");
-      return;
-    }
-
-    setRestoreError(null);
-
-    void (async () => {
       try {
-        const destination = await resolveAuthenticatedRoute({
-          authenticatedUser: user,
-          getAccessToken,
+        const response = await getCurrentProfile({ accessToken });
+        const role = response.user.role === "DRIVER" ? "DRIVER" : "RIDER";
+        const nextState = await persistAuthenticatedRole(role, {
+          phoneVerified:
+            role === "RIDER" &&
+            typeof response.user.phone === "string" &&
+            response.user.phone.length > 0,
         });
 
-        if (cancelled) {
-          return;
+        if (!cancelled && !hasNavigated.current) {
+          hasNavigated.current = true;
+          router.replace(getAuthenticatedRoute(nextState));
         }
-
-        router.replace(destination);
-      } catch (error) {
-        if (cancelled) {
-          return;
-        }
-
-        setRestoreError(getDisplayErrorMessage(error, "Could not restore your account."));
+      } catch {
+        // Could not restore — stay on selection screen
       }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [getAccessToken, isManualAuthFlow, isReady, router, shouldSuppressRestore, user]);
+  }, [getAccessToken, isReady, router, user]);
 
-  useEffect(() => {
-    if (!restoreError) {
-      lastRestoreAlertRef.current = null;
-      return;
-    }
-
-    if (lastRestoreAlertRef.current === restoreError) {
-      return;
-    }
-
-    lastRestoreAlertRef.current = restoreError;
-    Alert.alert("Account restore failed", restoreError);
-  }, [restoreError]);
-
-  function handleRolePress(role: Role) {
-    setSelectedRole(role);
+  if (isDriverApp) {
+    return <Redirect href={publicEntryRoute} />;
   }
 
-  return (
-    <RoleSelectionScreenContent
-      selectedRole={selectedRole}
-      onRolePress={handleRolePress}
-      onSyncStateChange={setIsManualAuthFlow}
-    />
-  );
+  return <RoleSelectionScreenContent />;
 }
 
-function RoleSelectionScreenContent({
-  selectedRole: selectedRoleProp = "ride",
-  onRolePress,
-  onSyncStateChange,
-}: {
-  selectedRole?: Role;
-  onRolePress?: (role: Role) => void;
-  onSyncStateChange?: (active: boolean) => void;
-}) {
+function RoleSelectionScreenContent() {
   const router = useRouter();
-  const [selectedRole, setSelectedRole] = useState<Role>(selectedRoleProp);
   const [rideMotionKey, setRideMotionKey] = useState(0);
-  const [driveMotionKey, setDriveMotionKey] = useState(1);
 
-  function handleRolePress(role: Role) {
-    setSelectedRole(role);
-    onRolePress?.(role);
-    if (role === "ride") {
-      setRideMotionKey((current) => current + 1);
-      return;
-    }
-    setDriveMotionKey((current) => current + 1);
+  function handleRolePress() {
+    setRideMotionKey((current) => current + 1);
   }
 
   return (
@@ -267,234 +117,27 @@ function RoleSelectionScreenContent({
           role="ride"
           title="I want to"
           accent="RIDE"
-          selected={selectedRole === "ride"}
+          selected
           motionKey={rideMotionKey}
-          onPress={() => handleRolePress("ride")}
-        />
-        <RoleCard
-          role="drive"
-          title="I want to"
-          accent="DRIVE"
-          selected={selectedRole === "drive"}
-          motionKey={driveMotionKey}
-          onPress={() => handleRolePress("drive")}
+          onPress={handleRolePress}
         />
       </RevealView>
 
       <RevealView delay={220} style={styles.actions}>
-        {isPrivyConfigured ? (
-          <GoogleContinueButton
-            role={selectedRole}
-            onSyncStateChange={onSyncStateChange}
-          />
-        ) : (
-          <AppButton
-            title="Connect with Google ↗"
-            onPress={() => router.push("/phone-auth")}
-          />
-        )}
-        {selectedRole === "ride" ? <WalletConnectAction /> : null}
+        <AppButton
+          title="Create an account"
+          variant="inverse"
+          style={styles.choiceButton}
+          onPress={() => router.push("/account-auth")}
+        />
+        <AppButton
+          title="Sign in"
+          variant="inverse"
+          style={styles.choiceButton}
+          onPress={() => router.push("/account-auth")}
+        />
       </RevealView>
     </AppScreen>
-  );
-}
-
-function GoogleContinueButton({
-  role,
-  onSyncStateChange,
-}: {
-  role: Role;
-  onSyncStateChange?: (active: boolean) => void;
-}) {
-  const router = useRouter();
-  const { user, isReady, getAccessToken } = usePrivy();
-  // const { logout } = usePrivy();
-  const { login, state } = useLoginWithOAuth();
-  const [syncError, setSyncError] = useState<string | null>(null);
-  const hasGoogleLinkedAccount = Boolean(user && hasGoogleAccount(user));
-  const [isSyncing, setIsSyncing] = useState(false);
-  const lastInlineAlertRef = useRef<string | null>(null);
-  // const [isResetting, setIsResetting] = useState(false);
-  const isLoading = state.status === "loading";
-  const errorMessage =
-    syncError ??
-    (state.status === "error"
-      ? getDisplayErrorMessage(state.error, "Could not continue with Google.")
-      : null);
-
-  useEffect(() => {
-    if (!errorMessage) {
-      lastInlineAlertRef.current = null;
-      return;
-    }
-
-    if (lastInlineAlertRef.current === errorMessage) {
-      return;
-    }
-
-    lastInlineAlertRef.current = errorMessage;
-    Alert.alert("Sign-in failed", errorMessage);
-  }, [errorMessage]);
-
-  async function handlePress() {
-    if (isLoading || isSyncing) return;
-
-    setSyncError(null);
-    onSyncStateChange?.(true);
-
-    if (!isBackendConfigured()) {
-      setSyncError("Set EXPO_PUBLIC_API_BASE_URL before continuing.");
-      onSyncStateChange?.(false);
-      return;
-    }
-
-    if (!isReady) {
-      setSyncError("Privy is still initializing. Try again in a moment.");
-      onSyncStateChange?.(false);
-      return;
-    }
-
-    const selectedBackendRole: BackendRole =
-      role === "drive" ? "DRIVER" : "RIDER";
-    let authenticatedUser = user ?? undefined;
-    let requestedRole: BackendRole | undefined = selectedBackendRole;
-    if (!authenticatedUser || !hasGoogleAccount(authenticatedUser)) {
-      try {
-        authenticatedUser = await login({
-          provider: "google",
-          redirectUri: privyOAuthRedirectPath,
-        });
-      } catch (error) {
-        if (!isIgnorableUserCancelledError(error) || __DEV__) {
-          setSyncError(getDisplayErrorMessage(error, "Could not continue with Google."));
-        }
-        onSyncStateChange?.(false);
-        return;
-      }
-    } else {
-      requestedRole = undefined;
-    }
-
-    if (!authenticatedUser) {
-      onSyncStateChange?.(false);
-      return;
-    }
-
-    setIsSyncing(true);
-
-    try {
-      const destination = await resolveAuthenticatedRoute({
-        authenticatedUser,
-        getAccessToken,
-        requestedRole,
-      });
-      router.replace(destination);
-    } catch (error) {
-      setSyncError(getDisplayErrorMessage(error, "Could not sync your account with Wheelers."));
-      onSyncStateChange?.(false);
-    } finally {
-      setIsSyncing(false);
-    }
-  }
-
-  // async function handleResetSession() {
-  //   if (isSyncing || isLoading || isResetting) {
-  //     return;
-  //   }
-// 
-  //   setSyncError(null);
-  //   setIsResetting(true);
-// 
-  //   try {
-  //     await logout();
-  //     await clearStoredAuthState();
-  //   } catch (error) {
-  //     setSyncError(
-  //       error instanceof Error
-  //         ? error.message
-  //         : "Could not clear the previous session."
-  //     );
-  //   } finally {
-  //     setIsResetting(false);
-  //   }
-  // }
-
-  return (
-    <View style={styles.googleActionBlock}>
-      <AppButton
-        title={
-          hasGoogleLinkedAccount
-            ? isSyncing
-              ? "Setting up account…"
-              : "Continue"
-            : isLoading
-              ? "Opening Google…"
-              : isSyncing
-                ? "Setting up account…"
-                : "Connect with Google"
-        }
-        // disabled={isResetting}
-        onPress={() => {
-          void handlePress();
-        }}
-      />
-      {/*
-      {user ? (
-        <AppButton
-          title={isResetting ? "Clearing session…" : "Reset session"}
-          variant="ghost"
-          disabled={isSyncing || isLoading || isResetting}
-          onPress={() => {
-            void handleResetSession();
-          }}
-        />
-      ) : null}
-      */}
-    </View>
-  );
-}
-
-function WalletConnectAction() {
-  const router = useRouter();
-
-  if (!isThirdwebConfigured || !isThirdwebRuntimeAvailable || !thirdwebClient) {
-    return (
-      <AppButton
-        title="Connect your wallet"
-        variant="inverse"
-        disabled
-        style={styles.walletFallbackButton}
-      />
-    );
-  }
-
-  return (
-    <View style={styles.walletConnectButtonWrap}>
-      <View style={styles.walletConnectFrame}>
-        <ConnectButton
-          appMetadata={thirdwebAppMetadata}
-          chain={thirdwebChain ?? undefined}
-          client={thirdwebClient}
-          connectButton={{ label: "Connect your wallet" }}
-          connectModal={{
-            size: "compact",
-            showThirdwebBranding: false,
-            title: "Connect your wallet",
-            titleIcon: "",
-          }}
-          detailsModal={{
-            assetTabs: [],
-            hideBuyFunds: true,
-            hideReceiveFunds: true,
-            hideSendFunds: true,
-            hideSwitchWallet: true,
-          }}
-          onConnect={() => router.push("/phone-auth")}
-          theme={walletConnectTheme}
-          wallets={thirdwebWallets}
-        />
-      </View>
-    </View>
   );
 }
 
@@ -553,30 +196,21 @@ const styles = StyleSheet.create({
   headerWrap: { marginTop: theme.spacing.sm },
   rings: { position: "absolute", top: -20, right: -32 },
   star: { position: "absolute", bottom: 42, left: 16 },
-  roles: { flexDirection: "row", gap: theme.spacing.md },
-  rolePressable: { flex: 1 },
+  roles: { width: "100%" },
+  rolePressable: { width: "100%" },
   roleCard: {
-    minHeight: 164,
+    minHeight: 190,
     justifyContent: "center",
     alignItems: "center",
     gap: theme.spacing.xs,
-    paddingVertical: theme.spacing.lg,
+    paddingVertical: theme.spacing.xl,
   },
   roleCardSelected: { borderColor: theme.colors.black },
   roleTextBlock: { alignItems: "center", gap: 1 },
   roleIntro: { textAlign: "center", lineHeight: 14, letterSpacing: 0.3 },
-  roleAccent: { textAlign: "center", lineHeight: 22, letterSpacing: -0.2 },
+  roleAccent: { textAlign: "center", lineHeight: 22, letterSpacing: 0 },
   actions: { gap: theme.spacing.md, marginTop: theme.spacing.sm },
-  googleActionBlock: { gap: theme.spacing.xs },
-  walletConnectButtonWrap: { width: "100%" },
-  walletConnectFrame: {
-    width: "100%",
-    overflow: "hidden",
-    borderWidth: theme.borders.thick,
-    borderColor: theme.colors.black,
-    borderRadius: theme.radius.sm,
-    backgroundColor: theme.colors.white,
-    ...theme.shadows.card,
+  choiceButton: {
+    minHeight: 54,
   },
-  walletFallbackButton: { backgroundColor: theme.colors.white },
 });

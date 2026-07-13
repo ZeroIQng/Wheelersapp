@@ -22,11 +22,12 @@ import {
 
 import { AppButton } from "@/components/app-button";
 import { AppText } from "@/components/app-text";
+import { publicEntryRoute } from "@/lib/app-variant";
 import { clearStoredAuthState } from "@/lib/auth-state";
 import { theme } from "@/theme";
 
 const APP_LOCK_KEY = "wheelers.app.lock.v1";
-const PUBLIC_ROUTES = new Set(["/splash", "/role-selection"]);
+const PUBLIC_ROUTES = new Set(["/splash", "/role-selection", "/account-auth"]);
 
 type StoredAppLockState = {
   pinHash: string;
@@ -307,7 +308,7 @@ export function AppLockOverlay({
                 await clearPin();
                 await onForgotPin();
                 await clearStoredAuthState();
-                router.replace("/role-selection");
+                router.replace(publicEntryRoute);
               } finally {
                 setResetting(false);
               }

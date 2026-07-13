@@ -79,8 +79,11 @@ export function getDisplayErrorMessage(
     return null;
   }
 
-  if (value instanceof Error && value.message.trim().length > 0) {
-    return value.message;
+  const message = getMessage(value);
+  const normalized = message.toLowerCase();
+
+  if (message.trim().length > 0) {
+    return message;
   }
 
   return fallback;

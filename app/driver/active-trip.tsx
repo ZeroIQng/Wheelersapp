@@ -1,6 +1,7 @@
 import { Href, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Pressable, StyleSheet, View } from 'react-native';
 
 import { AppButton } from '@/components/app-button';
 import { AppScreen } from '@/components/app-screen';
@@ -9,13 +10,56 @@ import { BackArrow } from '@/components/back-arrow';
 import { InstructionCard } from '@/components/InstructionCard';
 import { MapMock } from '@/components/MapMock';
 import { MetricCard } from '@/components/MetricCard';
+import { RideChat } from '@/components/RideChat';
 import { StatusPill } from '@/components/StatusPill';
-import { driverActiveTripDetails } from '@/data/mock';
+import { useDriverSession } from '@/lib/driver-session';
 import { theme } from '@/theme';
+
+function formatNgn(amount: number): string {
+  return `NGN ${Math.round(amount).toLocaleString('en-NG')}`;
+}
 
 export default function DriverActiveTripScreen() {
   const router = useRouter();
-  const payoutRoute = '/driver/payout' as Href;
+  const { session, endTrip, chatMessages, sendChatMessage } = useDriverSession();
+  const ride = session.currentRide;
+
+  const [elapsedMinutes, setElapsedMinutes] = useState(0);
+  const [chatOpen, setChatOpen] = useState(false);
+
+  useEffect(() => {
+    if (!ride) {
+      router.replace('/driver/dashboard' as Href);
+      return;
+    }
+
+    const startedAt = ride.startedAt ? new Date(ride.startedAt).getTime() : Date.now();
+    const tick = () => {
+      setElapsedMinutes(Math.floor((Date.now() - startedAt) / 60000));
+    };
+    tick();
+    const interval = setInterval(tick, 10000);
+    return () => clearInterval(interval);
+  }, [ride, router]);
+
+  useEffect(() => {
+    if (session.status === 'completed') {
+      router.replace('/driver/payout' as Href);
+    }
+  }, [session.status, router]);
+
+  if (!ride) return null;
+
+  const remainingMinutes = ride.plannedDurationSeconds
+    ? Math.max(0, Math.ceil(ride.plannedDurationSeconds / 60) - elapsedMinutes)
+    : '--';
+  const distanceKm = ride.plannedDistanceKm
+    ? ride.plannedDistanceKm.toFixed(1)
+    : '--';
+
+  const handleEndRide = async () => {
+    await endTrip(ride.rideId);
+  };
 
   return (
     <AppScreen backgroundColor={theme.colors.offWhite} contentStyle={styles.container}>
@@ -34,27 +78,51 @@ export default function DriverActiveTripScreen() {
 
       <View style={styles.content}>
         <View style={styles.statusRow}>
-          <StatusPill label={driverActiveTripDetails.status} variant="dark" />
+          <StatusPill label="TRIP IN PROGRESS" variant="dark" />
           <AppText variant="bodySmall" color={theme.colors.green}>
-            ● {driverActiveTripDetails.substatus}
+            Active
           </AppText>
         </View>
 
         <View style={styles.metricsRow}>
-          {driverActiveTripDetails.metrics.map((metric) => (
-            <MetricCard
-              accent={metric.accent}
-              key={metric.id}
-              label={metric.label}
-              value={metric.value}
-            />
-          ))}
+          <MetricCard
+            accent="orange"
+            label="MIN LEFT"
+            value={String(remainingMinutes)}
+          />
+          <MetricCard
+            label="KM LEFT"
+            value={String(distanceKm)}
+          />
+          <MetricCard
+            label="EARNING"
+            value={formatNgn(ride.fareNgn)}
+          />
         </View>
 
-        <InstructionCard instruction={driverActiveTripDetails.instruction} />
+        <InstructionCard
+          instruction={{
+            icon: '↗',
+            title: 'Head to destination',
+            subtitle: ride.destination.address,
+          }}
+        />
 
-        <AppButton title="End ride ✓" onPress={() => router.push(payoutRoute)} />
+        <AppButton title="End ride" onPress={handleEndRide} />
       </View>
+
+      <Pressable style={styles.chatFab} onPress={() => setChatOpen(true)}>
+        <AppText style={styles.chatFabIcon}>💬</AppText>
+      </Pressable>
+
+      <RideChat
+        visible={chatOpen}
+        onClose={() => setChatOpen(false)}
+        rideId={ride.rideId}
+        realtimeMessages={chatMessages}
+        onSend={sendChatMessage}
+        userRole="DRIVER"
+      />
     </AppScreen>
   );
 }
@@ -87,5 +155,22 @@ const styles = StyleSheet.create({
   metricsRow: {
     flexDirection: 'row',
     gap: theme.spacing.sm,
+  },
+  chatFab: {
+    position: 'absolute',
+    bottom: 24,
+    right: theme.spacing.gutter,
+    width: 56,
+    height: 56,
+    borderRadius: theme.radii.pill,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    backgroundColor: theme.colors.orange,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...theme.shadows.card,
+  },
+  chatFabIcon: {
+    fontSize: 24,
   },
 });

@@ -1,6 +1,6 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 
 import { AppButton } from "@/components/app-button";
@@ -10,6 +10,7 @@ import { AppText } from "@/components/app-text";
 import { BackArrow } from "@/components/back-arrow";
 import { LiveMap } from "@/components/live-map";
 import { MetricCard } from "@/components/MetricCard";
+import { RideChat } from "@/components/RideChat";
 import { RideMovementBar } from "@/components/RideMovementBar";
 import { StatusPill } from "@/components/StatusPill";
 import { TripProgressBar } from "@/components/TripProgressBar";
@@ -25,14 +26,9 @@ import { theme } from "@/theme";
 
 function formatRideFare(params: {
   ngn?: number;
-  usdt?: number;
 }): string | null {
   if (typeof params.ngn === "number" && Number.isFinite(params.ngn)) {
     return `NGN ${Math.round(params.ngn).toLocaleString("en-NG")}`;
-  }
-
-  if (typeof params.usdt === "number" && Number.isFinite(params.usdt)) {
-    return `${params.usdt.toFixed(2)} USDT`;
   }
 
   return null;
@@ -48,7 +44,8 @@ export default function RiderActiveTripScreen() {
     () => parseRideItineraryParam(params.itinerary),
     [params.itinerary],
   );
-  const { cancelRide, currentRide } = useRideSession();
+  const { cancelRide, currentRide, chatMessages, sendChatMessage } = useRideSession();
+  const [chatOpen, setChatOpen] = useState(false);
   const itinerary = currentRide?.itinerary ?? fallbackItinerary;
   const routeRows = useMemo(() => getRideRouteRows(itinerary), [itinerary]);
   const extraStops = getAdditionalStopCount(itinerary);
@@ -110,10 +107,6 @@ export default function RiderActiveTripScreen() {
             currentRide?.completedFareNgn ??
             currentRide?.driver?.lockedFareNgn ??
             currentRide?.fareEstimateNgn,
-          usdt:
-            currentRide?.completedFareUsdt ??
-            currentRide?.driver?.lockedFareUsdt ??
-            currentRide?.fareEstimateUsdt,
         }) ?? "Fare pending",
     },
   ];
@@ -282,6 +275,23 @@ export default function RiderActiveTripScreen() {
           />
         ) : null}
       </View>
+
+      {currentRide && (currentRide.status === "active" || currentRide.status === "matched") && (
+        <Pressable style={styles.chatFab} onPress={() => setChatOpen(true)}>
+          <AppText style={styles.chatFabIcon}>💬</AppText>
+        </Pressable>
+      )}
+
+      {currentRide && (
+        <RideChat
+          visible={chatOpen}
+          onClose={() => setChatOpen(false)}
+          rideId={currentRide.rideId}
+          realtimeMessages={chatMessages}
+          onSend={sendChatMessage}
+          userRole="RIDER"
+        />
+      )}
     </AppScreen>
   );
 }
@@ -417,5 +427,22 @@ const styles = StyleSheet.create({
   },
   shareButton: {
     flex: 1,
+  },
+  chatFab: {
+    position: "absolute",
+    bottom: 24,
+    right: theme.spacing.gutter,
+    width: 56,
+    height: 56,
+    borderRadius: theme.radii.pill,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    backgroundColor: theme.colors.orange,
+    alignItems: "center",
+    justifyContent: "center",
+    ...theme.shadows.card,
+  },
+  chatFabIcon: {
+    fontSize: 24,
   },
 });

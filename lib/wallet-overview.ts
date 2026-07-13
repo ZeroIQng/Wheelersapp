@@ -1,7 +1,7 @@
-import { usePrivy } from "@privy-io/expo";
 import { useCallback, useEffect, useState } from "react";
 
 import { getAccessTokenWithRetry } from "@/lib/access-token";
+import { useAuth } from "@/lib/auth";
 import {
   getWalletOverview,
   isBackendConfigured,
@@ -19,8 +19,23 @@ let cachedWalletOverview: WalletOverviewResponse | null = null;
 let cachedWalletOverviewAt = 0;
 const WALLET_CACHE_TTL_MS = 30_000;
 
+// Listeners for external cache invalidation (e.g. from WebSocket wallet:updated events)
+type WalletChangeListener = () => void;
+const walletChangeListeners = new Set<WalletChangeListener>();
+
+/**
+ * Call this from the WS handler when a `wallet:updated` event arrives.
+ * It invalidates the cache and notifies all mounted `useWalletOverview` hooks.
+ */
+export function invalidateWalletCache(): void {
+  cachedWalletOverviewAt = 0;
+  for (const listener of walletChangeListeners) {
+    listener();
+  }
+}
+
 export function useWalletOverview(): UseWalletOverviewResult {
-  const { getAccessToken, isReady, user } = usePrivy();
+  const { getAccessToken, isReady, user } = useAuth();
   const [overview, setOverview] = useState<WalletOverviewResponse | null>(
     () => cachedWalletOverview,
   );
@@ -70,6 +85,13 @@ export function useWalletOverview(): UseWalletOverviewResult {
 
   useEffect(() => {
     void load();
+  }, [load]);
+
+  // Auto-refresh when wallet cache is externally invalidated (e.g. WS wallet:updated)
+  useEffect(() => {
+    const listener = () => void load();
+    walletChangeListeners.add(listener);
+    return () => { walletChangeListeners.delete(listener); };
   }, [load]);
 
   return {

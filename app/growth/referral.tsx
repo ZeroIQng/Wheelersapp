@@ -1,5 +1,5 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
-import { usePrivy } from "@privy-io/expo";
+import { useAuth } from "@/lib/auth";
 import * as Clipboard from "expo-clipboard";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useMemo, useState } from "react";
@@ -25,7 +25,7 @@ function formatNgn(value: number | null | undefined): string {
 }
 
 export default function ReferralScreen() {
-  const { getAccessToken, isReady, user } = usePrivy();
+  const { getAccessToken, isReady, user } = useAuth();
   const [summary, setSummary] = useState<ReferralSummaryResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [copied, setCopied] = useState(false);

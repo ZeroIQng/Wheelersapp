@@ -1,5 +1,6 @@
 import { Href, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { useEffect } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { AppButton } from '@/components/app-button';
@@ -8,12 +9,42 @@ import { BackArrow } from '@/components/back-arrow';
 import { MapMock } from '@/components/MapMock';
 import { MetricCard } from '@/components/MetricCard';
 import { StatusPill } from '@/components/StatusPill';
-import { driverNavigationDetails } from '@/data/mock';
+import { useDriverSession } from '@/lib/driver-session';
 import { theme } from '@/theme';
+
+function formatNgn(amount: number): string {
+  return `NGN ${Math.round(amount).toLocaleString('en-NG')}`;
+}
 
 export default function DriverNavigationScreen() {
   const router = useRouter();
-  const arrivedRoute = '/driver/arrived' as Href;
+  const { session, arriveAtPickup } = useDriverSession();
+  const ride = session.currentRide;
+
+  useEffect(() => {
+    if (!ride) {
+      router.replace('/driver/dashboard' as Href);
+    }
+  }, [ride, router]);
+
+  useEffect(() => {
+    if (session.status === 'arrived') {
+      router.replace('/driver/arrived' as Href);
+    }
+  }, [session.status, router]);
+
+  if (!ride) return null;
+
+  const etaMinutes = ride.plannedDurationSeconds
+    ? Math.ceil(ride.plannedDurationSeconds / 60)
+    : '--';
+  const distanceKm = ride.plannedDistanceKm
+    ? ride.plannedDistanceKm.toFixed(1)
+    : '--';
+
+  const handleArrived = async () => {
+    await arriveAtPickup(ride.rideId);
+  };
 
   return (
     <AppScreen backgroundColor={theme.colors.offWhite} contentStyle={styles.container}>
@@ -21,7 +52,11 @@ export default function DriverNavigationScreen() {
       <View style={styles.mapWrap}>
         <MapMock
           height={290}
-          instruction={driverNavigationDetails.instruction}
+          instruction={{
+            icon: '↖',
+            title: 'Head to pickup',
+            subtitle: ride.pickup.address,
+          }}
           showCar
           showDestination
           showInstructionBanner
@@ -34,22 +69,27 @@ export default function DriverNavigationScreen() {
       <View style={styles.content}>
         <StatusPill
           dotColor={theme.colors.green}
-          label={driverNavigationDetails.status}
+          label="HEADING TO PICKUP"
           variant="orange"
         />
 
         <View style={styles.metricsRow}>
-          {driverNavigationDetails.metrics.map((metric) => (
-            <MetricCard
-              accent={metric.accent}
-              key={metric.id}
-              label={metric.label}
-              value={metric.value}
-            />
-          ))}
+          <MetricCard
+            accent="orange"
+            label="MIN AWAY"
+            value={String(etaMinutes)}
+          />
+          <MetricCard
+            label="KM LEFT"
+            value={String(distanceKm)}
+          />
+          <MetricCard
+            label="FARE"
+            value={formatNgn(ride.fareNgn)}
+          />
         </View>
 
-        <AppButton title="I've arrived ✓" onPress={() => router.push(arrivedRoute)} />
+        <AppButton title="I've arrived" onPress={handleArrived} />
       </View>
     </AppScreen>
   );

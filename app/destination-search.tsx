@@ -1,6 +1,6 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { usePrivy } from "@privy-io/expo";
+import { useAuth } from "@/lib/auth";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -99,7 +99,7 @@ function isExactSearchMatch(place: PlaceSuggestion, query: string) {
 
 export default function DestinationSearchScreen() {
   const router = useRouter();
-  const { getAccessToken, isReady, user } = usePrivy();
+  const { getAccessToken, isReady, user } = useAuth();
   const { updateRideRoute } = useRideSession();
   const params = useLocalSearchParams<{
     flowMode?: string | string[];
@@ -527,6 +527,50 @@ export default function DestinationSearchScreen() {
       setIsApplyingReferral(false);
     }
   };
+
+  // Eager prefetch: resolve geocodes + call getRideEstimate as soon as pickup & destination are set
+  useEffect(() => {
+    const pickup = pickupValue.trim();
+    const destination = destinationValue.trim();
+    if (!pickup || !destination || !isBackendConfigured()) return;
+
+    const requestId = ++estimateRequestRef.current;
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const accessToken = await getAccessTokenWithRetry(getAccessToken);
+        if (!accessToken || cancelled) return;
+
+        const [resolvedPickup, resolvedDest, ...resolvedStops] = await Promise.all([
+          resolvePlaceQuery(pickup),
+          resolvePlaceQuery(destination),
+          ...intermediateStops
+            .filter((s) => s.trim().length > 0)
+            .map((s) => resolvePlaceQuery(s)),
+        ]);
+
+        if (cancelled || estimateRequestRef.current !== requestId) return;
+
+        const response = await getRideEstimate({
+          accessToken,
+          pickup: resolvedPickup,
+          destination: resolvedDest,
+          stops: resolvedStops,
+        });
+
+        if (!cancelled && estimateRequestRef.current === requestId) {
+          setPrefetchedEstimate(response);
+        }
+      } catch {
+        // Non-blocking — ride-selection will fetch its own estimate
+      }
+    })();
+
+    return () => { cancelled = true; };
+  // Debounce: only re-trigger when the user settles on both fields
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pickupValue, destinationValue, intermediateStops.length]);
 
   const itinerary = useMemo<RideItinerary>(
     () => ({ pickup: pickupValue, stops: routeStops }),

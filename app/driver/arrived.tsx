@@ -1,5 +1,6 @@
 import { Href, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { AppButton } from '@/components/app-button';
@@ -8,12 +9,47 @@ import { AppScreen } from '@/components/app-screen';
 import { AppText } from '@/components/app-text';
 import { BackArrow } from '@/components/back-arrow';
 import { TripProgressBar } from '@/components/TripProgressBar';
-import { driverArrivalState } from '@/data/mock';
+import { useDriverSession } from '@/lib/driver-session';
 import { theme } from '@/theme';
+
+const FREE_WAIT_SECONDS = 180; // 3 minutes
 
 export default function DriverArrivedScreen() {
   const router = useRouter();
-  const activeTripRoute = '/driver/active-trip' as Href;
+  const { session, startTrip } = useDriverSession();
+  const ride = session.currentRide;
+
+  const arrivedAtRef = useRef(Date.now());
+  const [waitProgress, setWaitProgress] = useState(0);
+
+  useEffect(() => {
+    if (!ride) {
+      router.replace('/driver/dashboard' as Href);
+      return;
+    }
+
+    const tick = () => {
+      const elapsed = (Date.now() - arrivedAtRef.current) / 1000;
+      setWaitProgress(Math.min(1, elapsed / FREE_WAIT_SECONDS));
+    };
+    tick();
+    const interval = setInterval(tick, 1000);
+    return () => clearInterval(interval);
+  }, [ride, router]);
+
+  useEffect(() => {
+    if (session.status === 'active') {
+      router.replace('/driver/active-trip' as Href);
+    }
+  }, [session.status, router]);
+
+  if (!ride) return null;
+
+  const handleStartTrip = async () => {
+    await startTrip(ride.rideId);
+  };
+
+  const waitLabel = `Free wait time (${Math.ceil(FREE_WAIT_SECONDS / 60)} min)`;
 
   return (
     <AppScreen backgroundColor={theme.colors.offWhite} contentStyle={styles.container}>
@@ -29,18 +65,18 @@ export default function DriverArrivedScreen() {
           You&apos;ve arrived!
         </AppText>
         <AppText variant="bodySmall" color={theme.colors.muted} style={styles.center}>
-          Waiting for your rider
+          Waiting for your rider at {ride.pickup.address}
         </AppText>
       </View>
 
       <AppCard style={styles.riderCard}>
         <View style={styles.avatar}>
-          <AppText variant="h3">{driverArrivalState.rider.initials}</AppText>
+          <AppText variant="h3">R</AppText>
         </View>
         <View style={styles.riderCopy}>
-          <AppText variant="h3">{driverArrivalState.rider.name}</AppText>
+          <AppText variant="h3">Rider</AppText>
           <AppText variant="bodySmall" color={theme.colors.muted}>
-            ⭐ {driverArrivalState.rider.rating} · {driverArrivalState.rider.trips}
+            {ride.pickup.address}
           </AppText>
         </View>
         <Pressable style={styles.callButton}>
@@ -50,11 +86,11 @@ export default function DriverArrivedScreen() {
 
       <TripProgressBar
         fillColor={theme.colors.green}
-        label={driverArrivalState.freeWaitLabel}
-        progress={driverArrivalState.waitProgress}
+        label={waitLabel}
+        progress={waitProgress}
       />
 
-      <AppButton title="Start trip ↗" onPress={() => router.push(activeTripRoute)} />
+      <AppButton title="Start trip" onPress={handleStartTrip} />
     </AppScreen>
   );
 }

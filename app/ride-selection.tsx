@@ -1,5 +1,5 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
-import { usePrivy } from "@privy-io/expo";
+import { useAuth } from "@/lib/auth";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -167,7 +167,7 @@ function CarArtwork({
 
 export default function RideSelectionScreen() {
   const router = useRouter();
-  const { getAccessToken, isReady, user } = usePrivy();
+  const { getAccessToken, isReady, user } = useAuth();
   const params = useLocalSearchParams<{
     itinerary?: string | string[];
     estimate?: string | string[];

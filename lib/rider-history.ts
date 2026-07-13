@@ -1,4 +1,4 @@
-import { usePrivy } from "@privy-io/expo";
+import { useAuth } from "@/lib/auth";
 import { useEffect, useState } from "react";
 
 import { getAccessTokenWithRetry } from "@/lib/access-token";
@@ -70,8 +70,7 @@ function formatFare(ride: RiderHistoryRide): string {
     return `NGN ${Math.round(fareNgn).toLocaleString("en-NG")}`;
   }
 
-  const fareUsdt = ride.fareFinalUsdt ?? ride.fareEstimateUsdt;
-  return typeof fareUsdt === "number" ? `${fareUsdt.toFixed(2)} USDT` : "Fare pending";
+  return "Fare pending";
 }
 
 function mapIcon(ride: RiderHistoryRide): string {
@@ -105,7 +104,7 @@ let cachedRiderHistoryAt = 0;
 const HISTORY_CACHE_TTL_MS = 30_000;
 
 export function useRiderHistory(limit = 20): UseRiderHistoryResult {
-  const { getAccessToken, isReady, user } = usePrivy();
+  const { getAccessToken, isReady, user } = useAuth();
   const hasCachedItems = cachedRiderHistoryItems.length > 0;
   const [items, setItems] = useState<RiderHistoryListItem[]>(() =>
     cachedRiderHistoryItems.slice(0, limit),

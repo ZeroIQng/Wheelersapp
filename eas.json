@@ -9,6 +9,14 @@
       "distribution": "internal",
       "environment": "development"
     },
+    "development:driver": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "environment": "development",
+      "env": {
+        "APP_VARIANT": "driver"
+      }
+    },
     "preview": {
       "distribution": "internal",
       "environment": "preview"
