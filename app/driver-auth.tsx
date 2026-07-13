@@ -1,12 +1,29 @@
+import { useState } from "react";
 import { useRouter } from "expo-router";
-import { Platform, Pressable, StyleSheet, View } from "react-native";
+import { Alert, Platform, Pressable, StyleSheet, View, ActivityIndicator } from "react-native";
 import Animated, { FadeInDown, ZoomIn } from "react-native-reanimated";
 import { Ionicons } from "@expo/vector-icons";
 import Svg, { Path } from "react-native-svg";
+import * as AppleAuthentication from "expo-apple-authentication";
+import { GoogleSignin } from "@react-native-google-signin/google-signin";
+import Constants from "expo-constants";
 
 import { AppScreen } from "@/components/app-screen";
 import { AppText } from "@/components/app-text";
 import { theme } from "@/theme";
+import { signInWithApple, signInWithGoogle } from "@/lib/api";
+import { storeLocalAccessToken } from "@/lib/access-token";
+import { persistAuthenticatedRole } from "@/lib/auth-state";
+
+const GOOGLE_CLIENT_ID =
+  process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID ??
+  Constants.expoConfig?.extra?.googleClientId ??
+  "";
+
+GoogleSignin.configure({
+  iosClientId: GOOGLE_CLIENT_ID,
+  webClientId: GOOGLE_CLIENT_ID,
+});
 
 function GoogleIcon({ size = 20 }: { size?: number }) {
   return (
@@ -21,17 +38,93 @@ function GoogleIcon({ size = 20 }: { size?: number }) {
 
 export default function DriverAuthScreen() {
   const router = useRouter();
+  const [loading, setLoading] = useState(false);
 
   async function handleAppleSignIn() {
-    // TODO: Phase 1 — Apple authentication via expo-apple-authentication
-    // For now, navigate forward for layout testing
-    router.replace("/driver/onboarding/welcome");
+    try {
+      setLoading(true);
+
+      const credential = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
+      });
+
+      if (!credential.identityToken) {
+        Alert.alert("Error", "Apple did not return an identity token.");
+        return;
+      }
+
+      const name =
+        credential.fullName?.givenName || credential.fullName?.familyName
+          ? [credential.fullName.givenName, credential.fullName.familyName]
+              .filter(Boolean)
+              .join(" ")
+          : undefined;
+
+      const result = await signInWithApple({
+        idToken: credential.identityToken,
+        name,
+      });
+
+      await storeLocalAccessToken(result.accessToken);
+      await persistAuthenticatedRole("DRIVER");
+      router.replace("/driver/onboarding/welcome");
+    } catch (error: unknown) {
+      if (
+        error &&
+        typeof error === "object" &&
+        "code" in error &&
+        error.code === "ERR_REQUEST_CANCELED"
+      ) {
+        return;
+      }
+
+      Alert.alert(
+        "Sign in failed",
+        error instanceof Error ? error.message : "Could not sign in with Apple.",
+      );
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function handleGoogleSignIn() {
-    // TODO: Phase 1 — Google authentication via @react-native-google-signin
-    // For now, navigate forward for layout testing
-    router.replace("/driver/onboarding/welcome");
+    try {
+      setLoading(true);
+
+      await GoogleSignin.hasPlayServices();
+      const response = await GoogleSignin.signIn();
+
+      const idToken = response.data?.idToken;
+      if (!idToken) {
+        Alert.alert("Error", "Google did not return an ID token.");
+        return;
+      }
+
+      const result = await signInWithGoogle({ idToken });
+
+      await storeLocalAccessToken(result.accessToken);
+      await persistAuthenticatedRole("DRIVER");
+      router.replace("/driver/onboarding/welcome");
+    } catch (error: unknown) {
+      if (
+        error &&
+        typeof error === "object" &&
+        "code" in error &&
+        error.code === "SIGN_IN_CANCELLED"
+      ) {
+        return;
+      }
+
+      Alert.alert(
+        "Sign in failed",
+        error instanceof Error ? error.message : "Could not sign in with Google.",
+      );
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -62,32 +155,48 @@ export default function DriverAuthScreen() {
           <Pressable
             accessibilityRole="button"
             onPress={handleAppleSignIn}
+            disabled={loading}
             style={({ pressed }) => [
               styles.platformButton,
               styles.appleButton,
               pressed && styles.pressed,
+              loading && styles.disabled,
             ]}
           >
-            <Ionicons name="logo-apple" size={22} color={theme.colors.white} />
-            <AppText variant="label" color={theme.colors.white}>
-              Continue with Apple
-            </AppText>
+            {loading ? (
+              <ActivityIndicator color={theme.colors.white} />
+            ) : (
+              <>
+                <Ionicons name="logo-apple" size={22} color={theme.colors.white} />
+                <AppText variant="label" color={theme.colors.white}>
+                  Continue with Apple
+                </AppText>
+              </>
+            )}
           </Pressable>
         )}
 
         <Pressable
           accessibilityRole="button"
           onPress={handleGoogleSignIn}
+          disabled={loading}
           style={({ pressed }) => [
             styles.platformButton,
             styles.googleButton,
             pressed && styles.pressed,
+            loading && styles.disabled,
           ]}
         >
-          <GoogleIcon size={20} />
-          <AppText variant="label" color={theme.colors.black}>
-            Continue with Google
-          </AppText>
+          {loading ? (
+            <ActivityIndicator color={theme.colors.black} />
+          ) : (
+            <>
+              <GoogleIcon size={20} />
+              <AppText variant="label" color={theme.colors.black}>
+                Continue with Google
+              </AppText>
+            </>
+          )}
         </Pressable>
       </Animated.View>
 
@@ -163,6 +272,9 @@ const styles = StyleSheet.create({
     transform: [{ translateX: 2 }, { translateY: 2 }],
     shadowOpacity: 0,
     elevation: 0,
+  },
+  disabled: {
+    opacity: 0.6,
   },
   footer: {
     alignItems: "center",
