@@ -655,6 +655,35 @@ export async function signinWithUsernamePassword(input: {
   );
 }
 
+// ── Social Auth ─────────────────────────────────────────────────────────
+
+interface SocialAuthResponse {
+  accessToken: string;
+  tokenType: "Bearer";
+  user: BackendUser;
+}
+
+export async function signInWithApple(input: {
+  idToken: string;
+  name?: string;
+}): Promise<SocialAuthResponse> {
+  return postJson<SocialAuthResponse>(
+    "/auth/apple",
+    { idToken: input.idToken, name: input.name },
+    { fallbackError: "Apple sign-in failed." },
+  );
+}
+
+export async function signInWithGoogle(input: {
+  idToken: string;
+}): Promise<SocialAuthResponse> {
+  return postJson<SocialAuthResponse>(
+    "/auth/google",
+    { idToken: input.idToken },
+    { fallbackError: "Google sign-in failed." },
+  );
+}
+
 export async function sendPhoneOtp(
   input: SendPhoneOtpInput,
 ): Promise<SendPhoneOtpResponse> {
