@@ -8,6 +8,7 @@ import { AppScreen } from "@/components/app-screen";
 import { AppText } from "@/components/app-text";
 import { FlowHeader } from "@/components/flow-header";
 import { theme } from "@/theme";
+import { useDriverOnboarding } from "@/lib/driver-onboarding";
 
 type Challenge = "center" | "blink" | "turn_left" | "turn_right";
 
@@ -20,6 +21,7 @@ const CHALLENGES: { key: Challenge; instruction: string }[] = [
 
 export default function FaceVerificationScreen() {
   const router = useRouter();
+  const { setSelfieUri } = useDriverOnboarding();
   const [permission, requestPermission] = useCameraPermissions();
   const [currentStep, setCurrentStep] = useState(0);
   const [captured, setCaptured] = useState(false);
@@ -57,6 +59,7 @@ export default function FaceVerificationScreen() {
     try {
       const photo = await cameraRef.current.takePictureAsync({ quality: 0.7 });
       if (photo) {
+        setSelfieUri(photo.uri);
         setCaptured(true);
       }
     } catch {

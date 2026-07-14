@@ -1,15 +1,19 @@
 import { useRouter } from "expo-router";
 import { useState } from "react";
-import { StyleSheet, TextInput, View } from "react-native";
+import { Alert, StyleSheet, TextInput, View } from "react-native";
 
 import { AppButton } from "@/components/app-button";
 import { AppScreen } from "@/components/app-screen";
 import { AppText } from "@/components/app-text";
 import { FlowHeader } from "@/components/flow-header";
 import { theme } from "@/theme";
+import { useDriverOnboarding } from "@/lib/driver-onboarding";
+import { useAuth } from "@/lib/auth";
 
 export default function VehicleInfoScreen() {
   const router = useRouter();
+  const { submit, submitting } = useDriverOnboarding();
+  const { getAccessToken } = useAuth();
   const [make, setMake] = useState("");
   const [model, setModel] = useState("");
   const [plate, setPlate] = useState("");
@@ -17,9 +21,19 @@ export default function VehicleInfoScreen() {
 
   const isValid = make.trim() && model.trim() && plate.trim() && year.trim().length === 4;
 
-  function handleSubmit() {
-    // TODO: Submit all collected data (NIN image, licence, selfie, vehicle info) to backend
-    router.replace("/driver/onboarding/pending");
+  async function handleSubmit() {
+    try {
+      await submit(
+        { make: make.trim(), model: model.trim(), plate: plate.trim(), year: parseInt(year, 10) },
+        getAccessToken,
+      );
+      router.replace("/driver/onboarding/pending");
+    } catch (error) {
+      Alert.alert(
+        "Submission failed",
+        error instanceof Error ? error.message : "Could not submit your documents. Please try again.",
+      );
+    }
   }
 
   return (
@@ -92,7 +106,7 @@ export default function VehicleInfoScreen() {
 
       <View style={styles.spacer} />
 
-      <AppButton title="Submit for Review" onPress={handleSubmit} disabled={!isValid} />
+      <AppButton title="Submit for Review" onPress={handleSubmit} disabled={!isValid || submitting} />
     </AppScreen>
   );
 }
