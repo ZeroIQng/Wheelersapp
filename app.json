@@ -41,7 +41,12 @@
     "plugins": [
       "expo-router",
       "expo-apple-authentication",
-      "@react-native-google-signin/google-signin",
+      [
+        "@react-native-google-signin/google-signin",
+        {
+          "iosUrlScheme": "com.googleusercontent.apps.915689509871-6sfdaphckt4r0ku30j3d2pg6nbef199a"
+        }
+      ],
       [
         "expo-camera",
         {
