@@ -9,7 +9,7 @@ import * as AppleAuthentication from "expo-apple-authentication";
 import { AppScreen } from "@/components/app-screen";
 import { AppText } from "@/components/app-text";
 import { theme } from "@/theme";
-import { signInWithApple, signInWithGoogle } from "@/lib/api";
+import { signInWithApple, signInWithGoogle, getDriverKycStatus } from "@/lib/api";
 import { storeLocalAccessToken } from "@/lib/access-token";
 import { persistAuthenticatedRole } from "@/lib/auth-state";
 
@@ -58,7 +58,20 @@ export default function DriverAuthScreen() {
 
       await storeLocalAccessToken(result.accessToken);
       await persistAuthenticatedRole("DRIVER");
-      router.replace("/driver/onboarding/welcome");
+
+      // Check KYC status — skip onboarding if already approved
+      try {
+        const kyc = await getDriverKycStatus({ accessToken: result.accessToken });
+        if (kyc.kycStatus === "APPROVED") {
+          router.replace("/driver/dashboard");
+        } else if (kyc.kycStatus === "SUBMITTED") {
+          router.replace("/driver/onboarding/pending");
+        } else {
+          router.replace("/driver/onboarding/welcome");
+        }
+      } catch {
+        router.replace("/driver/onboarding/welcome");
+      }
     } catch (error: unknown) {
       if (
         error &&
@@ -102,7 +115,20 @@ export default function DriverAuthScreen() {
 
       await storeLocalAccessToken(result.accessToken);
       await persistAuthenticatedRole("DRIVER");
-      router.replace("/driver/onboarding/welcome");
+
+      // Check KYC status — skip onboarding if already approved
+      try {
+        const kyc = await getDriverKycStatus({ accessToken: result.accessToken });
+        if (kyc.kycStatus === "APPROVED") {
+          router.replace("/driver/dashboard");
+        } else if (kyc.kycStatus === "SUBMITTED") {
+          router.replace("/driver/onboarding/pending");
+        } else {
+          router.replace("/driver/onboarding/welcome");
+        }
+      } catch {
+        router.replace("/driver/onboarding/welcome");
+      }
     } catch (error: unknown) {
       if (
         error &&

@@ -55,6 +55,13 @@ export default function PendingScreen() {
     return () => { active = false; clearInterval(interval); };
   }, []);
 
+  useEffect(() => {
+    if (kycStatus === "APPROVED") {
+      const timer = setTimeout(() => router.replace("/driver/dashboard"), 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [kycStatus]);
+
   if (kycStatus === "APPROVED") {
     return (
       <AppScreen contentStyle={styles.container}>
@@ -65,7 +72,7 @@ export default function PendingScreen() {
           <Animated.View entering={FadeInDown.delay(150).duration(400)} style={styles.textWrap}>
             <AppText variant="h1" style={styles.title}>You're Approved!</AppText>
             <AppText variant="body" color={theme.colors.muted} style={styles.subtitle}>
-              Your account is active. Start accepting rides now.
+              Your account is active. Taking you to the dashboard...
             </AppText>
           </Animated.View>
         </View>
