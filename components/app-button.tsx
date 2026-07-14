@@ -1,4 +1,4 @@
-import { Pressable, StyleProp, StyleSheet, ViewStyle } from 'react-native';
+import { ActivityIndicator, Pressable, StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
 
 import { AppText } from '@/components/app-text';
 import { theme } from '@/theme';
@@ -10,6 +10,7 @@ type AppButtonProps = {
   onPress?: () => void;
   variant?: Variant;
   disabled?: boolean;
+  loading?: boolean;
   style?: StyleProp<ViewStyle>;
 };
 
@@ -45,14 +46,16 @@ export function AppButton({
   onPress,
   variant = 'primary',
   disabled,
+  loading,
   style,
 }: AppButtonProps) {
   const current = variantStyles[variant];
+  const isDisabled = disabled || loading;
 
   return (
     <Pressable
       accessibilityRole="button"
-      disabled={disabled}
+      disabled={isDisabled}
       onPress={onPress}
       style={({ pressed }) => [
         styles.button,
@@ -61,13 +64,16 @@ export function AppButton({
           borderColor: current.borderColor,
           shadowColor: current.shadowColor,
         },
-        pressed && !disabled && styles.pressed,
-        disabled && styles.disabled,
+        pressed && !isDisabled && styles.pressed,
+        isDisabled && styles.disabled,
         style,
       ]}>
-      <AppText variant="label" color={current.textColor} style={styles.label}>
-        {title}
-      </AppText>
+      <View style={styles.content}>
+        {loading && <ActivityIndicator size="small" color={current.textColor} />}
+        <AppText variant="label" color={current.textColor} style={styles.label}>
+          {loading ? 'Submitting…' : title}
+        </AppText>
+      </View>
     </Pressable>
   );
 }
@@ -81,6 +87,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: '100%',
     ...theme.shadows.card,
+  },
+  content: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
   },
   label: {
     textAlign: 'center',

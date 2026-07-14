@@ -12,11 +12,26 @@ import { useAuth } from "@/lib/auth";
 import { getDriverKycStatus } from "@/lib/api";
 import { getAccessTokenWithRetry } from "@/lib/access-token";
 
+const FIELD_TO_ROUTE: Record<string, string> = {
+  nin: "/driver/onboarding/nin-upload",
+  licence: "/driver/onboarding/licence-upload",
+  selfie: "/driver/onboarding/face-verification",
+  vehicle: "/driver/onboarding/vehicle-info",
+};
+
+const FIELD_LABELS: Record<string, string> = {
+  nin: "NIN Document",
+  licence: "Driver's Licence",
+  selfie: "Face Verification",
+  vehicle: "Vehicle Details",
+};
+
 export default function PendingScreen() {
   const router = useRouter();
   const { getAccessToken } = useAuth();
   const [kycStatus, setKycStatus] = useState<string>("SUBMITTED");
   const [rejectionReason, setRejectionReason] = useState<string | null>(null);
+  const [rejectedFields, setRejectedFields] = useState<string[]>([]);
 
   useEffect(() => {
     let active = true;
@@ -29,6 +44,7 @@ export default function PendingScreen() {
         if (!active) return;
         setKycStatus(result.kycStatus);
         setRejectionReason(result.submission?.rejectionReason ?? null);
+        setRejectedFields(result.submission?.rejectedFields ?? []);
       } catch {
         // silently retry on next interval
       }
@@ -59,6 +75,10 @@ export default function PendingScreen() {
   }
 
   if (kycStatus === "REJECTED") {
+    const firstRejectedRoute = rejectedFields.length > 0
+      ? FIELD_TO_ROUTE[rejectedFields[0]!] ?? "/driver/onboarding/welcome"
+      : "/driver/onboarding/welcome";
+
     return (
       <AppScreen contentStyle={styles.container}>
         <View style={styles.center}>
@@ -71,8 +91,27 @@ export default function PendingScreen() {
               {rejectionReason ?? "Your documents did not pass review."}
             </AppText>
           </Animated.View>
+
+          {rejectedFields.length > 0 && (
+            <Animated.View entering={FadeInDown.delay(250).duration(400)} style={styles.rejectedList}>
+              <AppText variant="label" style={styles.rejectedListTitle}>
+                Please fix the following:
+              </AppText>
+              {rejectedFields.map((field) => (
+                <View key={field} style={styles.rejectedItem}>
+                  <Ionicons name="alert-circle" size={16} color={theme.colors.danger} />
+                  <AppText variant="bodySmall" color={theme.colors.muted}>
+                    {FIELD_LABELS[field] ?? field}
+                  </AppText>
+                </View>
+              ))}
+            </Animated.View>
+          )}
         </View>
-        <AppButton title="Resubmit Documents" onPress={() => router.replace("/driver/onboarding/welcome")} />
+        <AppButton
+          title={rejectedFields.length > 0 ? `Fix ${FIELD_LABELS[rejectedFields[0]!] ?? "Documents"}` : "Resubmit Documents"}
+          onPress={() => router.replace(firstRejectedRoute as any)}
+        />
       </AppScreen>
     );
   }
@@ -164,5 +203,22 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing.md,
+  },
+  rejectedList: {
+    width: "100%",
+    borderWidth: theme.borders.regular,
+    borderColor: theme.colors.danger,
+    borderRadius: theme.radius.md,
+    padding: theme.spacing.lg,
+    gap: theme.spacing.sm,
+    backgroundColor: theme.colors.dangerLight,
+  },
+  rejectedListTitle: {
+    marginBottom: theme.spacing.xs,
+  },
+  rejectedItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing.sm,
   },
 });

@@ -106,7 +106,7 @@ export default function VehicleInfoScreen() {
 
       <View style={styles.spacer} />
 
-      <AppButton title="Submit for Review" onPress={handleSubmit} disabled={!isValid || submitting} />
+      <AppButton title="Submit for Review" onPress={handleSubmit} disabled={!isValid} loading={submitting} />
     </AppScreen>
   );
 }
