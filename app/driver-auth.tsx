@@ -26,11 +26,11 @@ function GoogleIcon({ size = 20 }: { size?: number }) {
 
 export default function DriverAuthScreen() {
   const router = useRouter();
-  const [loading, setLoading] = useState(false);
+  const [loadingProvider, setLoadingProvider] = useState<"apple" | "google" | null>(null);
 
   async function handleAppleSignIn() {
     try {
-      setLoading(true);
+      setLoadingProvider("apple");
 
       const credential = await AppleAuthentication.signInAsync({
         requestedScopes: [
@@ -74,20 +74,19 @@ export default function DriverAuthScreen() {
         error instanceof Error ? error.message : "Could not sign in with Apple.",
       );
     } finally {
-      setLoading(false);
+      setLoadingProvider(null);
     }
   }
 
   async function handleGoogleSignIn() {
     try {
-      setLoading(true);
+      setLoadingProvider("google");
 
       const { GoogleSignin } = await import("@react-native-google-signin/google-signin");
 
-      const googleClientId = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID ?? "";
       GoogleSignin.configure({
-        iosClientId: googleClientId,
-        webClientId: googleClientId,
+        iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID ?? "",
+        webClientId: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID ?? "",
       });
 
       await GoogleSignin.hasPlayServices();
@@ -119,7 +118,7 @@ export default function DriverAuthScreen() {
         error instanceof Error ? error.message : "Could not sign in with Google.",
       );
     } finally {
-      setLoading(false);
+      setLoadingProvider(null);
     }
   }
 
@@ -151,15 +150,15 @@ export default function DriverAuthScreen() {
           <Pressable
             accessibilityRole="button"
             onPress={handleAppleSignIn}
-            disabled={loading}
+            disabled={loadingProvider !== null}
             style={({ pressed }) => [
               styles.platformButton,
               styles.appleButton,
               pressed && styles.pressed,
-              loading && styles.disabled,
+              loadingProvider !== null && loadingProvider !== "apple" && styles.disabled,
             ]}
           >
-            {loading ? (
+            {loadingProvider === "apple" ? (
               <ActivityIndicator color={theme.colors.white} />
             ) : (
               <>
@@ -175,15 +174,15 @@ export default function DriverAuthScreen() {
         <Pressable
           accessibilityRole="button"
           onPress={handleGoogleSignIn}
-          disabled={loading}
+          disabled={loadingProvider !== null}
           style={({ pressed }) => [
             styles.platformButton,
             styles.googleButton,
             pressed && styles.pressed,
-            loading && styles.disabled,
+            loadingProvider !== null && loadingProvider !== "google" && styles.disabled,
           ]}
         >
-          {loading ? (
+          {loadingProvider === "google" ? (
             <ActivityIndicator color={theme.colors.black} />
           ) : (
             <>

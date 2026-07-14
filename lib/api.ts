@@ -1286,6 +1286,59 @@ export async function getDriverRideHistory(input: {
   });
 }
 
+// ─── Driver KYC ─────────────────────────────────────────────────
+
+export async function submitDriverKyc(input: {
+  accessToken: string;
+  ninImage: string;
+  licenceImage: string;
+  selfieImage: string;
+  vehicleMake: string;
+  vehicleModel: string;
+  vehiclePlate: string;
+  vehicleYear: number;
+}): Promise<{ status: string }> {
+  return postJson<{ status: string }>(
+    "/drivers/kyc/submit",
+    {
+      ninImage: input.ninImage,
+      licenceImage: input.licenceImage,
+      selfieImage: input.selfieImage,
+      vehicleMake: input.vehicleMake,
+      vehicleModel: input.vehicleModel,
+      vehiclePlate: input.vehiclePlate,
+      vehicleYear: input.vehicleYear,
+    },
+    {
+      accessToken: input.accessToken,
+      fallbackError: "Could not submit your documents.",
+    },
+  );
+}
+
+export interface DriverKycStatusResponse {
+  kycStatus: string;
+  submission: {
+    status: string;
+    submittedAt: string | null;
+    reviewedAt: string | null;
+    rejectionReason: string | null;
+    vehicleMake: string | null;
+    vehicleModel: string | null;
+    vehiclePlate: string | null;
+    vehicleYear: number | null;
+  } | null;
+}
+
+export async function getDriverKycStatus(input: {
+  accessToken: string;
+}): Promise<DriverKycStatusResponse> {
+  return getJson<DriverKycStatusResponse>("/drivers/kyc/status", {
+    accessToken: input.accessToken,
+    fallbackError: "Could not check KYC status.",
+  });
+}
+
 // ── Chat ──────────────────────────────────────────────────────────
 
 export interface ChatMessageResponse {

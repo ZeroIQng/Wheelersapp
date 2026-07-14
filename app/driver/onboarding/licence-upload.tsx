@@ -9,10 +9,12 @@ import { AppScreen } from "@/components/app-screen";
 import { AppText } from "@/components/app-text";
 import { FlowHeader } from "@/components/flow-header";
 import { theme } from "@/theme";
+import { useDriverOnboarding } from "@/lib/driver-onboarding";
 
 export default function LicenceUploadScreen() {
   const router = useRouter();
-  const [imageUri, setImageUri] = useState<string | null>(null);
+  const { setLicenceUri, data } = useDriverOnboarding();
+  const [imageUri, setImageUri] = useState<string | null>(data.licenceUri);
 
   async function pickImage() {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -23,6 +25,7 @@ export default function LicenceUploadScreen() {
 
     if (!result.canceled && result.assets[0]) {
       setImageUri(result.assets[0].uri);
+      setLicenceUri(result.assets[0].uri);
     }
   }
 
@@ -37,6 +40,7 @@ export default function LicenceUploadScreen() {
 
     if (!result.canceled && result.assets[0]) {
       setImageUri(result.assets[0].uri);
+      setLicenceUri(result.assets[0].uri);
     }
   }
 
