@@ -3,6 +3,9 @@ import { useEffect, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
 
+import { Pressable } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+
 import { AppButton } from "@/components/app-button";
 import { AppScreen } from "@/components/app-screen";
 import { AppText } from "@/components/app-text";
@@ -96,36 +99,53 @@ export default function FaceVerificationScreen() {
         progress={{ count: 5, active: 3 }}
       />
 
-      <View style={styles.cameraWrap}>
-        <CameraView
-          ref={cameraRef}
-          style={styles.camera}
-          facing="front"
-          mode="picture"
-        />
-        <View style={styles.overlay}>
-          <View style={styles.faceGuide} />
+      <View style={styles.cameraSection}>
+        <View style={styles.cameraWrap}>
+          <CameraView
+            ref={cameraRef}
+            style={styles.camera}
+            facing="front"
+            mode="picture"
+          />
+          <View style={styles.overlay}>
+            <View style={styles.faceGuide} />
+          </View>
         </View>
+
+        {!captured && challenge && (
+          <View style={styles.instructionWrap}>
+            <AppText variant="h3" style={styles.instruction}>
+              {challenge.instruction}
+            </AppText>
+            <AppText variant="bodySmall" color={theme.colors.muted}>
+              Step {currentStep + 1} of {CHALLENGES.length}
+            </AppText>
+          </View>
+        )}
+
+        {!captured && (
+          <Pressable
+            onPress={handleCapture}
+            style={({ pressed }) => [
+              styles.captureButton,
+              pressed && styles.capturePressed,
+            ]}
+          >
+            <View style={styles.captureInner}>
+              <Ionicons name="camera" size={28} color={theme.colors.white} />
+            </View>
+          </Pressable>
+        )}
+
+        {captured && (
+          <View style={styles.successWrap}>
+            <Ionicons name="checkmark-circle" size={32} color={theme.colors.green} />
+            <AppText variant="h3" color={theme.colors.green}>
+              Verification complete
+            </AppText>
+          </View>
+        )}
       </View>
-
-      {!captured && challenge && (
-        <View style={styles.instructionWrap}>
-          <AppText variant="h3" style={styles.instruction}>
-            {challenge.instruction}
-          </AppText>
-          <AppText variant="bodySmall" color={theme.colors.muted}>
-            Step {currentStep + 1} of {CHALLENGES.length}
-          </AppText>
-        </View>
-      )}
-
-      {captured && (
-        <View style={styles.successWrap}>
-          <AppText variant="h3" color={theme.colors.green}>
-            Verification complete
-          </AppText>
-        </View>
-      )}
 
       <View style={styles.spacer} />
 
@@ -147,11 +167,16 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  cameraSection: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: theme.spacing.lg,
+    marginTop: theme.spacing.lg,
+  },
   cameraWrap: {
-    marginTop: theme.spacing.xl,
-    width: "100%",
+    width: "90%",
     aspectRatio: 3 / 4,
-    maxHeight: 340,
     borderRadius: theme.radius.lg,
     borderWidth: theme.borders.thick,
     borderColor: theme.colors.black,
@@ -167,27 +192,49 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   faceGuide: {
-    width: 180,
-    height: 240,
-    borderRadius: 90,
+    width: 200,
+    height: 260,
+    borderRadius: 100,
     borderWidth: 2.5,
     borderColor: theme.colors.orange,
     borderStyle: "dashed",
   },
   instructionWrap: {
-    marginTop: theme.spacing.xl,
     alignItems: "center",
     gap: theme.spacing.xs,
   },
   instruction: {
     textAlign: "center",
   },
-  successWrap: {
-    marginTop: theme.spacing.xl,
+  captureButton: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    borderWidth: 4,
+    borderColor: theme.colors.black,
+    backgroundColor: theme.colors.white,
     alignItems: "center",
+    justifyContent: "center",
+    ...theme.shadows.card,
+  },
+  capturePressed: {
+    transform: [{ scale: 0.92 }],
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  captureInner: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: theme.colors.orange,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  successWrap: {
+    alignItems: "center",
+    gap: theme.spacing.sm,
   },
   spacer: {
-    flex: 1,
     minHeight: theme.spacing.xl,
   },
 });

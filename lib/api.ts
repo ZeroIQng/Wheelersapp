@@ -1323,6 +1323,7 @@ export interface DriverKycStatusResponse {
     submittedAt: string | null;
     reviewedAt: string | null;
     rejectionReason: string | null;
+    rejectedFields: string[];
     vehicleMake: string | null;
     vehicleModel: string | null;
     vehiclePlate: string | null;
