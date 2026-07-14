@@ -48,7 +48,7 @@ export function FlowHeader({
                 }
 
                 if (backHref) {
-                  router.replace(backHref);
+                  router.replace(backHref as any);
                 }
               }}
               style={styles.backButton}>

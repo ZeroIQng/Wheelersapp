@@ -71,6 +71,14 @@
         }
       ],
       [
+        "expo-build-properties",
+        {
+          "android": {
+            "minSdkVersion": 26
+          }
+        }
+      ],
+      [
         "expo-location",
         {
           "locationAlwaysAndWhenInUsePermission": "Wheelers Rides uses your location at all times during rides so live tracking, safety tools, and trip progress stay accurate.",

@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useCallback, type ReactNode } from "react";
-import * as FileSystem from "expo-file-system";
+import { File } from "expo-file-system";
 import { submitDriverKyc } from "@/lib/api";
 import { getAccessTokenWithRetry, type AccessTokenGetter } from "@/lib/access-token";
 
@@ -27,10 +27,8 @@ export function useDriverOnboarding() {
 }
 
 async function uriToBase64(uri: string): Promise<string> {
-  const base64 = await FileSystem.readAsStringAsync(uri, {
-    encoding: FileSystem.EncodingType.Base64,
-  });
-  return base64;
+  const file = new File(uri);
+  return file.base64();
 }
 
 export function DriverOnboardingProvider({ children }: { children: ReactNode }) {
