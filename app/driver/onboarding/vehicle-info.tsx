@@ -1,6 +1,6 @@
 import { useRouter } from "expo-router";
 import { useState } from "react";
-import { Alert, StyleSheet, TextInput, View } from "react-native";
+import { Alert, StyleSheet, TextInput, TextStyle, View } from "react-native";
 
 import { AppButton } from "@/components/app-button";
 import { AppScreen } from "@/components/app-screen";
@@ -136,7 +136,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: theme.colors.black,
     ...theme.shadows.subtle,
-  },
+  } as TextStyle,
   spacer: {
     flex: 1,
     minHeight: theme.spacing.xxxl,
