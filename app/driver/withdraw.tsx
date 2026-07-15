@@ -237,13 +237,13 @@ export default function DriverWithdrawScreen() {
               <AppText variant="bodySmall" color={theme.colors.muted}>{selectedBank?.name}</AppText>
             </View>
 
-            <View style={styles.inputWrap}>
+            <View style={[styles.inputWrap, isDark && { backgroundColor: theme.colors.darkSurface, borderColor: theme.colors.darkBorder }]}>
               <AppText variant="bodySmall" color={theme.colors.muted} style={styles.inputLabel}>
                 Account number
               </AppText>
               <TextInput
                 ref={accountRef}
-                style={styles.input}
+                style={[styles.input, isDark && { color: theme.colors.offWhite }]}
                 value={accountNumber}
                 onChangeText={(t) => setAccountNumber(t.replace(/\D/g, '').slice(0, 10))}
                 placeholder="0123456789"
@@ -278,7 +278,7 @@ export default function DriverWithdrawScreen() {
               <AppText variant="bodyMedium">{accountName}</AppText>
             </View>
 
-            <View style={styles.inputWrap}>
+            <View style={[styles.inputWrap, isDark && { backgroundColor: theme.colors.darkSurface, borderColor: theme.colors.darkBorder }]}>
               <AppText variant="bodySmall" color={theme.colors.muted} style={styles.inputLabel}>
                 Amount (NGN)
               </AppText>
