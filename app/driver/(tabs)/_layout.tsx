@@ -41,21 +41,23 @@ function SettingsIcon({ color, size }: { color: string; size: number }) {
 }
 
 export default function DriverTabsLayout() {
+  const { isDark } = useAppTheme();
+
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: theme.colors.orange,
-        tabBarInactiveTintColor: theme.colors.mutedLight,
+        tabBarInactiveTintColor: isDark ? theme.colors.darkMuted : theme.colors.mutedLight,
         tabBarLabelStyle: {
           fontFamily: 'ClashDisplay_600Semibold',
           fontSize: 11,
           letterSpacing: 0.2,
         },
         tabBarStyle: {
-          backgroundColor: theme.colors.white,
+          backgroundColor: isDark ? theme.colors.darkSurface : theme.colors.white,
           borderTopWidth: 1,
-          borderTopColor: theme.colors.borderLight,
+          borderTopColor: isDark ? theme.colors.darkBorder : theme.colors.borderLight,
           height: Platform.OS === 'ios' ? 88 : 64,
           paddingTop: 8,
           paddingBottom: Platform.OS === 'ios' ? 28 : 10,

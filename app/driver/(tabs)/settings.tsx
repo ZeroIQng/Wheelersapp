@@ -1,11 +1,11 @@
 import { Href, useRouter } from 'expo-router';
-import { useState } from 'react';
 import { Alert, Linking, Platform, Pressable, StyleSheet, Switch, View } from 'react-native';
 import Svg, { Circle, Line, Path, Polyline, Rect } from 'react-native-svg';
 
 import { AppScreen } from '@/components/app-screen';
 import { AppText } from '@/components/app-text';
 import { useAuth } from '@/lib/auth';
+import { useAppTheme } from '@/lib/theme-context';
 import { theme } from '@/theme';
 
 const APP_VERSION = '1.0.0';
@@ -87,7 +87,7 @@ function ChevronRightIcon({ size = 18 }: { size?: number }) {
 export default function DriverSettingsScreen() {
   const router = useRouter();
   const { logout } = useAuth();
-  const [darkMode, setDarkMode] = useState(false);
+  const { isDark, toggleTheme } = useAppTheme();
 
   const handleLogout = () => {
     Alert.alert(
