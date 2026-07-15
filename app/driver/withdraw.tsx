@@ -284,7 +284,7 @@ export default function DriverWithdrawScreen() {
               </AppText>
               <TextInput
                 ref={amountRef}
-                style={[styles.input, styles.amountInput]}
+                style={[styles.input, styles.amountInput, isDark && { color: theme.colors.offWhite }]}
                 value={amount}
                 onChangeText={(t) => setAmount(t.replace(/[^0-9.]/g, ''))}
                 placeholder="0.00"
@@ -312,7 +312,7 @@ export default function DriverWithdrawScreen() {
         {/* ── Step: Confirm ── */}
         {step === 'confirm' && (
           <View style={styles.stepContent}>
-            <View style={styles.confirmCard}>
+            <View style={[styles.confirmCard, isDark && { backgroundColor: theme.colors.darkSurface }]}>
               <View style={styles.confirmRow}>
                 <AppText variant="bodySmall" color={theme.colors.muted}>Bank</AppText>
                 <AppText variant="bodyMedium">{selectedBank?.name}</AppText>
@@ -347,7 +347,7 @@ export default function DriverWithdrawScreen() {
       {/* ── Bank selection modal ── */}
       <Modal visible={showBankModal} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+          <View style={[styles.modalContent, isDark && { backgroundColor: theme.colors.black }]}>
             <View style={styles.modalHeader}>
               <AppText variant="h2">Select bank</AppText>
               <Pressable onPress={() => setShowBankModal(false)} hitSlop={12}>
@@ -356,7 +356,7 @@ export default function DriverWithdrawScreen() {
             </View>
 
             {/* Search */}
-            <View style={styles.searchWrap}>
+            <View style={[styles.searchWrap, isDark && { backgroundColor: theme.colors.darkSurface, borderColor: theme.colors.darkBorder }]}>
               <SearchIcon />
               <TextInput
                 style={styles.searchInput}
