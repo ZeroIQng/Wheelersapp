@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { ActivityIndicator, Platform, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 import Svg, { Line, Path, Polyline } from 'react-native-svg';
 
 import { AppCard } from '@/components/app-card';
@@ -58,30 +58,37 @@ export default function DriverEarningsScreen() {
   const [activePeriod, setActivePeriod] = useState<Period>('today');
   const [earnings, setEarnings] = useState<DriverEarningsResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const fetchEarnings = useCallback(async (period: Period) => {
+    try {
+      const accessToken = await getAccessTokenWithRetry(getAccessToken);
+      if (!accessToken) return;
+      const data = await getDriverEarnings({ accessToken, period });
+      setEarnings(data);
+    } catch {
+      // non-blocking
+    } finally {
+      setLoading(false);
+    }
+  }, [getAccessToken]);
 
   useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      setLoading(true);
-      try {
-        const accessToken = await getAccessTokenWithRetry(getAccessToken);
-        if (!accessToken || cancelled) return;
-        const data = await getDriverEarnings({ accessToken, period: activePeriod });
-        if (!cancelled) setEarnings(data);
-      } catch {
-        // non-blocking
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [getAccessToken, activePeriod]);
+    setLoading(true);
+    void fetchEarnings(activePeriod);
+  }, [fetchEarnings, activePeriod]);
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await fetchEarnings(activePeriod);
+    setRefreshing(false);
+  }, [fetchEarnings, activePeriod]);
 
   const totalEarnings = earnings?.totalEarningsNgn ?? 0;
   const rideCount = earnings?.rideCount ?? 0;
 
   return (
-    <AppScreen scroll contentStyle={styles.container}>
+    <AppScreen scroll contentStyle={styles.container} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.colors.orange} colors={[theme.colors.orange]} />}>
       {/* Header with back */}
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} hitSlop={12} style={[styles.backBtn, isDark && { backgroundColor: theme.colors.darkSurface }]}>

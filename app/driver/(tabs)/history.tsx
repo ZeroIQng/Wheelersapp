@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { ActivityIndicator, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 
 import { AppScreen } from '@/components/app-screen';
 import { AppCard } from '@/components/app-card';
@@ -53,31 +53,40 @@ export default function DriverHistoryScreen() {
   const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
   const [loadingRides, setLoadingRides] = useState(true);
   const [loadingTxns, setLoadingTxns] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const fetchData = useCallback(async () => {
+    try {
+      const accessToken = await getAccessTokenWithRetry(getAccessToken);
+      if (!accessToken) return;
+      const [rideData, txnData] = await Promise.all([
+        getDriverRideHistory({ accessToken, limit: 30 }),
+        getWalletTransactions({ accessToken, limit: 30 }),
+      ]);
+      setRides(rideData.items);
+      setTransactions(txnData.items);
+    } catch {
+      // non-blocking
+    } finally {
+      setLoadingRides(false);
+      setLoadingTxns(false);
+    }
+  }, [getAccessToken]);
 
   useEffect(() => {
-    void (async () => {
-      try {
-        const accessToken = await getAccessTokenWithRetry(getAccessToken);
-        if (!accessToken) return;
-        const [rideData, txnData] = await Promise.all([
-          getDriverRideHistory({ accessToken, limit: 30 }),
-          getWalletTransactions({ accessToken, limit: 30 }),
-        ]);
-        setRides(rideData.items);
-        setTransactions(txnData.items);
-      } catch {
-        // non-blocking
-      } finally {
-        setLoadingRides(false);
-        setLoadingTxns(false);
-      }
-    })();
-  }, [getAccessToken]);
+    void fetchData();
+  }, [fetchData]);
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await fetchData();
+    setRefreshing(false);
+  }, [fetchData]);
 
   const loading = activeTab === 'rides' ? loadingRides : loadingTxns;
 
   return (
-    <AppScreen scroll contentStyle={styles.container}>
+    <AppScreen scroll contentStyle={styles.container} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.colors.orange} colors={[theme.colors.orange]} />}>
       <AppText variant="h1">History</AppText>
 
       {/* Tab switcher */}
