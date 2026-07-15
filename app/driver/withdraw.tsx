@@ -438,8 +438,9 @@ export default function DriverWithdrawScreen() {
             ) : (
               <FlatList
                 data={filteredBanks}
-                keyExtractor={(item) => item.id}
+                keyExtractor={(item, index) => item.id || String(index)}
                 showsVerticalScrollIndicator={false}
+                nestedScrollEnabled
                 ListEmptyComponent={
                   <AppText variant="body" color={theme.colors.muted} style={{ textAlign: 'center', marginTop: 30 }}>
                     No banks found
