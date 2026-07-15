@@ -367,6 +367,7 @@ export interface CreateWalletWithdrawalResponse {
 
 export interface WithdrawalBankNetwork {
   id: string;
+  uuid?: string;
   name: string;
   code: string | null;
   country: string | null;
