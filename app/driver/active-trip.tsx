@@ -1,14 +1,16 @@
 import { Href, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
+import { Marker, Polyline } from 'react-native-maps';
+import type MapView from 'react-native-maps';
 
 import { AppButton } from '@/components/app-button';
 import { AppScreen } from '@/components/app-screen';
 import { AppText } from '@/components/app-text';
 import { BackArrow } from '@/components/back-arrow';
+import { GoogleMapView } from '@/components/GoogleMapView';
 import { InstructionCard } from '@/components/InstructionCard';
-import { MapMock } from '@/components/MapMock';
 import { MetricCard } from '@/components/MetricCard';
 import { RideChat } from '@/components/RideChat';
 import { StatusPill } from '@/components/StatusPill';
@@ -24,6 +26,7 @@ export default function DriverActiveTripScreen() {
   const { session, endTrip, chatMessages, sendChatMessage } = useDriverSession();
   const ride = session.currentRide;
 
+  const mapRef = useRef<MapView>(null);
   const [elapsedMinutes, setElapsedMinutes] = useState(0);
   const [chatOpen, setChatOpen] = useState(false);
 
@@ -48,7 +51,34 @@ export default function DriverActiveTripScreen() {
     }
   }, [session.status, router]);
 
+  // Fit map to show route when ride data is available
+  useEffect(() => {
+    if (!ride || !mapRef.current) return;
+    const coords = [
+      { latitude: ride.pickup.lat, longitude: ride.pickup.lng },
+      { latitude: ride.destination.lat, longitude: ride.destination.lng },
+    ];
+    mapRef.current.fitToCoordinates(coords, {
+      edgePadding: { top: 50, right: 40, bottom: 40, left: 40 },
+      animated: true,
+    });
+  }, [ride]);
+
   if (!ride) return null;
+
+  const routeCoords = useMemo(() => {
+    if (!ride.route?.coordinates) return [];
+    return ride.route.coordinates.map((c) => ({ latitude: c.lat, longitude: c.lng }));
+  }, [ride.route]);
+
+  const destinationCoord = { latitude: ride.destination.lat, longitude: ride.destination.lng };
+
+  const initialRegion = {
+    latitude: (ride.pickup.lat + ride.destination.lat) / 2,
+    longitude: (ride.pickup.lng + ride.destination.lng) / 2,
+    latitudeDelta: Math.abs(ride.pickup.lat - ride.destination.lat) * 1.5 || 0.02,
+    longitudeDelta: Math.abs(ride.pickup.lng - ride.destination.lng) * 1.5 || 0.02,
+  };
 
   const remainingMinutes = ride.plannedDurationSeconds
     ? Math.max(0, Math.ceil(ride.plannedDurationSeconds / 60) - elapsedMinutes)
@@ -65,15 +95,38 @@ export default function DriverActiveTripScreen() {
     <AppScreen backgroundColor={theme.colors.offWhite} contentStyle={styles.container}>
       <StatusBar style="dark" backgroundColor={theme.colors.mapBase} />
       <View style={styles.mapWrap}>
-        <MapMock
-          height={250}
-          showCar
-          showDestination
-          showRoute
-          topBadge="REC"
-          variant="driverActive">
-          <BackArrow style={styles.backButton} />
-        </MapMock>
+        <View style={{ height: 250, backgroundColor: theme.colors.mapBase }}>
+          <GoogleMapView
+            ref={mapRef}
+            initialRegion={initialRegion}
+            style={StyleSheet.absoluteFill}
+            showsUserLocation
+            showsMyLocationButton={false}
+            showsCompass={false}
+            showsBuildings
+            showsTraffic
+            toolbarEnabled={false}
+            pitchEnabled={false}
+            rotateEnabled={false}
+          >
+            {routeCoords.length > 1 && (
+              <Polyline coordinates={routeCoords} strokeColor={theme.colors.orange} strokeWidth={5} />
+            )}
+            <Marker coordinate={destinationCoord}>
+              <View style={styles.destinationMarker}>
+                <AppText style={styles.markerEmoji}>📍</AppText>
+              </View>
+            </Marker>
+          </GoogleMapView>
+
+          <View style={styles.topBadge}>
+            <AppText variant="monoSmall" color={theme.colors.offWhite}>REC</AppText>
+          </View>
+
+          <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
+            <BackArrow style={styles.backButton} />
+          </View>
+        </View>
       </View>
 
       <View style={styles.content}>
@@ -140,6 +193,30 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 12,
     left: theme.spacing.gutter,
+  },
+  destinationMarker: {
+    width: 28,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  markerEmoji: {
+    fontSize: 16,
+  },
+  topBadge: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    minWidth: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: 5,
+    borderRadius: theme.radii.sm,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    backgroundColor: theme.colors.black,
+    ...theme.shadows.card,
   },
   content: {
     flex: 1,

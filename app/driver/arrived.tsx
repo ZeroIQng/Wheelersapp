@@ -1,7 +1,7 @@
 import { Href, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Linking, Pressable, StyleSheet, View } from 'react-native';
 
 import { AppButton } from '@/components/app-button';
 import { AppCard } from '@/components/app-card';
@@ -45,6 +45,10 @@ export default function DriverArrivedScreen() {
 
   if (!ride) return null;
 
+  const handleCallSupport = () => {
+    Linking.openURL('https://wa.me/2349060003900?text=Hi%2C%20I%20need%20help%20reaching%20my%20rider').catch(() => {});
+  };
+
   const handleStartTrip = async () => {
     await startTrip(ride.rideId);
   };
@@ -79,7 +83,7 @@ export default function DriverArrivedScreen() {
             {ride.pickup.address}
           </AppText>
         </View>
-        <Pressable style={styles.callButton}>
+        <Pressable style={styles.callButton} onPress={handleCallSupport}>
           <AppText style={styles.callText}>📞</AppText>
         </Pressable>
       </AppCard>
