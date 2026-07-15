@@ -1,11 +1,11 @@
 import { Href, useRouter } from 'expo-router';
-import { useState } from 'react';
 import { Alert, Linking, Platform, Pressable, StyleSheet, Switch, View } from 'react-native';
 import Svg, { Circle, Line, Path, Polyline, Rect } from 'react-native-svg';
 
 import { AppScreen } from '@/components/app-screen';
 import { AppText } from '@/components/app-text';
 import { useAuth } from '@/lib/auth';
+import { useAppTheme } from '@/lib/theme-context';
 import { theme } from '@/theme';
 
 const APP_VERSION = '1.0.0';
@@ -87,7 +87,7 @@ function ChevronRightIcon({ size = 18 }: { size?: number }) {
 export default function DriverSettingsScreen() {
   const router = useRouter();
   const { logout } = useAuth();
-  const [darkMode, setDarkMode] = useState(false);
+  const { isDark, toggleTheme } = useAppTheme();
 
   const handleLogout = () => {
     Alert.alert(
@@ -132,8 +132,13 @@ export default function DriverSettingsScreen() {
     });
   };
 
+  const cardBg = isDark ? theme.colors.darkSurface : theme.colors.white;
+  const subtleBg = isDark ? theme.colors.darkSurfaceSoft : '#F0EDE8';
+  const pressedBg = isDark ? theme.colors.darkSurfaceSoft : theme.colors.offWhite;
+  const dividerColor = isDark ? theme.colors.darkBorder : theme.colors.borderLight;
+
   return (
-    <AppScreen backgroundColor={theme.colors.offWhite} scroll contentStyle={styles.container}>
+    <AppScreen scroll contentStyle={styles.container}>
       <AppText variant="h1">Settings</AppText>
 
       {/* ── Account section ── */}
@@ -141,10 +146,10 @@ export default function DriverSettingsScreen() {
         <AppText variant="label" color={theme.colors.muted} style={styles.sectionLabel}>
           ACCOUNT
         </AppText>
-        <View style={styles.card}>
+        <View style={[styles.card, { backgroundColor: cardBg }]}>
           <Pressable
             onPress={() => {/* Profile page - future */}}
-            style={({ pressed }) => [styles.menuItem, pressed && styles.menuItemPressed]}
+            style={({ pressed }) => [styles.menuItem, pressed && { backgroundColor: pressedBg }]}
           >
             <View style={[styles.menuIcon, { backgroundColor: theme.colors.orangeLight }]}>
               <UserIcon color={theme.colors.orange} size={18} />
@@ -163,20 +168,20 @@ export default function DriverSettingsScreen() {
         <AppText variant="label" color={theme.colors.muted} style={styles.sectionLabel}>
           APPEARANCE
         </AppText>
-        <View style={styles.card}>
+        <View style={[styles.card, { backgroundColor: cardBg }]}>
           <View style={styles.menuItem}>
-            <View style={[styles.menuIcon, { backgroundColor: '#F0EDE8' }]}>
+            <View style={[styles.menuIcon, { backgroundColor: subtleBg }]}>
               <PaletteIcon color={theme.colors.muted} size={18} />
             </View>
             <View style={styles.menuInfo}>
               <AppText variant="bodyMedium">Dark mode</AppText>
               <AppText variant="bodySmall" color={theme.colors.muted}>
-                {darkMode ? 'On' : 'Off'}
+                {isDark ? 'On' : 'Off'}
               </AppText>
             </View>
             <Switch
-              value={darkMode}
-              onValueChange={setDarkMode}
+              value={isDark}
+              onValueChange={toggleTheme}
               trackColor={{ false: theme.colors.borderLight, true: theme.colors.orange }}
               thumbColor={theme.colors.white}
             />
@@ -189,10 +194,10 @@ export default function DriverSettingsScreen() {
         <AppText variant="label" color={theme.colors.muted} style={styles.sectionLabel}>
           SUPPORT
         </AppText>
-        <View style={styles.card}>
+        <View style={[styles.card, { backgroundColor: cardBg }]}>
           <Pressable
             onPress={handleContactSupport}
-            style={({ pressed }) => [styles.menuItem, pressed && styles.menuItemPressed]}
+            style={({ pressed }) => [styles.menuItem, pressed && { backgroundColor: pressedBg }]}
           >
             <View style={[styles.menuIcon, { backgroundColor: theme.colors.orangeLight }]}>
               <HeadphonesIcon color={theme.colors.orange} size={18} />
@@ -211,9 +216,9 @@ export default function DriverSettingsScreen() {
         <AppText variant="label" color={theme.colors.muted} style={styles.sectionLabel}>
           ABOUT
         </AppText>
-        <View style={styles.card}>
+        <View style={[styles.card, { backgroundColor: cardBg }]}>
           <View style={styles.menuItem}>
-            <View style={[styles.menuIcon, { backgroundColor: '#F0EDE8' }]}>
+            <View style={[styles.menuIcon, { backgroundColor: subtleBg }]}>
               <InfoIcon color={theme.colors.muted} size={18} />
             </View>
             <View style={styles.menuInfo}>
@@ -226,13 +231,13 @@ export default function DriverSettingsScreen() {
 
       {/* ── Danger zone ── */}
       <View style={styles.section}>
-        <View style={styles.card}>
+        <View style={[styles.card, { backgroundColor: cardBg }]}>
           <Pressable
             onPress={handleLogout}
-            style={({ pressed }) => [styles.menuItem, pressed && styles.menuItemPressed]}
+            style={({ pressed }) => [styles.menuItem, pressed && { backgroundColor: pressedBg }]}
           >
-            <View style={[styles.menuIcon, { backgroundColor: '#F0EDE8' }]}>
-              <LogoutIcon color={theme.colors.black} size={18} />
+            <View style={[styles.menuIcon, { backgroundColor: subtleBg }]}>
+              <LogoutIcon color={isDark ? theme.colors.offWhite : theme.colors.black} size={18} />
             </View>
             <View style={styles.menuInfo}>
               <AppText variant="bodyMedium">Log out</AppText>
@@ -240,11 +245,11 @@ export default function DriverSettingsScreen() {
             <ChevronRightIcon />
           </Pressable>
 
-          <View style={styles.menuDivider} />
+          <View style={[styles.menuDivider, { borderBottomColor: dividerColor }]} />
 
           <Pressable
             onPress={handleDeleteAccount}
-            style={({ pressed }) => [styles.menuItem, pressed && styles.menuItemPressed]}
+            style={({ pressed }) => [styles.menuItem, pressed && { backgroundColor: pressedBg }]}
           >
             <View style={[styles.menuIcon, { backgroundColor: theme.colors.dangerLight }]}>
               <TrashIcon size={18} />
