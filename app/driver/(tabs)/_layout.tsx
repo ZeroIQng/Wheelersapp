@@ -1,6 +1,7 @@
 import { Tabs } from 'expo-router';
 import { Platform } from 'react-native';
 import Svg, { Circle, Line, Path, Polyline, Rect } from 'react-native-svg';
+import { useAppTheme } from '@/lib/theme-context';
 import { theme } from '@/theme';
 
 function HomeIcon({ color, size }: { color: string; size: number }) {
