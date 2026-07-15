@@ -292,7 +292,6 @@ const styles = StyleSheet.create({
 
   // Card
   card: {
-    backgroundColor: theme.colors.white,
     borderRadius: 16,
     overflow: 'hidden',
     ...Platform.select({
@@ -314,9 +313,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 14,
   },
-  menuItemPressed: {
-    backgroundColor: theme.colors.offWhite,
-  },
   menuIcon: {
     width: 36,
     height: 36,
@@ -330,7 +326,7 @@ const styles = StyleSheet.create({
   },
   menuDivider: {
     height: 1,
-    backgroundColor: theme.colors.borderLight,
+    borderBottomWidth: 1,
     marginLeft: 66,
   },
 
