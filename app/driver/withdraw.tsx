@@ -78,6 +78,10 @@ function SearchIcon({ size = 18 }: { size?: number }) {
   );
 }
 
+function getBankId(bank: WithdrawalBankNetwork): string {
+  return bank.id || bank.uuid || '';
+}
+
 // ── Steps ─────────────────────────────────────────────
 type Step = 'bank' | 'account' | 'amount' | 'confirm';
 
