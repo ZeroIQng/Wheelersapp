@@ -77,7 +77,7 @@ export default function DriverHistoryScreen() {
   const loading = activeTab === 'rides' ? loadingRides : loadingTxns;
 
   return (
-    <AppScreen backgroundColor={theme.colors.offWhite} scroll contentStyle={styles.container}>
+    <AppScreen scroll contentStyle={styles.container}>
       <AppText variant="h1">History</AppText>
 
       {/* Tab switcher */}
