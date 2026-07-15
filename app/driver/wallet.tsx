@@ -49,7 +49,7 @@ export default function DriverWalletScreen() {
       <StatusBar style="dark" backgroundColor={theme.colors.offWhite} />
       <SectionHeader
         actionLabel="Dashboard"
-        onActionPress={() => router.replace('/driver/dashboard' as Href)}
+        onActionPress={() => router.replace('/driver/(tabs)/home' as Href)}
         subtitle="Driver balance and payout activity"
         title="Wallet"
         titleVariant="h1"

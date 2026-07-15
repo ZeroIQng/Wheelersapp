@@ -29,7 +29,7 @@ export default function DriverActiveTripScreen() {
 
   useEffect(() => {
     if (!ride) {
-      router.replace('/driver/dashboard' as Href);
+      router.replace('/driver/(tabs)/home' as Href);
       return;
     }
 

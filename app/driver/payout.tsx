@@ -28,12 +28,12 @@ export default function DriverPayoutScreen() {
 
   const handleNextRide = () => {
     clearCompleted();
-    router.replace('/driver/dashboard' as Href);
+    router.replace('/driver/(tabs)/home' as Href);
   };
 
   const handleGoOffline = async () => {
     await goOffline();
-    router.replace('/driver/dashboard' as Href);
+    router.replace('/driver/(tabs)/home' as Href);
   };
 
   return (

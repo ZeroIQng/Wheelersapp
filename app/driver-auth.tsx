@@ -63,7 +63,7 @@ export default function DriverAuthScreen() {
       try {
         const kyc = await getDriverKycStatus({ accessToken: result.accessToken });
         if (kyc.kycStatus === "APPROVED") {
-          router.replace("/driver/dashboard");
+          router.replace("/driver/(tabs)/home" as any);
         } else if (kyc.kycStatus === "SUBMITTED") {
           router.replace("/driver/onboarding/pending");
         } else {
@@ -120,7 +120,7 @@ export default function DriverAuthScreen() {
       try {
         const kyc = await getDriverKycStatus({ accessToken: result.accessToken });
         if (kyc.kycStatus === "APPROVED") {
-          router.replace("/driver/dashboard");
+          router.replace("/driver/(tabs)/home" as any);
         } else if (kyc.kycStatus === "SUBMITTED") {
           router.replace("/driver/onboarding/pending");
         } else {

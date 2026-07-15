@@ -57,7 +57,7 @@ export default function PendingScreen() {
 
   useEffect(() => {
     if (kycStatus === "APPROVED") {
-      const timer = setTimeout(() => router.replace("/driver/dashboard"), 2000);
+      const timer = setTimeout(() => router.replace("/driver/(tabs)/home" as any), 2000);
       return () => clearTimeout(timer);
     }
   }, [kycStatus]);
@@ -76,7 +76,7 @@ export default function PendingScreen() {
             </AppText>
           </Animated.View>
         </View>
-        <AppButton title="Go to Dashboard" onPress={() => router.replace("/driver/dashboard")} />
+        <AppButton title="Go to Dashboard" onPress={() => router.replace("/driver/(tabs)/home" as any)} />
       </AppScreen>
     );
   }

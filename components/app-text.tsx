@@ -1,5 +1,6 @@
 import { StyleProp, StyleSheet, Text, TextProps, TextStyle } from 'react-native';
 
+import { useAppTheme } from '@/lib/theme-context';
 import { theme } from '@/theme';
 
 type Variant = keyof typeof styles;
@@ -12,11 +13,13 @@ type AppTextProps = TextProps & {
 
 export function AppText({
   variant = 'body',
-  color = theme.colors.black,
+  color,
   style,
   ...props
 }: AppTextProps) {
-  return <Text {...props} style={[styles.base, styles[variant], { color }, style]} />;
+  const { isDark } = useAppTheme();
+  const resolvedColor = color ?? (isDark ? theme.colors.offWhite : theme.colors.black);
+  return <Text {...props} style={[styles.base, styles[variant], { color: resolvedColor }, style]} />;
 }
 
 const styles = StyleSheet.create({

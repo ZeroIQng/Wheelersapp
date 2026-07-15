@@ -1,15 +1,11 @@
-import { Href, useRouter } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
+import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, StyleSheet, View } from 'react-native';
+import Svg, { Line, Path, Polyline } from 'react-native-svg';
 
-import { AppButton } from '@/components/app-button';
 import { AppCard } from '@/components/app-card';
 import { AppScreen } from '@/components/app-screen';
 import { AppText } from '@/components/app-text';
-import { MetricCard } from '@/components/MetricCard';
-import { SectionHeader } from '@/components/SectionHeader';
-import { SkeletonCard, SkeletonLine, SkeletonMetricRow } from '@/components/SkeletonLoader';
 import { useAuth } from '@/lib/auth';
 import { getAccessTokenWithRetry } from '@/lib/access-token';
 import { getDriverEarnings, type DriverEarningsResponse } from '@/lib/api';
@@ -17,14 +13,41 @@ import { theme } from '@/theme';
 
 type Period = 'today' | 'week' | 'month';
 
-const tabs: { label: string; value: Period }[] = [
+const periods: { label: string; value: Period }[] = [
   { label: 'Today', value: 'today' },
-  { label: 'Week', value: 'week' },
-  { label: 'Month', value: 'month' },
+  { label: 'This week', value: 'week' },
+  { label: 'This month', value: 'month' },
 ];
 
 function formatNgn(amount: number): string {
   return `NGN ${Math.round(amount).toLocaleString('en-NG')}`;
+}
+
+function formatDate(dateStr: string): string {
+  return new Date(dateStr).toLocaleDateString('en-NG', {
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function BackIcon({ size = 22 }: { size?: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={theme.colors.black} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <Line x1="19" y1="12" x2="5" y2="12" />
+      <Polyline points="12 19 5 12 12 5" />
+    </Svg>
+  );
+}
+
+function EarningIcon({ size = 18 }: { size?: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={theme.colors.orange} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <Line x1="12" y1="1" x2="12" y2="23" />
+      <Path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+    </Svg>
+  );
 }
 
 export default function DriverEarningsScreen() {
@@ -54,150 +77,203 @@ export default function DriverEarningsScreen() {
 
   const totalEarnings = earnings?.totalEarningsNgn ?? 0;
   const rideCount = earnings?.rideCount ?? 0;
-  const avgFare = rideCount > 0 ? totalEarnings / rideCount : 0;
 
   return (
     <AppScreen backgroundColor={theme.colors.offWhite} scroll contentStyle={styles.container}>
-      <StatusBar style="dark" backgroundColor={theme.colors.offWhite} />
-      <SectionHeader
-        actionLabel="Dashboard"
-        onActionPress={() => router.replace('/driver/dashboard' as Href)}
-        title="Earnings"
-        titleVariant="h1"
-      />
+      {/* Header with back */}
+      <View style={styles.header}>
+        <Pressable onPress={() => router.back()} hitSlop={12} style={styles.backBtn}>
+          <BackIcon />
+        </Pressable>
+        <AppText variant="h1">Earnings</AppText>
+      </View>
 
+      {/* Period tab switcher (same style as History) */}
       <View style={styles.tabs}>
-        {tabs.map((tab) => {
-          const active = tab.value === activePeriod;
+        {periods.map((p) => {
+          const active = p.value === activePeriod;
           return (
             <Pressable
-              key={tab.value}
-              onPress={() => setActivePeriod(tab.value)}
-              style={[styles.tab, active ? styles.tabActive : null]}>
-              <AppText variant="bodySmall" color={active ? theme.colors.offWhite : theme.colors.muted}>
-                {tab.label}
+              key={p.value}
+              onPress={() => setActivePeriod(p.value)}
+              style={[styles.tab, active && styles.tabActive]}
+            >
+              <AppText
+                variant="label"
+                color={active ? theme.colors.white : theme.colors.muted}
+              >
+                {p.label}
               </AppText>
             </Pressable>
           );
         })}
       </View>
 
-      {loading && !earnings ? (
-        <>
-          <SkeletonCard lines={2} />
-          <SkeletonMetricRow count={2} />
-          <View style={styles.itemsCard}>
-            <SkeletonLine width="40%" height={18} />
-            <SkeletonCard lines={2} style={{ marginTop: 12 }} />
-            <SkeletonCard lines={2} style={{ marginTop: 8 }} />
-            <SkeletonCard lines={2} style={{ marginTop: 8 }} />
-          </View>
-        </>
-      ) : (
-        <>
-          <AppCard style={styles.totalCard}>
-            <AppText variant="bodySmall" color={theme.colors.muted}>
-              Total {activePeriod}
-            </AppText>
-            <AppText variant="display">
-              {formatNgn(totalEarnings)}
-            </AppText>
-          </AppCard>
+      {/* Summary card */}
+      <View style={styles.summaryCard}>
+        <View style={styles.summaryItem}>
+          <AppText variant="bodySmall" color={theme.colors.muted}>Total earned</AppText>
+          <AppText variant="h1" color={theme.colors.orange}>{formatNgn(totalEarnings)}</AppText>
+        </View>
+        <View style={styles.summaryDivider} />
+        <View style={styles.summaryItem}>
+          <AppText variant="bodySmall" color={theme.colors.muted}>Rides</AppText>
+          <AppText variant="h1">{rideCount}</AppText>
+        </View>
+      </View>
 
-          <View style={styles.metricsRow}>
-            <MetricCard
-              accent="orange"
-              backgroundColor={theme.colors.orangeLight}
-              label="Rides"
-              value={String(rideCount)}
-            />
-            <MetricCard
-              label="Avg fare"
-              value={formatNgn(avgFare)}
-            />
-          </View>
-
-          {earnings && earnings.items.length > 0 && (
-            <AppCard style={styles.itemsCard}>
-              <AppText variant="h3">Recent payouts</AppText>
-              {earnings.items.map((item, index) => (
-                <View
-                  key={item.id}
-                  style={[styles.itemRow, index < earnings.items.length - 1 ? styles.divider : null]}>
-                  <View style={styles.itemCopy}>
-                    <AppText variant="bodyMedium">Ride payout</AppText>
-                    <AppText variant="bodySmall" color={theme.colors.muted}>
-                      {new Date(item.createdAt).toLocaleDateString('en-NG', {
-                        day: 'numeric',
-                        month: 'short',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
-                    </AppText>
-                  </View>
-                  <AppText variant="mono" color={theme.colors.green}>
-                    +{formatNgn(item.amountNgn)}
+      {/* Earnings list */}
+      {loading ? (
+        <View style={styles.loaderWrap}>
+          <ActivityIndicator size="large" color={theme.colors.orange} />
+        </View>
+      ) : earnings && earnings.items.length > 0 ? (
+        <View style={styles.list}>
+          {earnings.items.map((item) => (
+            <AppCard key={item.id} style={styles.itemCard}>
+              <View style={styles.itemRow}>
+                <View style={styles.itemIcon}>
+                  <EarningIcon />
+                </View>
+                <View style={styles.itemInfo}>
+                  <AppText variant="bodyMedium">Ride payout</AppText>
+                  <AppText variant="bodySmall" color={theme.colors.muted}>
+                    {formatDate(item.createdAt)}
                   </AppText>
                 </View>
-              ))}
+                <AppText variant="mono" color={theme.colors.orange}>
+                  +{formatNgn(item.amountNgn)}
+                </AppText>
+              </View>
             </AppCard>
-          )}
-        </>
+          ))}
+        </View>
+      ) : (
+        <View style={styles.emptyWrap}>
+          <AppText variant="body" color={theme.colors.muted} style={styles.emptyText}>
+            No earnings for this period yet. Complete rides to start earning.
+          </AppText>
+        </View>
       )}
-
-      <AppButton onPress={() => router.push('/driver/wallet' as Href)} title="Open wallet" />
     </AppScreen>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    gap: theme.spacing.lg,
+    gap: 16,
     paddingTop: theme.spacing.lg,
   },
-  tabs: {
+
+  // Header
+  header: {
     flexDirection: 'row',
-    gap: theme.spacing.sm,
+    alignItems: 'center',
+    gap: 14,
   },
-  tab: {
-    minWidth: 72,
-    minHeight: 36,
-    borderRadius: 8,
-    borderWidth: theme.borders.regular,
-    borderColor: '#DDD1C7',
+  backBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: theme.colors.white,
     alignItems: 'center',
     justifyContent: 'center',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.06,
+        shadowRadius: 6,
+      },
+      android: { elevation: 2 },
+    }),
+  },
+
+  // Tabs (matches History style)
+  tabs: {
+    flexDirection: 'row',
     backgroundColor: theme.colors.white,
+    borderRadius: 12,
+    padding: 4,
+    borderWidth: 1,
+    borderColor: theme.colors.borderLight,
+  },
+  tab: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    borderRadius: 9,
   },
   tabActive: {
     backgroundColor: theme.colors.orange,
-    borderColor: theme.colors.black,
-    ...theme.shadows.card,
   },
-  totalCard: {
-    gap: theme.spacing.xxs,
-  },
-  metricsRow: {
+
+  // Summary
+  summaryCard: {
     flexDirection: 'row',
-    gap: theme.spacing.sm,
+    backgroundColor: theme.colors.white,
+    borderRadius: 16,
+    paddingVertical: 20,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.05,
+        shadowRadius: 10,
+      },
+      android: { elevation: 3 },
+    }),
   },
-  itemsCard: {
-    gap: theme.spacing.sm,
+  summaryItem: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 4,
+  },
+  summaryDivider: {
+    width: 1,
+    height: 36,
+    backgroundColor: theme.colors.borderLight,
+  },
+
+  // List
+  list: {
+    gap: 10,
+  },
+  itemCard: {
+    paddingVertical: 14,
   },
   itemRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    gap: theme.spacing.md,
-    paddingVertical: theme.spacing.xs,
+    gap: 12,
   },
-  itemCopy: {
+  itemIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: theme.colors.orangeLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  itemInfo: {
     flex: 1,
     gap: 2,
   },
-  divider: {
-    borderBottomWidth: 1,
-    borderBottomColor: '#EEE0D4',
-    paddingBottom: theme.spacing.md,
+
+  // Empty & loader
+  loaderWrap: {
+    paddingVertical: 60,
+    alignItems: 'center',
+  },
+  emptyWrap: {
+    paddingVertical: 48,
+    alignItems: 'center',
+  },
+  emptyText: {
+    textAlign: 'center',
+    maxWidth: 240,
   },
 });
