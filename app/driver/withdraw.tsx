@@ -1,6 +1,7 @@
 import { useRouter } from 'expo-router';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   FlatList,
   KeyboardAvoidingView,
@@ -15,25 +16,17 @@ import Svg, { Circle, Line, Path, Polyline } from 'react-native-svg';
 
 import { AppScreen } from '@/components/app-screen';
 import { AppText } from '@/components/app-text';
+import { getAccessTokenWithRetry } from '@/lib/access-token';
+import {
+  createWalletWithdrawal,
+  getWithdrawalBankNetworks,
+  verifyWithdrawalBankAccount,
+  type WithdrawalBankNetwork,
+} from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 import { useAppTheme } from '@/lib/theme-context';
 import { useWalletOverview } from '@/lib/wallet-overview';
 import { theme } from '@/theme';
-
-// ── Mock bank list (UI only) ──────────────────────────
-const BANKS = [
-  { id: '1', name: 'Access Bank', code: '044' },
-  { id: '2', name: 'First Bank', code: '011' },
-  { id: '3', name: 'GTBank', code: '058' },
-  { id: '4', name: 'Kuda Bank', code: '090267' },
-  { id: '5', name: 'Moniepoint MFB', code: '50515' },
-  { id: '6', name: 'OPay', code: '999992' },
-  { id: '7', name: 'PalmPay', code: '999991' },
-  { id: '8', name: 'Sterling Bank', code: '232' },
-  { id: '9', name: 'UBA', code: '033' },
-  { id: '10', name: 'Union Bank', code: '032' },
-  { id: '11', name: 'Wema Bank', code: '035' },
-  { id: '12', name: 'Zenith Bank', code: '057' },
-];
 
 function formatNgn(amount: number): string {
   return `NGN ${Math.round(amount).toLocaleString('en-NG')}`;
@@ -91,40 +84,80 @@ type Step = 'bank' | 'account' | 'amount' | 'confirm';
 export default function DriverWithdrawScreen() {
   const router = useRouter();
   const { isDark } = useAppTheme();
+  const { getAccessToken } = useAuth();
   const { overview } = useWalletOverview();
   const balanceNgn = overview?.balanceNgn ?? 0;
 
   const [step, setStep] = useState<Step>('bank');
-  const [selectedBank, setSelectedBank] = useState<typeof BANKS[0] | null>(null);
+  const [banks, setBanks] = useState<WithdrawalBankNetwork[]>([]);
+  const [banksLoading, setBanksLoading] = useState(true);
+  const [selectedBank, setSelectedBank] = useState<WithdrawalBankNetwork | null>(null);
   const [accountNumber, setAccountNumber] = useState('');
   const [accountName, setAccountName] = useState('');
+  const [verifying, setVerifying] = useState(false);
   const [amount, setAmount] = useState('');
+  const [submitting, setSubmitting] = useState(false);
   const [bankSearchQuery, setBankSearchQuery] = useState('');
   const [showBankModal, setShowBankModal] = useState(false);
 
   const accountRef = useRef<TextInput>(null);
   const amountRef = useRef<TextInput>(null);
 
-  const filteredBanks = bankSearchQuery
-    ? BANKS.filter((b) => b.name.toLowerCase().includes(bankSearchQuery.toLowerCase()))
-    : BANKS;
+  // Fetch banks on mount
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const accessToken = await getAccessTokenWithRetry(getAccessToken);
+      if (!accessToken || cancelled) return;
+      try {
+        const res = await getWithdrawalBankNetworks({ accessToken });
+        if (!cancelled) setBanks(res.items);
+      } catch {
+        // Will show empty list — user can retry by closing/reopening
+      }
+      if (!cancelled) setBanksLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, [getAccessToken]);
 
-  const handleSelectBank = (bank: typeof BANKS[0]) => {
+  const filteredBanks = bankSearchQuery
+    ? banks.filter((b) => b.name.toLowerCase().includes(bankSearchQuery.toLowerCase()))
+    : banks;
+
+  const handleSelectBank = (bank: WithdrawalBankNetwork) => {
     setSelectedBank(bank);
     setShowBankModal(false);
     setStep('account');
     setTimeout(() => accountRef.current?.focus(), 300);
   };
 
-  const handleAccountNext = () => {
+  const handleAccountNext = async () => {
     if (accountNumber.length < 10) {
       Alert.alert('Invalid', 'Please enter a valid 10-digit account number');
       return;
     }
-    // Mock account name resolution
-    setAccountName('JOHN DOE');
-    setStep('amount');
-    setTimeout(() => amountRef.current?.focus(), 300);
+    if (!selectedBank) return;
+
+    setVerifying(true);
+    try {
+      const accessToken = await getAccessTokenWithRetry(getAccessToken);
+      if (!accessToken) throw new Error('Not authenticated');
+      const res = await verifyWithdrawalBankAccount({
+        accessToken,
+        accountNumber,
+        networkId: selectedBank.id,
+      });
+      setAccountName(res.bankAccount.accountName || 'Account holder');
+      setStep('amount');
+      setTimeout(() => amountRef.current?.focus(), 300);
+    } catch (err) {
+      Alert.alert(
+        'Verification failed',
+        err instanceof Error ? err.message : 'Could not verify account. Please check the details and try again.',
+      );
+    } finally {
+      setVerifying(false);
+    }
   };
 
   const handleAmountNext = () => {
@@ -140,12 +173,34 @@ export default function DriverWithdrawScreen() {
     setStep('confirm');
   };
 
-  const handleConfirm = () => {
-    Alert.alert(
-      'Withdrawal submitted',
-      `${formatNgn(parseFloat(amount))} will be sent to ${accountName} at ${selectedBank?.name}`,
-      [{ text: 'Done', onPress: () => router.back() }],
-    );
+  const handleConfirm = async () => {
+    if (!selectedBank) return;
+    setSubmitting(true);
+    try {
+      const accessToken = await getAccessTokenWithRetry(getAccessToken);
+      if (!accessToken) throw new Error('Not authenticated');
+      await createWalletWithdrawal({
+        accessToken,
+        amountNgn: parseFloat(amount),
+        bankAccount: {
+          accountNumber,
+          accountName,
+          networkId: selectedBank.id,
+        },
+      });
+      Alert.alert(
+        'Withdrawal submitted',
+        `${formatNgn(parseFloat(amount))} will be sent to ${accountName} at ${selectedBank.name}`,
+        [{ text: 'Done', onPress: () => router.back() }],
+      );
+    } catch (err) {
+      Alert.alert(
+        'Withdrawal failed',
+        err instanceof Error ? err.message : 'Something went wrong. Please try again.',
+      );
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleBack = () => {
@@ -257,9 +312,14 @@ export default function DriverWithdrawScreen() {
             {accountNumber.length === 10 && (
               <Pressable
                 onPress={handleAccountNext}
-                style={({ pressed }) => [styles.nextBtn, pressed && styles.btnPressed]}
+                disabled={verifying}
+                style={({ pressed }) => [styles.nextBtn, pressed && styles.btnPressed, verifying && { opacity: 0.6 }]}
               >
-                <AppText variant="label" color={theme.colors.white}>Verify & continue</AppText>
+                {verifying ? (
+                  <ActivityIndicator color={theme.colors.white} />
+                ) : (
+                  <AppText variant="label" color={theme.colors.white}>Verify & continue</AppText>
+                )}
               </Pressable>
             )}
           </View>
@@ -336,9 +396,14 @@ export default function DriverWithdrawScreen() {
 
             <Pressable
               onPress={handleConfirm}
-              style={({ pressed }) => [styles.confirmBtn, pressed && styles.btnPressed]}
+              disabled={submitting}
+              style={({ pressed }) => [styles.confirmBtn, pressed && styles.btnPressed, submitting && { opacity: 0.6 }]}
             >
-              <AppText variant="label" color={theme.colors.white}>Confirm withdrawal</AppText>
+              {submitting ? (
+                <ActivityIndicator color={theme.colors.white} />
+              ) : (
+                <AppText variant="label" color={theme.colors.white}>Confirm withdrawal</AppText>
+              )}
             </Pressable>
           </View>
         )}
@@ -368,27 +433,36 @@ export default function DriverWithdrawScreen() {
               />
             </View>
 
-            <FlatList
-              data={filteredBanks}
-              keyExtractor={(item) => item.id}
-              showsVerticalScrollIndicator={false}
-              renderItem={({ item }) => (
-                <Pressable
-                  onPress={() => handleSelectBank(item)}
-                  style={({ pressed }) => [
-                    styles.bankItem,
-                    pressed && { backgroundColor: theme.colors.orangeLight },
-                    selectedBank?.id === item.id && styles.bankItemSelected,
-                  ]}
-                >
-                  <View style={styles.bankIconWrap}>
-                    <BankIcon size={18} />
-                  </View>
-                  <AppText variant="body" style={styles.bankName}>{item.name}</AppText>
-                  {selectedBank?.id === item.id && <CheckIcon />}
-                </Pressable>
-              )}
-            />
+            {banksLoading ? (
+              <ActivityIndicator size="large" color={theme.colors.orange} style={{ marginTop: 40, marginBottom: 40 }} />
+            ) : (
+              <FlatList
+                data={filteredBanks}
+                keyExtractor={(item) => item.id}
+                showsVerticalScrollIndicator={false}
+                ListEmptyComponent={
+                  <AppText variant="body" color={theme.colors.muted} style={{ textAlign: 'center', marginTop: 30 }}>
+                    No banks found
+                  </AppText>
+                }
+                renderItem={({ item }) => (
+                  <Pressable
+                    onPress={() => handleSelectBank(item)}
+                    style={({ pressed }) => [
+                      styles.bankItem,
+                      pressed && { backgroundColor: theme.colors.orangeLight },
+                      selectedBank?.id === item.id && styles.bankItemSelected,
+                    ]}
+                  >
+                    <View style={styles.bankIconWrap}>
+                      <BankIcon size={18} />
+                    </View>
+                    <AppText variant="body" style={styles.bankName}>{item.name}</AppText>
+                    {selectedBank?.id === item.id && <CheckIcon />}
+                  </Pressable>
+                )}
+              />
+            )}
           </View>
         </View>
       </Modal>

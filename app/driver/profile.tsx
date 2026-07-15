@@ -1,9 +1,13 @@
 import { useRouter } from 'expo-router';
-import { Platform, Pressable, StyleSheet, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, Platform, Pressable, StyleSheet, View } from 'react-native';
 import Svg, { Circle, Line, Path, Polyline, Rect } from 'react-native-svg';
 
 import { AppScreen } from '@/components/app-screen';
 import { AppText } from '@/components/app-text';
+import { getAccessTokenWithRetry } from '@/lib/access-token';
+import { getCurrentProfile, getDriverStats } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 import { useAppTheme } from '@/lib/theme-context';
 import { theme } from '@/theme';
 
@@ -69,16 +73,64 @@ function PlateIcon({ size = 18 }: { size?: number }) {
 export default function DriverProfileScreen() {
   const router = useRouter();
   const { isDark } = useAppTheme();
+  const { getAccessToken } = useAuth();
+
+  const [loading, setLoading] = useState(true);
+  const [name, setName] = useState<string | null>(null);
+  const [email, setEmail] = useState<string | null>(null);
+  const [vehicleMake, setVehicleMake] = useState<string | null>(null);
+  const [vehicleModel, setVehicleModel] = useState<string | null>(null);
+  const [vehiclePlate, setVehiclePlate] = useState<string | null>(null);
+  const [vehicleYear, setVehicleYear] = useState<number | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      const accessToken = await getAccessTokenWithRetry(getAccessToken);
+      if (!accessToken || cancelled) return;
+
+      const [profileRes, statsRes] = await Promise.allSettled([
+        getCurrentProfile({ accessToken }),
+        getDriverStats({ accessToken }),
+      ]);
+
+      if (cancelled) return;
+
+      if (profileRes.status === 'fulfilled') {
+        setName(profileRes.value.user.name);
+        setEmail(profileRes.value.user.email);
+      }
+      if (statsRes.status === 'fulfilled') {
+        setVehicleMake(statsRes.value.vehicleMake);
+        setVehicleModel(statsRes.value.vehicleModel);
+        setVehiclePlate(statsRes.value.vehiclePlate);
+        setVehicleYear(statsRes.value.vehicleYear);
+      }
+      setLoading(false);
+    })();
+
+    return () => { cancelled = true; };
+  }, [getAccessToken]);
 
   const cardBg = isDark ? theme.colors.darkSurface : theme.colors.white;
+  const displayName = name || 'Driver';
+  const displayEmail = email || '—';
+  const hasVehicle = vehicleMake || vehicleModel || vehiclePlate;
 
-  // Mock data (will be replaced with real API data later)
-  const name = 'John Doe';
-  const email = 'johndoe@gmail.com';
-  const vehicleMake = 'Toyota';
-  const vehicleModel = 'Camry';
-  const vehiclePlate = 'APP-123-XY';
-  const vehicleYear = 2019;
+  if (loading) {
+    return (
+      <AppScreen contentStyle={[styles.container, styles.centered]}>
+        <View style={styles.header}>
+          <Pressable onPress={() => router.back()} hitSlop={12} style={[styles.backBtn, isDark && { backgroundColor: theme.colors.darkSurface }]}>
+            <BackIcon />
+          </Pressable>
+          <AppText variant="h1">Profile</AppText>
+        </View>
+        <ActivityIndicator size="large" color={theme.colors.orange} style={{ marginTop: 60 }} />
+      </AppScreen>
+    );
+  }
 
   return (
     <AppScreen scroll contentStyle={styles.container}>
@@ -95,8 +147,8 @@ export default function DriverProfileScreen() {
         <View style={[styles.avatarCircle, isDark && { backgroundColor: theme.colors.darkSurfaceSoft }]}>
           <AvatarIcon />
         </View>
-        <AppText variant="h2">{name}</AppText>
-        <AppText variant="bodySmall" color={theme.colors.muted}>{email}</AppText>
+        <AppText variant="h2">{displayName}</AppText>
+        <AppText variant="bodySmall" color={theme.colors.muted}>{displayEmail}</AppText>
       </View>
 
       {/* Personal info */}
@@ -111,7 +163,7 @@ export default function DriverProfileScreen() {
             </View>
             <View style={styles.infoContent}>
               <AppText variant="bodySmall" color={theme.colors.muted}>Full name</AppText>
-              <AppText variant="bodyMedium">{name}</AppText>
+              <AppText variant="bodyMedium">{displayName}</AppText>
             </View>
           </View>
 
@@ -123,41 +175,48 @@ export default function DriverProfileScreen() {
             </View>
             <View style={styles.infoContent}>
               <AppText variant="bodySmall" color={theme.colors.muted}>Email</AppText>
-              <AppText variant="bodyMedium">{email}</AppText>
+              <AppText variant="bodyMedium">{displayEmail}</AppText>
             </View>
           </View>
         </View>
       </View>
 
       {/* Vehicle info */}
-      <View style={styles.section}>
-        <AppText variant="label" color={theme.colors.muted} style={styles.sectionLabel}>
-          VEHICLE INFO
-        </AppText>
-        <View style={[styles.card, { backgroundColor: cardBg }]}>
-          <View style={styles.infoRow}>
-            <View style={[styles.infoIcon, { backgroundColor: theme.colors.orangeLight }]}>
-              <CarIcon />
+      {hasVehicle && (
+        <View style={styles.section}>
+          <AppText variant="label" color={theme.colors.muted} style={styles.sectionLabel}>
+            VEHICLE INFO
+          </AppText>
+          <View style={[styles.card, { backgroundColor: cardBg }]}>
+            <View style={styles.infoRow}>
+              <View style={[styles.infoIcon, { backgroundColor: theme.colors.orangeLight }]}>
+                <CarIcon />
+              </View>
+              <View style={styles.infoContent}>
+                <AppText variant="bodySmall" color={theme.colors.muted}>Vehicle</AppText>
+                <AppText variant="bodyMedium">
+                  {[vehicleYear, vehicleMake, vehicleModel].filter(Boolean).join(' ') || '—'}
+                </AppText>
+              </View>
             </View>
-            <View style={styles.infoContent}>
-              <AppText variant="bodySmall" color={theme.colors.muted}>Vehicle</AppText>
-              <AppText variant="bodyMedium">{vehicleYear} {vehicleMake} {vehicleModel}</AppText>
-            </View>
-          </View>
 
-          <View style={[styles.divider, isDark && { backgroundColor: theme.colors.darkBorder }]} />
-
-          <View style={styles.infoRow}>
-            <View style={[styles.infoIcon, { backgroundColor: theme.colors.orangeLight }]}>
-              <PlateIcon />
-            </View>
-            <View style={styles.infoContent}>
-              <AppText variant="bodySmall" color={theme.colors.muted}>Plate number</AppText>
-              <AppText variant="bodyMedium">{vehiclePlate}</AppText>
-            </View>
+            {vehiclePlate && (
+              <>
+                <View style={[styles.divider, isDark && { backgroundColor: theme.colors.darkBorder }]} />
+                <View style={styles.infoRow}>
+                  <View style={[styles.infoIcon, { backgroundColor: theme.colors.orangeLight }]}>
+                    <PlateIcon />
+                  </View>
+                  <View style={styles.infoContent}>
+                    <AppText variant="bodySmall" color={theme.colors.muted}>Plate number</AppText>
+                    <AppText variant="bodyMedium">{vehiclePlate}</AppText>
+                  </View>
+                </View>
+              </>
+            )}
           </View>
         </View>
-      </View>
+      )}
     </AppScreen>
   );
 }
@@ -167,6 +226,9 @@ const styles = StyleSheet.create({
     gap: 4,
     paddingTop: theme.spacing.lg,
     paddingBottom: 40,
+  },
+  centered: {
+    flex: 1,
   },
 
   // Header
