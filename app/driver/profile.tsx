@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { ActivityIndicator, Platform, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 import Svg, { Circle, Line, Path, Polyline, Rect } from 'react-native-svg';
 
 import { AppScreen } from '@/components/app-screen';
@@ -76,6 +76,7 @@ export default function DriverProfileScreen() {
   const { getAccessToken } = useAuth();
 
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [name, setName] = useState<string | null>(null);
   const [email, setEmail] = useState<string | null>(null);
   const [vehicleMake, setVehicleMake] = useState<string | null>(null);
@@ -83,35 +84,37 @@ export default function DriverProfileScreen() {
   const [vehiclePlate, setVehiclePlate] = useState<string | null>(null);
   const [vehicleYear, setVehicleYear] = useState<number | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
+  const fetchProfile = useCallback(async () => {
+    const accessToken = await getAccessTokenWithRetry(getAccessToken);
+    if (!accessToken) return;
 
-    void (async () => {
-      const accessToken = await getAccessTokenWithRetry(getAccessToken);
-      if (!accessToken || cancelled) return;
+    const [profileRes, statsRes] = await Promise.allSettled([
+      getCurrentProfile({ accessToken }),
+      getDriverStats({ accessToken }),
+    ]);
 
-      const [profileRes, statsRes] = await Promise.allSettled([
-        getCurrentProfile({ accessToken }),
-        getDriverStats({ accessToken }),
-      ]);
-
-      if (cancelled) return;
-
-      if (profileRes.status === 'fulfilled') {
-        setName(profileRes.value.user.name);
-        setEmail(profileRes.value.user.email);
-      }
-      if (statsRes.status === 'fulfilled') {
-        setVehicleMake(statsRes.value.vehicleMake);
-        setVehicleModel(statsRes.value.vehicleModel);
-        setVehiclePlate(statsRes.value.vehiclePlate);
-        setVehicleYear(statsRes.value.vehicleYear);
-      }
-      setLoading(false);
-    })();
-
-    return () => { cancelled = true; };
+    if (profileRes.status === 'fulfilled') {
+      setName(profileRes.value.user.name);
+      setEmail(profileRes.value.user.email);
+    }
+    if (statsRes.status === 'fulfilled') {
+      setVehicleMake(statsRes.value.vehicleMake);
+      setVehicleModel(statsRes.value.vehicleModel);
+      setVehiclePlate(statsRes.value.vehiclePlate);
+      setVehicleYear(statsRes.value.vehicleYear);
+    }
+    setLoading(false);
   }, [getAccessToken]);
+
+  useEffect(() => {
+    void fetchProfile();
+  }, [fetchProfile]);
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await fetchProfile();
+    setRefreshing(false);
+  }, [fetchProfile]);
 
   const cardBg = isDark ? theme.colors.darkSurface : theme.colors.white;
   const displayName = name || 'Driver';
@@ -133,7 +136,7 @@ export default function DriverProfileScreen() {
   }
 
   return (
-    <AppScreen scroll contentStyle={styles.container}>
+    <AppScreen scroll contentStyle={styles.container} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.colors.orange} colors={[theme.colors.orange]} />}>
       {/* Header */}
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} hitSlop={12} style={[styles.backBtn, isDark && { backgroundColor: theme.colors.darkSurface }]}>

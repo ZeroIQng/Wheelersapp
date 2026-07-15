@@ -1,8 +1,8 @@
 import { Href, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
-import { ActivityIndicator, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 import Svg, { Circle, Line, Path, Polyline } from 'react-native-svg';
 
 import { AppScreen } from '@/components/app-screen';
@@ -75,42 +75,30 @@ export default function DriverWalletTabScreen() {
   const [account, setAccount] = useState<ProvisionVirtualAccountResponse | null>(null);
   const [loadingAccount, setLoadingAccount] = useState(true);
   const [copied, setCopied] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
-  // Fetch today's earnings
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const accessToken = await getAccessTokenWithRetry(getAccessToken);
-        if (!accessToken || cancelled) return;
-        const data = await getDriverEarnings({ accessToken, period: 'today' });
-        if (!cancelled) setEarnings(data);
-      } catch {
-        // non-blocking
-      } finally {
-        if (!cancelled) setLoadingEarnings(false);
-      }
-    })();
-    return () => { cancelled = true; };
+  const fetchData = useCallback(async () => {
+    const accessToken = await getAccessTokenWithRetry(getAccessToken);
+    if (!accessToken) return;
+    const [earningsRes, accountRes] = await Promise.allSettled([
+      getDriverEarnings({ accessToken, period: 'today' }),
+      provisionVirtualAccount({ accessToken }),
+    ]);
+    if (earningsRes.status === 'fulfilled') setEarnings(earningsRes.value);
+    if (accountRes.status === 'fulfilled') setAccount(accountRes.value);
+    setLoadingEarnings(false);
+    setLoadingAccount(false);
   }, [getAccessToken]);
 
-  // Provision / fetch virtual account
   useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const accessToken = await getAccessTokenWithRetry(getAccessToken);
-        if (!accessToken || cancelled) return;
-        const data = await provisionVirtualAccount({ accessToken });
-        if (!cancelled) setAccount(data);
-      } catch {
-        // non-blocking
-      } finally {
-        if (!cancelled) setLoadingAccount(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [getAccessToken]);
+    void fetchData();
+  }, [fetchData]);
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await fetchData();
+    setRefreshing(false);
+  }, [fetchData]);
 
   const balanceNgn = overview?.balanceNgn ?? 0;
   const lockedNgn = overview?.lockedNgn ?? 0;
@@ -126,7 +114,7 @@ export default function DriverWalletTabScreen() {
   };
 
   return (
-    <AppScreen scroll contentStyle={styles.container}>
+    <AppScreen scroll contentStyle={styles.container} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.colors.orange} colors={[theme.colors.orange]} />}>
       {/* ── Balance card ── */}
       <View style={styles.balanceCard}>
         <View style={styles.balanceHeader}>
