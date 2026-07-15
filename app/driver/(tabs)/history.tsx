@@ -81,7 +81,7 @@ export default function DriverHistoryScreen() {
       <AppText variant="h1">History</AppText>
 
       {/* Tab switcher */}
-      <View style={styles.tabs}>
+      <View style={[styles.tabs, isDark && { backgroundColor: theme.colors.darkSurface, borderColor: theme.colors.darkBorder }]}>
         <Pressable
           onPress={() => setActiveTab('rides')}
           style={[styles.tab, activeTab === 'rides' && styles.tabActive]}

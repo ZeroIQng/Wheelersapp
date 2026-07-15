@@ -15,6 +15,7 @@ import Svg, { Circle, Line, Path, Polyline } from 'react-native-svg';
 
 import { AppScreen } from '@/components/app-screen';
 import { AppText } from '@/components/app-text';
+import { useAppTheme } from '@/lib/theme-context';
 import { useWalletOverview } from '@/lib/wallet-overview';
 import { theme } from '@/theme';
 
@@ -89,6 +90,7 @@ type Step = 'bank' | 'account' | 'amount' | 'confirm';
 
 export default function DriverWithdrawScreen() {
   const router = useRouter();
+  const { isDark } = useAppTheme();
   const { overview } = useWalletOverview();
   const balanceNgn = overview?.balanceNgn ?? 0;
 
