@@ -1,6 +1,7 @@
 import { PropsWithChildren } from 'react';
 import { StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
 
+import { useAppTheme } from '@/lib/theme-context';
 import { theme } from '@/theme';
 
 type AppCardProps = PropsWithChildren<{
@@ -12,11 +13,14 @@ type AppCardProps = PropsWithChildren<{
 export function AppCard({
   children,
   style,
-  backgroundColor = theme.colors.white,
-  borderColor = theme.colors.black,
+  backgroundColor,
+  borderColor,
 }: AppCardProps) {
+  const { isDark } = useAppTheme();
+  const bg = backgroundColor ?? (isDark ? theme.colors.darkSurface : theme.colors.white);
+  const border = borderColor ?? (isDark ? theme.colors.darkBorder : theme.colors.black);
   return (
-    <View style={[styles.card, { backgroundColor, borderColor }, style]}>
+    <View style={[styles.card, { backgroundColor: bg, borderColor: border }, style]}>
       {children}
     </View>
   );
