@@ -149,7 +149,7 @@ export default function DriverWithdrawScreen() {
       const res = await verifyWithdrawalBankAccount({
         accessToken,
         accountNumber,
-        networkId: selectedBank.id,
+        networkId: getBankId(selectedBank),
       });
       setAccountName(res.bankAccount.accountName || 'Account holder');
       setStep('amount');
@@ -189,7 +189,7 @@ export default function DriverWithdrawScreen() {
         bankAccount: {
           accountNumber,
           accountName,
-          networkId: selectedBank.id,
+          networkId: getBankId(selectedBank),
         },
       });
       Alert.alert(
@@ -442,7 +442,7 @@ export default function DriverWithdrawScreen() {
             ) : (
               <FlatList
                 data={filteredBanks}
-                keyExtractor={(item, index) => item.id || String(index)}
+                keyExtractor={(item, index) => getBankId(item) || String(index)}
                 showsVerticalScrollIndicator={false}
                 nestedScrollEnabled
                 ListEmptyComponent={
@@ -456,14 +456,14 @@ export default function DriverWithdrawScreen() {
                     style={({ pressed }) => [
                       styles.bankItem,
                       pressed && { backgroundColor: theme.colors.orangeLight },
-                      selectedBank?.id === item.id && styles.bankItemSelected,
+                      selectedBank && getBankId(selectedBank) === getBankId(item) && styles.bankItemSelected,
                     ]}
                   >
                     <View style={styles.bankIconWrap}>
                       <BankIcon size={18} />
                     </View>
                     <AppText variant="body" style={styles.bankName}>{item.name}</AppText>
-                    {selectedBank?.id === item.id && <CheckIcon />}
+                    {selectedBank && getBankId(selectedBank) === getBankId(item) && <CheckIcon />}
                   </Pressable>
                 )}
               />
