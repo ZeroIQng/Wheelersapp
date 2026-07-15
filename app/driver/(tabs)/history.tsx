@@ -12,6 +12,7 @@ import {
   type DriverHistoryRide,
   type WalletTransaction,
 } from '@/lib/api';
+import { useAppTheme } from '@/lib/theme-context';
 import { theme } from '@/theme';
 
 type Tab = 'rides' | 'transactions';
@@ -46,6 +47,7 @@ function statusColor(status: string): string {
 
 export default function DriverHistoryScreen() {
   const { getAccessToken } = useAuth();
+  const { isDark } = useAppTheme();
   const [activeTab, setActiveTab] = useState<Tab>('rides');
   const [rides, setRides] = useState<DriverHistoryRide[]>([]);
   const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
@@ -75,7 +77,7 @@ export default function DriverHistoryScreen() {
   const loading = activeTab === 'rides' ? loadingRides : loadingTxns;
 
   return (
-    <AppScreen backgroundColor={theme.colors.offWhite} scroll contentStyle={styles.container}>
+    <AppScreen scroll contentStyle={styles.container}>
       <AppText variant="h1">History</AppText>
 
       {/* Tab switcher */}

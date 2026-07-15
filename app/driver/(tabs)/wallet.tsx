@@ -15,6 +15,7 @@ import {
   type DriverEarningsResponse,
   type ProvisionVirtualAccountResponse,
 } from '@/lib/api';
+import { useAppTheme } from '@/lib/theme-context';
 import { useWalletOverview } from '@/lib/wallet-overview';
 import { theme } from '@/theme';
 
@@ -66,6 +67,7 @@ function ArrowUpIcon({ size = 20 }: { size?: number }) {
 export default function DriverWalletTabScreen() {
   const router = useRouter();
   const { getAccessToken } = useAuth();
+  const { isDark } = useAppTheme();
   const { overview } = useWalletOverview();
   const [balanceVisible, setBalanceVisible] = useState(true);
   const [earnings, setEarnings] = useState<DriverEarningsResponse | null>(null);
@@ -124,7 +126,7 @@ export default function DriverWalletTabScreen() {
   };
 
   return (
-    <AppScreen backgroundColor={theme.colors.offWhite} scroll contentStyle={styles.container}>
+    <AppScreen scroll contentStyle={styles.container}>
       {/* ── Balance card ── */}
       <View style={styles.balanceCard}>
         <View style={styles.balanceHeader}>
@@ -144,7 +146,7 @@ export default function DriverWalletTabScreen() {
       </View>
 
       {/* ── Virtual account (fund wallet) ── */}
-      <View style={styles.accountCard}>
+      <View style={[styles.accountCard, isDark && { backgroundColor: theme.colors.darkSurface }]}>
         <AppText variant="label" color={theme.colors.muted} style={styles.accountLabel}>
           Fund your wallet
         </AppText>
@@ -190,7 +192,7 @@ export default function DriverWalletTabScreen() {
       {/* ── Earnings quick card ── */}
       <Pressable
         onPress={() => router.push('/driver/earnings' as Href)}
-        style={({ pressed }) => [styles.earningsCard, pressed && styles.btnPressed]}
+        style={({ pressed }) => [styles.earningsCard, isDark && { backgroundColor: theme.colors.darkSurface }, pressed && styles.btnPressed]}
       >
         <View style={styles.earningsLeft}>
           <AppText variant="bodySmall" color={theme.colors.muted}>
