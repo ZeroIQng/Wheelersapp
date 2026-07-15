@@ -192,7 +192,7 @@ export default function DriverWalletTabScreen() {
       {/* ── Earnings quick card ── */}
       <Pressable
         onPress={() => router.push('/driver/earnings' as Href)}
-        style={({ pressed }) => [styles.earningsCard, pressed && styles.btnPressed]}
+        style={({ pressed }) => [styles.earningsCard, isDark && { backgroundColor: theme.colors.darkSurface }, pressed && styles.btnPressed]}
       >
         <View style={styles.earningsLeft}>
           <AppText variant="bodySmall" color={theme.colors.muted}>
