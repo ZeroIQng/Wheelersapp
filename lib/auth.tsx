@@ -13,6 +13,7 @@ import {
   getStoredLocalAccessToken,
   type AccessTokenGetter,
 } from "@/lib/access-token";
+import { logoutAccount } from "@/lib/api";
 import { clearStoredAuthState } from "@/lib/auth-state";
 
 interface AuthContextValue {
@@ -53,6 +54,15 @@ export function AuthProvider({ children }: PropsWithChildren) {
   }, []);
 
   const logout = useCallback(async () => {
+    // Tell the backend to blacklist this token
+    try {
+      const token = await getStoredLocalAccessToken();
+      if (token) {
+        await logoutAccount({ accessToken: token });
+      }
+    } catch {
+      // Still clear local state even if backend call fails
+    }
     await clearStoredLocalAccessToken();
     await clearStoredAuthState();
     setHasToken(false);

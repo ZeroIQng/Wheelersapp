@@ -5,6 +5,8 @@ import Svg, { Circle, Line, Path, Polyline, Rect } from 'react-native-svg';
 import { AppScreen } from '@/components/app-screen';
 import { AppText } from '@/components/app-text';
 import { useAuth } from '@/lib/auth';
+import { getAccessTokenWithRetry } from '@/lib/access-token';
+import { deleteAccount } from '@/lib/api';
 import { useAppTheme } from '@/lib/theme-context';
 import { theme } from '@/theme';
 
@@ -86,7 +88,7 @@ function ChevronRightIcon({ size = 18 }: { size?: number }) {
 
 export default function DriverSettingsScreen() {
   const router = useRouter();
-  const { logout } = useAuth();
+  const { getAccessToken, logout } = useAuth();
   const { isDark, toggleTheme } = useAppTheme();
 
   const handleLogout = () => {
@@ -116,8 +118,19 @@ export default function DriverSettingsScreen() {
         {
           text: 'Delete',
           style: 'destructive',
-          onPress: () => {
-            Alert.alert('Account deletion requested', 'Our team will process your request within 48 hours.');
+          onPress: async () => {
+            try {
+              const accessToken = await getAccessTokenWithRetry(getAccessToken);
+              if (!accessToken) throw new Error('Not authenticated');
+              await deleteAccount({ accessToken });
+              await logout();
+              router.replace('/driver-auth' as Href);
+            } catch (err) {
+              Alert.alert(
+                'Error',
+                err instanceof Error ? err.message : 'Could not delete account. Please try again.',
+              );
+            }
           },
         },
       ],
