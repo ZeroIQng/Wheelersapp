@@ -1380,3 +1380,23 @@ export async function getRideChatMessages(input: {
     fallbackError: "Could not load chat messages.",
   });
 }
+
+// ── Account management ──────────────────────────────────────────────────────
+
+export async function logoutAccount(input: {
+  accessToken: string;
+}): Promise<{ success: boolean }> {
+  return postJson<{ success: boolean }>("/auth/logout", {}, {
+    accessToken: input.accessToken,
+    fallbackError: "Could not log out.",
+  });
+}
+
+export async function deleteAccount(input: {
+  accessToken: string;
+}): Promise<{ deleted: boolean }> {
+  return postJson<{ deleted: boolean }>("/auth/delete-account", {}, {
+    accessToken: input.accessToken,
+    fallbackError: "Could not delete account.",
+  });
+}
