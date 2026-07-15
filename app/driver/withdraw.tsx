@@ -168,14 +168,14 @@ export default function DriverWithdrawScreen() {
   }[step];
 
   return (
-    <AppScreen backgroundColor={theme.colors.offWhite} contentStyle={styles.container}>
+    <AppScreen contentStyle={styles.container}>
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         {/* Header */}
         <View style={styles.header}>
-          <Pressable onPress={handleBack} hitSlop={12} style={styles.backBtn}>
+          <Pressable onPress={handleBack} hitSlop={12} style={[styles.backBtn, isDark && { backgroundColor: theme.colors.darkSurface }]}>
             <BackIcon />
           </Pressable>
           <AppText variant="h1">Withdraw</AppText>
@@ -205,12 +205,12 @@ export default function DriverWithdrawScreen() {
           <View style={styles.stepContent}>
             <Pressable
               onPress={() => setShowBankModal(true)}
-              style={styles.selectField}
+              style={[styles.selectField, isDark && { backgroundColor: theme.colors.darkSurface, borderColor: theme.colors.darkBorder }]}
             >
               <BankIcon />
               <AppText
                 variant="body"
-                color={selectedBank ? theme.colors.black : theme.colors.muted}
+                color={selectedBank ? (isDark ? theme.colors.offWhite : theme.colors.black) : theme.colors.muted}
                 style={styles.selectText}
               >
                 {selectedBank ? selectedBank.name : 'Choose your bank'}
