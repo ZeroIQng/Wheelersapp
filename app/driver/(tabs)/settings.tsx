@@ -161,7 +161,7 @@ export default function DriverSettingsScreen() {
         </AppText>
         <View style={[styles.card, { backgroundColor: cardBg }]}>
           <Pressable
-            onPress={() => {/* Profile page - future */}}
+            onPress={() => router.push('/driver/profile' as Href)}
             style={({ pressed }) => [styles.menuItem, pressed && { backgroundColor: pressedBg }]}
           >
             <View style={[styles.menuIcon, { backgroundColor: theme.colors.orangeLight }]}>
