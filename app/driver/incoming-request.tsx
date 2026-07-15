@@ -32,7 +32,7 @@ export default function IncomingRequestScreen() {
       if (remaining <= 0 && timerRef.current) {
         clearInterval(timerRef.current);
         timerRef.current = null;
-        router.replace('/driver/dashboard' as Href);
+        router.replace('/driver/(tabs)/home' as Href);
       }
     };
 
@@ -46,7 +46,7 @@ export default function IncomingRequestScreen() {
   // If no offer, go back to dashboard
   useEffect(() => {
     if (!offer) {
-      router.replace('/driver/dashboard' as Href);
+      router.replace('/driver/(tabs)/home' as Href);
     }
   }, [offer, router]);
 
@@ -65,7 +65,7 @@ export default function IncomingRequestScreen() {
   const handleDecline = async () => {
     if (!offer) return;
     await rejectRide(offer.rideId);
-    router.replace('/driver/dashboard' as Href);
+    router.replace('/driver/(tabs)/home' as Href);
   };
 
   if (!offer) return null;

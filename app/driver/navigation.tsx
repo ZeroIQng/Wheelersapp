@@ -23,7 +23,7 @@ export default function DriverNavigationScreen() {
 
   useEffect(() => {
     if (!ride) {
-      router.replace('/driver/dashboard' as Href);
+      router.replace('/driver/(tabs)/home' as Href);
     }
   }, [ride, router]);
 

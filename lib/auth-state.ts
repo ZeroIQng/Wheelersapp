@@ -4,7 +4,7 @@ import { clearCachedAccessToken, clearStoredLocalAccessToken } from "@/lib/acces
 
 export type AppAuthRole = "RIDER" | "DRIVER";
 export type RiderOnboardingRoute = "/phone-auth" | "/otp-verify" | "/rider";
-export type AuthenticatedRoute = "/driver/dashboard" | RiderOnboardingRoute;
+export type AuthenticatedRoute = "/driver/(tabs)/home" | RiderOnboardingRoute;
 
 export type StoredAuthState = {
   role: AppAuthRole;
@@ -16,13 +16,13 @@ export type StoredAuthState = {
 const AUTH_STATE_KEY = "wheelers.auth.state";
 const LOGOUT_PENDING_KEY = "wheelers.auth.logout.pending";
 
-export function getPostLoginRoute(role: AppAuthRole): "/driver/dashboard" | "/phone-auth" {
-  return role === "DRIVER" ? "/driver/dashboard" : "/phone-auth";
+export function getPostLoginRoute(role: AppAuthRole): "/driver/(tabs)/home" | "/phone-auth" {
+  return role === "DRIVER" ? "/driver/(tabs)/home" : "/phone-auth";
 }
 
 export function getAuthenticatedRoute(state: StoredAuthState): AuthenticatedRoute {
   if (state.role === "DRIVER") {
-    return "/driver/dashboard";
+    return "/driver/(tabs)/home";
   }
 
   if (state.onboardingComplete) {
@@ -49,13 +49,13 @@ export async function readStoredAuthState(): Promise<StoredAuthState | null> {
     }
 
     const onboardingRoute =
-      parsed.onboardingRoute === "/driver/dashboard" ||
+      parsed.onboardingRoute === "/driver/(tabs)/home" ||
       parsed.onboardingRoute === "/phone-auth" ||
       parsed.onboardingRoute === "/otp-verify" ||
       parsed.onboardingRoute === "/rider"
         ? parsed.onboardingRoute
         : parsed.role === "DRIVER"
-          ? "/driver/dashboard"
+          ? "/driver/(tabs)/home"
           : "/phone-auth";
 
     return {
@@ -83,7 +83,7 @@ export async function persistAuthenticatedRole(
     onboardingComplete: role === "DRIVER" || phoneVerified,
     onboardingRoute:
       role === "DRIVER"
-        ? "/driver/dashboard"
+        ? "/driver/(tabs)/home"
         : phoneVerified
           ? "/rider"
           : "/phone-auth",
