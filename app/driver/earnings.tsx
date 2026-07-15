@@ -9,6 +9,7 @@ import { AppText } from '@/components/app-text';
 import { useAuth } from '@/lib/auth';
 import { getAccessTokenWithRetry } from '@/lib/access-token';
 import { getDriverEarnings, type DriverEarningsResponse } from '@/lib/api';
+import { useAppTheme } from '@/lib/theme-context';
 import { theme } from '@/theme';
 
 type Period = 'today' | 'week' | 'month';
@@ -53,6 +54,7 @@ function EarningIcon({ size = 18 }: { size?: number }) {
 export default function DriverEarningsScreen() {
   const router = useRouter();
   const { getAccessToken } = useAuth();
+  const { isDark } = useAppTheme();
   const [activePeriod, setActivePeriod] = useState<Period>('today');
   const [earnings, setEarnings] = useState<DriverEarningsResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -79,17 +81,17 @@ export default function DriverEarningsScreen() {
   const rideCount = earnings?.rideCount ?? 0;
 
   return (
-    <AppScreen backgroundColor={theme.colors.offWhite} scroll contentStyle={styles.container}>
+    <AppScreen scroll contentStyle={styles.container}>
       {/* Header with back */}
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} hitSlop={12} style={styles.backBtn}>
+        <Pressable onPress={() => router.back()} hitSlop={12} style={[styles.backBtn, isDark && { backgroundColor: theme.colors.darkSurface }]}>
           <BackIcon />
         </Pressable>
         <AppText variant="h1">Earnings</AppText>
       </View>
 
       {/* Period tab switcher (same style as History) */}
-      <View style={styles.tabs}>
+      <View style={[styles.tabs, isDark && { backgroundColor: theme.colors.darkSurface, borderColor: theme.colors.darkBorder }]}>
         {periods.map((p) => {
           const active = p.value === activePeriod;
           return (
@@ -110,7 +112,7 @@ export default function DriverEarningsScreen() {
       </View>
 
       {/* Summary card */}
-      <View style={styles.summaryCard}>
+      <View style={[styles.summaryCard, isDark && { backgroundColor: theme.colors.darkSurface }]}>
         <View style={styles.summaryItem}>
           <AppText variant="bodySmall" color={theme.colors.muted}>Total earned</AppText>
           <AppText variant="h1" color={theme.colors.orange}>{formatNgn(totalEarnings)}</AppText>
