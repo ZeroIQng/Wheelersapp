@@ -1,7 +1,7 @@
 import { Href, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef, useState } from 'react';
-import { Platform, Pressable, StyleSheet, View } from 'react-native';
+import { Alert, Platform, Pressable, StyleSheet, View } from 'react-native';
 import MapView, { Circle, PROVIDER_GOOGLE } from 'react-native-maps';
 
 import { AppText } from '@/components/app-text';
@@ -87,10 +87,14 @@ export default function DriverHomeScreen() {
   const driverLng = currentLocation?.lng ?? LAGOS_REGION.longitude;
 
   const handleToggleOnline = async () => {
-    if (isOnline) {
-      await goOffline();
-    } else {
-      await goOnline();
+    try {
+      if (isOnline) {
+        await goOffline();
+      } else {
+        await goOnline();
+      }
+    } catch (err) {
+      Alert.alert('Error', err instanceof Error ? err.message : 'Could not update status. Please try again.');
     }
   };
 

@@ -1,7 +1,7 @@
 import { Href, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useMemo, useRef } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Alert, StyleSheet, View } from 'react-native';
 import { Marker, Polyline } from 'react-native-maps';
 import type MapView from 'react-native-maps';
 
@@ -81,7 +81,11 @@ export default function DriverNavigationScreen() {
     : '--';
 
   const handleArrived = async () => {
-    await arriveAtPickup(ride.rideId);
+    try {
+      await arriveAtPickup(ride.rideId);
+    } catch (err) {
+      Alert.alert('Error', err instanceof Error ? err.message : 'Could not confirm arrival. Please try again.');
+    }
   };
 
   return (
