@@ -1,7 +1,7 @@
 import { Href, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef, useState } from 'react';
-import { Linking, Pressable, StyleSheet, View } from 'react-native';
+import { Alert, Linking, Pressable, StyleSheet, View } from 'react-native';
 
 import { AppButton } from '@/components/app-button';
 import { AppCard } from '@/components/app-card';
@@ -50,7 +50,11 @@ export default function DriverArrivedScreen() {
   };
 
   const handleStartTrip = async () => {
-    await startTrip(ride.rideId);
+    try {
+      await startTrip(ride.rideId);
+    } catch (err) {
+      Alert.alert('Error', err instanceof Error ? err.message : 'Could not start trip. Please try again.');
+    }
   };
 
   const waitLabel = `Free wait time (${Math.ceil(FREE_WAIT_SECONDS / 60)} min)`;

@@ -1,7 +1,7 @@
 import { Href, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, View } from 'react-native';
 import { Marker, Polyline } from 'react-native-maps';
 import type MapView from 'react-native-maps';
 
@@ -88,7 +88,11 @@ export default function DriverActiveTripScreen() {
     : '--';
 
   const handleEndRide = async () => {
-    await endTrip(ride.rideId);
+    try {
+      await endTrip(ride.rideId);
+    } catch (err) {
+      Alert.alert('Error', err instanceof Error ? err.message : 'Could not end ride. Please try again.');
+    }
   };
 
   return (

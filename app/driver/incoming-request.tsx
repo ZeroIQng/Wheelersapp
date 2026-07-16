@@ -1,7 +1,8 @@
 import { Href, useRouter } from 'expo-router';
+import * as Haptics from 'expo-haptics';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Alert, StyleSheet, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 
 import { AppScreen } from '@/components/app-screen';
@@ -9,6 +10,7 @@ import { AppText } from '@/components/app-text';
 import { BackArrow } from '@/components/back-arrow';
 import { RideRequestSheet } from '@/components/RideRequestSheet';
 import { useDriverSession } from '@/lib/driver-session';
+import { playRideRequestSound, stopRideRequestSound } from '@/lib/sounds';
 import { theme } from '@/theme';
 
 function formatNgn(amount: number): string {
@@ -43,6 +45,13 @@ export default function IncomingRequestScreen() {
     };
   }, [offer?.expiresAt, router]);
 
+  // Play alert sound + haptic when offer arrives
+  useEffect(() => {
+    void playRideRequestSound();
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    return () => { void stopRideRequestSound(); };
+  }, []);
+
   // If no offer, go back to dashboard
   useEffect(() => {
     if (!offer) {
@@ -53,19 +62,31 @@ export default function IncomingRequestScreen() {
   // Navigate forward when ride is accepted (status transitions to 'navigating')
   useEffect(() => {
     if (session.status === 'navigating') {
+      void stopRideRequestSound();
       router.replace('/driver/navigation' as Href);
     }
   }, [session.status, router]);
 
   const handleAccept = async () => {
     if (!offer) return;
-    await acceptRide(offer.rideId);
+    try {
+      void stopRideRequestSound();
+      await acceptRide(offer.rideId);
+    } catch (err) {
+      Alert.alert('Error', err instanceof Error ? err.message : 'Could not accept ride. Please try again.');
+    }
   };
 
   const handleDecline = async () => {
     if (!offer) return;
-    await rejectRide(offer.rideId);
-    router.replace('/driver/(tabs)/home' as Href);
+    try {
+      void stopRideRequestSound();
+      await rejectRide(offer.rideId);
+      router.replace('/driver/(tabs)/home' as Href);
+    } catch (err) {
+      Alert.alert('Error', err instanceof Error ? err.message : 'Could not decline ride.');
+      router.replace('/driver/(tabs)/home' as Href);
+    }
   };
 
   if (!offer) return null;
