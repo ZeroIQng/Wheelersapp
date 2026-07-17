@@ -214,18 +214,12 @@ const styles = StyleSheet.create({
   // Balance card
   balanceCard: {
     backgroundColor: theme.colors.black,
-    borderRadius: 22,
+    borderRadius: theme.radii.lg,
     padding: 24,
     gap: 6,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.15,
-        shadowRadius: 20,
-      },
-      android: { elevation: 10 },
-    }),
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    ...theme.shadows.card,
   },
   balanceHeader: {
     flexDirection: 'row',
@@ -237,18 +231,12 @@ const styles = StyleSheet.create({
   // Virtual account
   accountCard: {
     backgroundColor: theme.colors.white,
-    borderRadius: 16,
+    borderRadius: theme.radii.md,
     padding: 18,
     gap: 8,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.05,
-        shadowRadius: 10,
-      },
-      android: { elevation: 3 },
-    }),
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    ...theme.shadows.card,
   },
   accountLabel: {
     textTransform: 'uppercase',
@@ -267,8 +255,10 @@ const styles = StyleSheet.create({
   copyBtn: {
     width: 40,
     height: 40,
-    borderRadius: 12,
+    borderRadius: theme.radii.xs,
     backgroundColor: theme.colors.orangeLight,
+    borderWidth: theme.borders.regular,
+    borderColor: theme.colors.black,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -280,17 +270,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
     height: 52,
-    borderRadius: 14,
+    borderRadius: theme.radii.sm,
     backgroundColor: theme.colors.orange,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 3 },
-        shadowOpacity: 0.1,
-        shadowRadius: 8,
-      },
-      android: { elevation: 4 },
-    }),
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    ...theme.shadows.card,
   },
   btnPressed: {
     opacity: 0.85,
@@ -302,17 +286,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: theme.colors.white,
-    borderRadius: 16,
+    borderRadius: theme.radii.md,
     padding: 20,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.05,
-        shadowRadius: 10,
-      },
-      android: { elevation: 3 },
-    }),
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    ...theme.shadows.card,
   },
   earningsLeft: {
     flex: 1,
@@ -321,8 +299,10 @@ const styles = StyleSheet.create({
   earningsArrow: {
     width: 36,
     height: 36,
-    borderRadius: 18,
+    borderRadius: theme.radii.xs,
     backgroundColor: theme.colors.offWhite,
+    borderWidth: theme.borders.regular,
+    borderColor: theme.colors.black,
     alignItems: 'center',
     justifyContent: 'center',
   },

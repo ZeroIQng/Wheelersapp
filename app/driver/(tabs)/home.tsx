@@ -11,7 +11,18 @@ import { getDriverStats, getDriverEarnings, type DriverStatsResponse } from '@/l
 import { useDriverSession } from '@/lib/driver-session';
 import { useAppLocation } from '@/lib/location';
 import { useAppNotifications } from '@/lib/notifications';
+import { useQuestBadge } from '@/lib/quest-badge-context';
 import { theme } from '@/theme';
+
+function countCompletedQuests(todayRides: number, todayEarnings: number, totalRides: number, rating: number): number {
+  let count = 0;
+  if (todayRides >= 5) count++;   // Daily Grind
+  if (todayRides >= 10) count++;  // Road Warrior
+  if (todayEarnings >= 10000) count++; // Big Earner
+  if (rating >= 4.8 && rating > 0) count++; // Five Star Driver
+  if (totalRides >= 100) count++; // Century Club
+  return count;
+}
 
 function formatNgn(amount: number): string {
   return `NGN ${Math.round(amount).toLocaleString('en-NG')}`;
@@ -30,6 +41,7 @@ export default function DriverHomeScreen() {
   const { session, goOnline, goOffline } = useDriverSession();
   const { permissionState, requestLocationAccess, currentLocation } = useAppLocation();
   const { permissionGranted, requestNotificationAccess } = useAppNotifications();
+  const { reportCompletedCount } = useQuestBadge();
   const notificationPromptedRef = useRef(false);
   const mapRef = useRef<MapView>(null);
 
@@ -58,6 +70,12 @@ export default function DriverHomeScreen() {
         ]);
         setStats(driverStats);
         setTodayEarnings(earnings.totalEarningsNgn);
+        reportCompletedCount(countCompletedQuests(
+          earnings.rideCount,
+          earnings.totalEarningsNgn,
+          driverStats.totalRides,
+          driverStats.rating,
+        ));
       } catch {
         // non-blocking
       }
@@ -218,23 +236,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 999,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 8,
-      },
-      android: {
-        elevation: 4,
-      },
-    }),
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    ...theme.shadows.subtle,
   },
   statusOnline: {
-    backgroundColor: 'rgba(255,255,255,0.95)',
+    backgroundColor: theme.colors.white,
   },
   statusOffline: {
-    backgroundColor: 'rgba(255,255,255,0.95)',
+    backgroundColor: theme.colors.white,
   },
   statusDot: {
     width: 8,
@@ -252,22 +262,14 @@ const styles = StyleSheet.create({
   },
   metricsCard: {
     flexDirection: 'row',
-    backgroundColor: 'rgba(255,255,255,0.97)',
-    borderRadius: 16,
+    backgroundColor: theme.colors.white,
+    borderRadius: theme.radii.md,
     paddingVertical: 16,
     paddingHorizontal: 8,
     alignItems: 'center',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.08,
-        shadowRadius: 12,
-      },
-      android: {
-        elevation: 6,
-      },
-    }),
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    ...theme.shadows.card,
   },
   metricItem: {
     flex: 1,
@@ -283,20 +285,12 @@ const styles = StyleSheet.create({
   // Toggle button
   toggleBtn: {
     minHeight: 52,
-    borderRadius: 14,
+    borderRadius: theme.radii.sm,
     alignItems: 'center',
     justifyContent: 'center',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.15,
-        shadowRadius: 10,
-      },
-      android: {
-        elevation: 8,
-      },
-    }),
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    ...theme.shadows.card,
   },
   toggleBtnOnline: {
     backgroundColor: theme.colors.orange,

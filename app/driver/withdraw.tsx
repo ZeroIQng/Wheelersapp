@@ -492,14 +492,13 @@ const styles = StyleSheet.create({
   backBtn: {
     width: 40,
     height: 40,
-    borderRadius: 12,
+    borderRadius: theme.radii.xs,
     backgroundColor: theme.colors.white,
     alignItems: 'center',
     justifyContent: 'center',
-    ...Platform.select({
-      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 6 },
-      android: { elevation: 2 },
-    }),
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    ...theme.shadows.subtle,
   },
 
   // Step indicator
@@ -519,6 +518,8 @@ const styles = StyleSheet.create({
     height: 10,
     borderRadius: 5,
     backgroundColor: theme.colors.borderLight,
+    borderWidth: 1.5,
+    borderColor: theme.colors.black,
   },
   stepDotActive: {
     backgroundColor: theme.colors.orange,
@@ -553,10 +554,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
     backgroundColor: theme.colors.white,
-    borderRadius: 14,
+    borderRadius: theme.radii.sm,
     padding: 16,
-    borderWidth: 1,
-    borderColor: theme.colors.borderLight,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    ...theme.shadows.subtle,
   },
   selectText: {
     flex: 1,
@@ -584,11 +586,12 @@ const styles = StyleSheet.create({
   // Input
   inputWrap: {
     backgroundColor: theme.colors.white,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: theme.colors.borderLight,
+    borderRadius: theme.radii.sm,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
     padding: 16,
     gap: 8,
+    ...theme.shadows.subtle,
   },
   inputLabel: {
     textTransform: 'uppercase',
@@ -608,15 +611,14 @@ const styles = StyleSheet.create({
   // Next button
   nextBtn: {
     height: 52,
-    borderRadius: 14,
+    borderRadius: theme.radii.sm,
     backgroundColor: theme.colors.orange,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 8,
-    ...Platform.select({
-      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.1, shadowRadius: 8 },
-      android: { elevation: 4 },
-    }),
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    ...theme.shadows.card,
   },
   btnPressed: {
     opacity: 0.85,
@@ -626,13 +628,12 @@ const styles = StyleSheet.create({
   // Confirm card
   confirmCard: {
     backgroundColor: theme.colors.white,
-    borderRadius: 16,
+    borderRadius: theme.radii.md,
     padding: 20,
     gap: 0,
-    ...Platform.select({
-      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 10 },
-      android: { elevation: 3 },
-    }),
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    ...theme.shadows.card,
   },
   confirmRow: {
     flexDirection: 'row',
@@ -646,14 +647,13 @@ const styles = StyleSheet.create({
   },
   confirmBtn: {
     height: 52,
-    borderRadius: 14,
+    borderRadius: theme.radii.sm,
     backgroundColor: theme.colors.black,
     alignItems: 'center',
     justifyContent: 'center',
-    ...Platform.select({
-      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.15, shadowRadius: 8 },
-      android: { elevation: 4 },
-    }),
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    ...theme.shadows.card,
   },
 
   // Modal
@@ -664,10 +664,13 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     backgroundColor: theme.colors.offWhite,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    borderTopLeftRadius: theme.radii.xl,
+    borderTopRightRadius: theme.radii.xl,
     maxHeight: '80%',
     paddingBottom: Platform.OS === 'ios' ? 34 : 20,
+    borderWidth: theme.borders.thick,
+    borderBottomWidth: 0,
+    borderColor: theme.colors.black,
   },
   modalHeader: {
     flexDirection: 'row',
@@ -683,13 +686,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     backgroundColor: theme.colors.white,
-    borderRadius: 12,
+    borderRadius: theme.radii.sm,
     marginHorizontal: 20,
     marginBottom: 12,
     paddingHorizontal: 14,
     paddingVertical: 12,
-    borderWidth: 1,
-    borderColor: theme.colors.borderLight,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
   },
   searchInput: {
     flex: 1,
@@ -713,12 +716,12 @@ const styles = StyleSheet.create({
   bankIconWrap: {
     width: 36,
     height: 36,
-    borderRadius: 10,
+    borderRadius: theme.radii.xs,
     backgroundColor: theme.colors.white,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: theme.colors.borderLight,
+    borderWidth: theme.borders.regular,
+    borderColor: theme.colors.black,
   },
   bankName: {
     flex: 1,

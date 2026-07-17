@@ -1,6 +1,7 @@
 import { Tabs } from 'expo-router';
-import { Platform } from 'react-native';
+import { Platform, View, StyleSheet } from 'react-native';
 import Svg, { Circle, Line, Path, Polyline, Rect } from 'react-native-svg';
+import { useQuestBadge } from '@/lib/quest-badge-context';
 import { useAppTheme } from '@/lib/theme-context';
 import { theme } from '@/theme';
 
@@ -31,6 +32,28 @@ function WalletIcon({ color, size }: { color: string; size: number }) {
   );
 }
 
+function QuestsIcon({ color, size }: { color: string; size: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <Path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" />
+      <Path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" />
+      <Path d="M4 22h16" />
+      <Path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20 7 22" />
+      <Path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20 17 22" />
+      <Path d="M18 2H6v7a6 6 0 0 0 12 0V2Z" />
+    </Svg>
+  );
+}
+
+function QuestsIconWithBadge({ color, size, showBadge }: { color: string; size: number; showBadge: boolean }) {
+  return (
+    <View>
+      <QuestsIcon color={color} size={size} />
+      {showBadge && <View style={tabStyles.badge} />}
+    </View>
+  );
+}
+
 function SettingsIcon({ color, size }: { color: string; size: number }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
@@ -40,8 +63,23 @@ function SettingsIcon({ color, size }: { color: string; size: number }) {
   );
 }
 
+const tabStyles = StyleSheet.create({
+  badge: {
+    position: 'absolute',
+    top: -2,
+    right: -4,
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+    backgroundColor: theme.colors.red,
+    borderWidth: 1.5,
+    borderColor: theme.colors.white,
+  },
+});
+
 export default function DriverTabsLayout() {
   const { isDark } = useAppTheme();
+  const { showBadge } = useQuestBadge();
 
   return (
     <Tabs
@@ -56,8 +94,8 @@ export default function DriverTabsLayout() {
         },
         tabBarStyle: {
           backgroundColor: isDark ? theme.colors.darkSurface : theme.colors.white,
-          borderTopWidth: 1,
-          borderTopColor: isDark ? theme.colors.darkBorder : theme.colors.borderLight,
+          borderTopWidth: theme.borders.thick,
+          borderTopColor: isDark ? theme.colors.darkBorder : theme.colors.black,
           height: Platform.OS === 'ios' ? 88 : 64,
           paddingTop: 8,
           paddingBottom: Platform.OS === 'ios' ? 28 : 10,
@@ -85,6 +123,13 @@ export default function DriverTabsLayout() {
         options={{
           title: 'Wallet',
           tabBarIcon: ({ color, size }) => <WalletIcon color={color} size={size} />,
+        }}
+      />
+      <Tabs.Screen
+        name="quests"
+        options={{
+          title: 'Quests',
+          tabBarIcon: ({ color, size }) => <QuestsIconWithBadge color={color} size={size} showBadge={showBadge} />,
         }}
       />
       <Tabs.Screen

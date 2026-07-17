@@ -99,6 +99,7 @@ export default function IncomingRequestScreen() {
     riderName: 'Rider',
     distanceAwayKm: distanceKm,
     estimatedFare: formatNgn(offer.fareEstimateNgn),
+    estimatedFareNgn: offer.fareEstimateNgn,
     rideDistanceKm: distanceKm,
     expiresInSeconds: countdown,
     pickupLabel: offer.pickup.address,
