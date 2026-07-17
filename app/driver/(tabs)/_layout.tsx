@@ -1,6 +1,7 @@
 import { Tabs } from 'expo-router';
 import { Platform, View, StyleSheet } from 'react-native';
 import Svg, { Circle, Line, Path, Polyline, Rect } from 'react-native-svg';
+import { useQuestBadge } from '@/lib/quest-badge-context';
 import { useAppTheme } from '@/lib/theme-context';
 import { theme } from '@/theme';
 
@@ -44,11 +45,11 @@ function QuestsIcon({ color, size }: { color: string; size: number }) {
   );
 }
 
-function QuestsIconWithBadge({ color, size }: { color: string; size: number }) {
+function QuestsIconWithBadge({ color, size, showBadge }: { color: string; size: number; showBadge: boolean }) {
   return (
     <View>
       <QuestsIcon color={color} size={size} />
-      <View style={tabStyles.badge} />
+      {showBadge && <View style={tabStyles.badge} />}
     </View>
   );
 }
@@ -78,6 +79,7 @@ const tabStyles = StyleSheet.create({
 
 export default function DriverTabsLayout() {
   const { isDark } = useAppTheme();
+  const { showBadge } = useQuestBadge();
 
   return (
     <Tabs
@@ -127,7 +129,7 @@ export default function DriverTabsLayout() {
         name="quests"
         options={{
           title: 'Quests',
-          tabBarIcon: ({ color, size }) => <QuestsIconWithBadge color={color} size={size} />,
+          tabBarIcon: ({ color, size }) => <QuestsIconWithBadge color={color} size={size} showBadge={showBadge} />,
         }}
       />
       <Tabs.Screen

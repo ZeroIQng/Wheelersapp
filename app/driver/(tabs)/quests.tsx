@@ -9,6 +9,7 @@ import { AppText } from '@/components/app-text';
 import { useAuth } from '@/lib/auth';
 import { getAccessTokenWithRetry } from '@/lib/access-token';
 import { getDriverStats, getDriverEarnings } from '@/lib/api';
+import { useQuestBadge } from '@/lib/quest-badge-context';
 import { useAppTheme } from '@/lib/theme-context';
 import { theme } from '@/theme';
 
@@ -93,11 +94,17 @@ function formatNgn(amount: number): string {
 export default function DriverQuestsScreen() {
   const { getAccessToken } = useAuth();
   const { isDark } = useAppTheme();
+  const { reportCompletedCount, markSeen } = useQuestBadge();
   const [refreshing, setRefreshing] = useState(false);
   const [todayRides, setTodayRides] = useState(0);
   const [totalRides, setTotalRides] = useState(0);
   const [rating, setRating] = useState(0);
   const [todayEarnings, setTodayEarnings] = useState(0);
+
+  // Clear badge when user views this screen
+  useEffect(() => {
+    markSeen();
+  }, [markSeen]);
 
   const fetchData = useCallback(async () => {
     try {
@@ -182,6 +189,11 @@ export default function DriverQuestsScreen() {
 
   const activeQuests = quests.filter((q) => q.active);
   const completedCount = activeQuests.filter((q) => q.current >= q.target).length;
+
+  // Report completed count so badge can show on other tabs
+  useEffect(() => {
+    reportCompletedCount(completedCount);
+  }, [completedCount, reportCompletedCount]);
 
   return (
     <AppScreen

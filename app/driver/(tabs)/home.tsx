@@ -11,7 +11,18 @@ import { getDriverStats, getDriverEarnings, type DriverStatsResponse } from '@/l
 import { useDriverSession } from '@/lib/driver-session';
 import { useAppLocation } from '@/lib/location';
 import { useAppNotifications } from '@/lib/notifications';
+import { useQuestBadge } from '@/lib/quest-badge-context';
 import { theme } from '@/theme';
+
+function countCompletedQuests(todayRides: number, todayEarnings: number, totalRides: number, rating: number): number {
+  let count = 0;
+  if (todayRides >= 5) count++;   // Daily Grind
+  if (todayRides >= 10) count++;  // Road Warrior
+  if (todayEarnings >= 10000) count++; // Big Earner
+  if (rating >= 4.8 && rating > 0) count++; // Five Star Driver
+  if (totalRides >= 100) count++; // Century Club
+  return count;
+}
 
 function formatNgn(amount: number): string {
   return `NGN ${Math.round(amount).toLocaleString('en-NG')}`;
@@ -30,6 +41,7 @@ export default function DriverHomeScreen() {
   const { session, goOnline, goOffline } = useDriverSession();
   const { permissionState, requestLocationAccess, currentLocation } = useAppLocation();
   const { permissionGranted, requestNotificationAccess } = useAppNotifications();
+  const { reportCompletedCount } = useQuestBadge();
   const notificationPromptedRef = useRef(false);
   const mapRef = useRef<MapView>(null);
 
@@ -58,6 +70,12 @@ export default function DriverHomeScreen() {
         ]);
         setStats(driverStats);
         setTodayEarnings(earnings.totalEarningsNgn);
+        reportCompletedCount(countCompletedQuests(
+          earnings.rideCount,
+          earnings.totalEarningsNgn,
+          driverStats.totalRides,
+          driverStats.rating,
+        ));
       } catch {
         // non-blocking
       }
