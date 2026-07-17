@@ -490,7 +490,7 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
         vehiclePlate: 'N/A',
         vehicleModel: 'N/A',
         etaSeconds: 300,
-        lockedFareNgn: offer.fareEstimateNgn,
+        agreedFareNgn: offer.fareEstimateNgn,
       });
     },
     [sendEnvelope],

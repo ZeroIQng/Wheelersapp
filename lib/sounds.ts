@@ -1,15 +1,19 @@
-import { Audio } from 'expo-av';
-import { Platform } from 'react-native';
+let Audio: any = null;
+try {
+  Audio = require('expo-av').Audio;
+} catch {
+  // Native module not available (e.g. missing prebuild) — sound disabled
+}
 
-let rideRequestSound: Audio.Sound | null = null;
+let rideRequestSound: any = null;
 
 /**
  * Play the ride request alert sound on loop until stopped.
  * Safe to call multiple times — will not stack sounds.
  */
 export async function playRideRequestSound(): Promise<void> {
+  if (!Audio) return;
   try {
-    // Stop any existing sound first
     await stopRideRequestSound();
 
     await Audio.setAudioModeAsync({

@@ -283,11 +283,11 @@ export const driverActiveTripDetails = {
 } as const;
 
 export const driverPayoutSummary = {
-  payout: 'NGN 4,976',
+  payout: 'NGN 5,116',
   grossFare: 'NGN 5,120',
-  platformFee: '-NGN 15',
-  platformFeeLabel: 'Platform fee (0.3%)',
-  finalPayout: 'NGN 4,976',
+  platformFee: '-NGN 4',
+  platformFeeLabel: 'Platform fee (0.08%)',
+  finalPayout: 'NGN 5,116',
 } as const;
 
 export const earningsSummary = {

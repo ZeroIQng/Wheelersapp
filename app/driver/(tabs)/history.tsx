@@ -217,17 +217,18 @@ const styles = StyleSheet.create({
   tabs: {
     flexDirection: 'row',
     backgroundColor: theme.colors.white,
-    borderRadius: 12,
+    borderRadius: theme.radii.sm,
     padding: 4,
-    borderWidth: 1,
-    borderColor: theme.colors.borderLight,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    ...theme.shadows.subtle,
   },
   tab: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 10,
-    borderRadius: 9,
+    borderRadius: theme.radii.xs,
   },
   tabActive: {
     backgroundColor: theme.colors.orange,
@@ -289,7 +290,9 @@ const styles = StyleSheet.create({
   txnIcon: {
     width: 36,
     height: 36,
-    borderRadius: 10,
+    borderRadius: theme.radii.xs,
+    borderWidth: theme.borders.regular,
+    borderColor: theme.colors.black,
     alignItems: 'center',
     justifyContent: 'center',
   },

@@ -199,12 +199,13 @@ const styles = StyleSheet.create({
   },
   infoCard: {
     marginTop: theme.spacing.xxxl,
-    borderWidth: theme.borders.regular,
-    borderColor: theme.colors.borderLight,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
     borderRadius: theme.radius.md,
     padding: theme.spacing.lg,
     gap: theme.spacing.md,
     backgroundColor: theme.colors.white,
+    ...theme.shadows.subtle,
   },
   infoRow: {
     flexDirection: "row",
@@ -213,12 +214,13 @@ const styles = StyleSheet.create({
   },
   rejectedList: {
     width: "100%",
-    borderWidth: theme.borders.regular,
+    borderWidth: theme.borders.thick,
     borderColor: theme.colors.danger,
     borderRadius: theme.radius.md,
     padding: theme.spacing.lg,
     gap: theme.spacing.sm,
     backgroundColor: theme.colors.dangerLight,
+    ...theme.shadows.subtle,
   },
   rejectedListTitle: {
     marginBottom: theme.spacing.xs,

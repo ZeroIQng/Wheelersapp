@@ -11,7 +11,7 @@ import { SectionHeader } from '@/components/SectionHeader';
 import { useDriverSession } from '@/lib/driver-session';
 import { theme } from '@/theme';
 
-const PLATFORM_FEE_RATE = 0.003; // 0.3%
+const PLATFORM_FEE_RATE = 0.0008; // 0.08%
 
 function formatNgn(amount: number): string {
   return `NGN ${Math.round(amount).toLocaleString('en-NG')}`;

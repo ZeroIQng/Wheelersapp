@@ -218,23 +218,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 999,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 8,
-      },
-      android: {
-        elevation: 4,
-      },
-    }),
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    ...theme.shadows.subtle,
   },
   statusOnline: {
-    backgroundColor: 'rgba(255,255,255,0.95)',
+    backgroundColor: theme.colors.white,
   },
   statusOffline: {
-    backgroundColor: 'rgba(255,255,255,0.95)',
+    backgroundColor: theme.colors.white,
   },
   statusDot: {
     width: 8,
@@ -252,22 +244,14 @@ const styles = StyleSheet.create({
   },
   metricsCard: {
     flexDirection: 'row',
-    backgroundColor: 'rgba(255,255,255,0.97)',
-    borderRadius: 16,
+    backgroundColor: theme.colors.white,
+    borderRadius: theme.radii.md,
     paddingVertical: 16,
     paddingHorizontal: 8,
     alignItems: 'center',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.08,
-        shadowRadius: 12,
-      },
-      android: {
-        elevation: 6,
-      },
-    }),
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    ...theme.shadows.card,
   },
   metricItem: {
     flex: 1,
@@ -283,20 +267,12 @@ const styles = StyleSheet.create({
   // Toggle button
   toggleBtn: {
     minHeight: 52,
-    borderRadius: 14,
+    borderRadius: theme.radii.sm,
     alignItems: 'center',
     justifyContent: 'center',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.15,
-        shadowRadius: 10,
-      },
-      android: {
-        elevation: 8,
-      },
-    }),
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    ...theme.shadows.card,
   },
   toggleBtnOnline: {
     backgroundColor: theme.colors.orange,

@@ -243,14 +243,13 @@ const styles = StyleSheet.create({
   backBtn: {
     width: 40,
     height: 40,
-    borderRadius: 12,
+    borderRadius: theme.radii.xs,
     backgroundColor: theme.colors.white,
     alignItems: 'center',
     justifyContent: 'center',
-    ...Platform.select({
-      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 6 },
-      android: { elevation: 2 },
-    }),
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    ...theme.shadows.subtle,
   },
 
   // Avatar
@@ -265,9 +264,12 @@ const styles = StyleSheet.create({
     height: 80,
     borderRadius: 40,
     backgroundColor: theme.colors.orangeLight,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 4,
+    ...theme.shadows.card,
   },
 
   // Sections
@@ -283,12 +285,11 @@ const styles = StyleSheet.create({
 
   // Card
   card: {
-    borderRadius: 16,
+    borderRadius: theme.radii.md,
     overflow: 'hidden',
-    ...Platform.select({
-      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 10 },
-      android: { elevation: 3 },
-    }),
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    ...theme.shadows.card,
   },
 
   // Info row
@@ -302,7 +303,9 @@ const styles = StyleSheet.create({
   infoIcon: {
     width: 36,
     height: 36,
-    borderRadius: 10,
+    borderRadius: theme.radii.xs,
+    borderWidth: theme.borders.regular,
+    borderColor: theme.colors.black,
     alignItems: 'center',
     justifyContent: 'center',
   },

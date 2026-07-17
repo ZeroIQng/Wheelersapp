@@ -305,17 +305,11 @@ const styles = StyleSheet.create({
 
   // Card
   card: {
-    borderRadius: 16,
+    borderRadius: theme.radii.md,
     overflow: 'hidden',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.05,
-        shadowRadius: 10,
-      },
-      android: { elevation: 3 },
-    }),
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    ...theme.shadows.card,
   },
 
   // Menu item
@@ -329,7 +323,9 @@ const styles = StyleSheet.create({
   menuIcon: {
     width: 36,
     height: 36,
-    borderRadius: 10,
+    borderRadius: theme.radii.xs,
+    borderWidth: theme.borders.regular,
+    borderColor: theme.colors.black,
     alignItems: 'center',
     justifyContent: 'center',
   },

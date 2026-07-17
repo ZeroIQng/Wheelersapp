@@ -183,36 +183,31 @@ const styles = StyleSheet.create({
   backBtn: {
     width: 40,
     height: 40,
-    borderRadius: 12,
+    borderRadius: theme.radii.xs,
     backgroundColor: theme.colors.white,
     alignItems: 'center',
     justifyContent: 'center',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.06,
-        shadowRadius: 6,
-      },
-      android: { elevation: 2 },
-    }),
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    ...theme.shadows.subtle,
   },
 
   // Tabs (matches History style)
   tabs: {
     flexDirection: 'row',
     backgroundColor: theme.colors.white,
-    borderRadius: 12,
+    borderRadius: theme.radii.sm,
     padding: 4,
-    borderWidth: 1,
-    borderColor: theme.colors.borderLight,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    ...theme.shadows.subtle,
   },
   tab: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 10,
-    borderRadius: 9,
+    borderRadius: theme.radii.xs,
   },
   tabActive: {
     backgroundColor: theme.colors.orange,
@@ -222,19 +217,13 @@ const styles = StyleSheet.create({
   summaryCard: {
     flexDirection: 'row',
     backgroundColor: theme.colors.white,
-    borderRadius: 16,
+    borderRadius: theme.radii.md,
     paddingVertical: 20,
     paddingHorizontal: 16,
     alignItems: 'center',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.05,
-        shadowRadius: 10,
-      },
-      android: { elevation: 3 },
-    }),
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    ...theme.shadows.card,
   },
   summaryItem: {
     flex: 1,
@@ -262,8 +251,10 @@ const styles = StyleSheet.create({
   itemIcon: {
     width: 36,
     height: 36,
-    borderRadius: 10,
+    borderRadius: theme.radii.xs,
     backgroundColor: theme.colors.orangeLight,
+    borderWidth: theme.borders.regular,
+    borderColor: theme.colors.black,
     alignItems: 'center',
     justifyContent: 'center',
   },

@@ -6,10 +6,17 @@ import { AppText } from '@/components/app-text';
 import { SectionHeader } from '@/components/SectionHeader';
 import { theme } from '@/theme';
 
+const PLATFORM_FEE_RATE = 0.0008; // 0.08%
+
+function formatNgn(amount: number): string {
+  return `NGN ${Math.round(amount).toLocaleString('en-NG')}`;
+}
+
 type RideRequestData = {
   riderName: string;
   distanceAwayKm: string;
   estimatedFare: string;
+  estimatedFareNgn: number;
   rideDistanceKm: string;
   expiresInSeconds: number;
   pickupLabel: string;
@@ -27,6 +34,10 @@ export function RideRequestSheet({
   onAccept,
   onDecline,
 }: RideRequestSheetProps) {
+  const grossFare = request.estimatedFareNgn;
+  const platformFee = Math.round(grossFare * PLATFORM_FEE_RATE);
+  const driverPayout = grossFare - platformFee;
+
   return (
     <Animated.View entering={FadeInDown.duration(380)} style={styles.sheet}>
       <SectionHeader
@@ -40,6 +51,24 @@ export function RideRequestSheet({
         <Metric title="Distance" value={request.rideDistanceKm} />
         <Metric title="Expires" value={`${request.expiresInSeconds}s`} danger />
       </View>
+
+      {/* Fare breakdown */}
+      <View style={styles.fareBreakdown}>
+        <View style={styles.fareRow}>
+          <AppText variant="bodySmall" color={theme.colors.muted}>Gross fare</AppText>
+          <AppText variant="mono">{formatNgn(grossFare)}</AppText>
+        </View>
+        <View style={styles.fareRow}>
+          <AppText variant="bodySmall" color={theme.colors.muted}>Platform fee (0.08%)</AppText>
+          <AppText variant="mono" color={theme.colors.danger}>-{formatNgn(platformFee)}</AppText>
+        </View>
+        <View style={styles.fareDivider} />
+        <View style={styles.fareRow}>
+          <AppText variant="label">You earn</AppText>
+          <AppText variant="monoLarge" color={theme.colors.green}>{formatNgn(driverPayout)}</AppText>
+        </View>
+      </View>
+
       <View style={styles.routeMeta}>
         <View style={styles.stopRow}>
           <View style={[styles.stopDot, { backgroundColor: theme.colors.green }]} />
@@ -101,6 +130,25 @@ const styles = StyleSheet.create({
   metric: {
     flex: 1,
     gap: theme.spacing.xxs,
+  },
+  fareBreakdown: {
+    backgroundColor: theme.colors.white,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    borderRadius: theme.radii.sm,
+    padding: theme.spacing.md,
+    gap: theme.spacing.xs,
+    ...theme.shadows.subtle,
+  },
+  fareRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  fareDivider: {
+    height: 1,
+    backgroundColor: theme.colors.black,
+    marginVertical: theme.spacing.xxs,
   },
   routeMeta: {
     gap: theme.spacing.sm,
