@@ -12,6 +12,7 @@ import { theme } from "@/theme";
 import { signInWithApple, signInWithGoogle, getDriverKycStatus } from "@/lib/api";
 import { storeLocalAccessToken } from "@/lib/access-token";
 import { persistAuthenticatedRole } from "@/lib/auth-state";
+import { useAuth } from "@/lib/auth";
 
 function GoogleIcon({ size = 20 }: { size?: number }) {
   return (
@@ -26,6 +27,7 @@ function GoogleIcon({ size = 20 }: { size?: number }) {
 
 export default function DriverAuthScreen() {
   const router = useRouter();
+  const { refreshAuthState } = useAuth();
   const [loadingProvider, setLoadingProvider] = useState<"apple" | "google" | null>(null);
 
   async function handleAppleSignIn() {
@@ -58,6 +60,7 @@ export default function DriverAuthScreen() {
 
       await storeLocalAccessToken(result.accessToken);
       await persistAuthenticatedRole("DRIVER");
+      await refreshAuthState();
 
       // Check KYC status — skip onboarding if already approved
       try {
@@ -115,6 +118,7 @@ export default function DriverAuthScreen() {
 
       await storeLocalAccessToken(result.accessToken);
       await persistAuthenticatedRole("DRIVER");
+      await refreshAuthState();
 
       // Check KYC status — skip onboarding if already approved
       try {

@@ -3,18 +3,32 @@ import { File } from "expo-file-system";
 import { submitDriverKyc } from "@/lib/api";
 import { getAccessTokenWithRetry, type AccessTokenGetter } from "@/lib/access-token";
 
+interface VehicleInfo {
+  make: string;
+  model: string;
+  plate: string;
+  year: number;
+}
+
 interface OnboardingData {
   ninUri: string | null;
   licenceUri: string | null;
+  licenceType: 'image' | 'pdf';
   selfieUri: string | null;
+  vehiclePhotos: string[];
+  vehicleInfo: VehicleInfo | null;
 }
 
 interface DriverOnboardingContextValue {
   data: OnboardingData;
   setNinUri: (uri: string) => void;
-  setLicenceUri: (uri: string) => void;
+  setLicenceUri: (uri: string, type?: 'image' | 'pdf') => void;
   setSelfieUri: (uri: string) => void;
-  submit: (vehicle: { make: string; model: string; plate: string; year: number }, getAccessToken: AccessTokenGetter) => Promise<void>;
+  setVehiclePhotos: (uris: string[]) => void;
+  addVehiclePhoto: (uri: string) => void;
+  removeVehiclePhoto: (index: number) => void;
+  setVehicleInfo: (info: VehicleInfo) => void;
+  submit: (getAccessToken: AccessTokenGetter) => Promise<void>;
   submitting: boolean;
 }
 
@@ -35,7 +49,10 @@ export function DriverOnboardingProvider({ children }: { children: ReactNode }) 
   const [data, setData] = useState<OnboardingData>({
     ninUri: null,
     licenceUri: null,
+    licenceType: 'image',
     selfieUri: null,
+    vehiclePhotos: [],
+    vehicleInfo: null,
   });
   const [submitting, setSubmitting] = useState(false);
 
@@ -43,20 +60,47 @@ export function DriverOnboardingProvider({ children }: { children: ReactNode }) 
     setData((prev) => ({ ...prev, ninUri: uri }));
   }, []);
 
-  const setLicenceUri = useCallback((uri: string) => {
-    setData((prev) => ({ ...prev, licenceUri: uri }));
+  const setLicenceUri = useCallback((uri: string, type: 'image' | 'pdf' = 'image') => {
+    setData((prev) => ({ ...prev, licenceUri: uri, licenceType: type }));
   }, []);
 
   const setSelfieUri = useCallback((uri: string) => {
     setData((prev) => ({ ...prev, selfieUri: uri }));
   }, []);
 
+  const setVehiclePhotos = useCallback((uris: string[]) => {
+    setData((prev) => ({ ...prev, vehiclePhotos: uris }));
+  }, []);
+
+  const addVehiclePhoto = useCallback((uri: string) => {
+    setData((prev) => ({
+      ...prev,
+      vehiclePhotos: prev.vehiclePhotos.length < 10 ? [...prev.vehiclePhotos, uri] : prev.vehiclePhotos,
+    }));
+  }, []);
+
+  const removeVehiclePhoto = useCallback((index: number) => {
+    setData((prev) => ({
+      ...prev,
+      vehiclePhotos: prev.vehiclePhotos.filter((_, i) => i !== index),
+    }));
+  }, []);
+
+  const setVehicleInfo = useCallback((info: VehicleInfo) => {
+    setData((prev) => ({ ...prev, vehicleInfo: info }));
+  }, []);
+
   const submit = useCallback(async (
-    vehicle: { make: string; model: string; plate: string; year: number },
     getAccessToken: AccessTokenGetter,
   ) => {
     if (!data.ninUri || !data.licenceUri || !data.selfieUri) {
       throw new Error("All documents must be captured before submitting.");
+    }
+    if (data.vehiclePhotos.length < 7) {
+      throw new Error("Please add at least 7 vehicle photos.");
+    }
+    if (!data.vehicleInfo) {
+      throw new Error("Vehicle details are required.");
     }
 
     setSubmitting(true);
@@ -64,10 +108,11 @@ export function DriverOnboardingProvider({ children }: { children: ReactNode }) 
       const accessToken = await getAccessTokenWithRetry(getAccessToken);
       if (!accessToken) throw new Error("Not authenticated.");
 
-      const [ninImage, licenceImage, selfieImage] = await Promise.all([
+      const [ninImage, licenceImage, selfieImage, ...vehicleImages] = await Promise.all([
         uriToBase64(data.ninUri),
         uriToBase64(data.licenceUri),
         uriToBase64(data.selfieUri),
+        ...data.vehiclePhotos.map(uriToBase64),
       ]);
 
       await submitDriverKyc({
@@ -75,10 +120,11 @@ export function DriverOnboardingProvider({ children }: { children: ReactNode }) 
         ninImage,
         licenceImage,
         selfieImage,
-        vehicleMake: vehicle.make,
-        vehicleModel: vehicle.model,
-        vehiclePlate: vehicle.plate,
-        vehicleYear: vehicle.year,
+        vehicleImages,
+        vehicleMake: data.vehicleInfo.make,
+        vehicleModel: data.vehicleInfo.model,
+        vehiclePlate: data.vehicleInfo.plate,
+        vehicleYear: data.vehicleInfo.year,
       });
     } finally {
       setSubmitting(false);
@@ -86,7 +132,7 @@ export function DriverOnboardingProvider({ children }: { children: ReactNode }) 
   }, [data]);
 
   return (
-    <DriverOnboardingContext.Provider value={{ data, setNinUri, setLicenceUri, setSelfieUri, submit, submitting }}>
+    <DriverOnboardingContext.Provider value={{ data, setNinUri, setLicenceUri, setSelfieUri, setVehiclePhotos, addVehiclePhoto, removeVehiclePhoto, setVehicleInfo, submit, submitting }}>
       {children}
     </DriverOnboardingContext.Provider>
   );

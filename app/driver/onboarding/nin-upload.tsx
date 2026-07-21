@@ -50,7 +50,7 @@ export default function NinUploadScreen() {
         title="Upload your NIN"
         subtitle="Take a clear photo of your NIN card or slip"
         showBack
-        progress={{ count: 5, active: 1 }}
+        progress={{ count: 6, active: 1 }}
       />
 
       <View style={styles.uploadArea}>

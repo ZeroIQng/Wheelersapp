@@ -2,7 +2,7 @@
   "expo": {
     "name": "Wheelers",
     "slug": "wheelers",
-    "owner": "timmy133",
+    "owner": "timmy122",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -39,6 +39,7 @@
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
+      "./plugins/withGradlePluginPortal",
       "expo-router",
       "expo-apple-authentication",
       [
@@ -106,7 +107,7 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "92dc8ee3-24c3-429c-9a78-201950879be6"
+        "projectId": "d9087101-a823-40fc-bdc9-402a9f8c639a"
       }
     }
   }

@@ -11,9 +11,10 @@ import { theme } from "@/theme";
 
 const STEPS = [
   { icon: "id-card-outline" as const, label: "NIN card photo" },
-  { icon: "car-outline" as const, label: "Driver's licence" },
+  { icon: "car-outline" as const, label: "Driver's licence (photo or PDF)" },
   { icon: "camera-outline" as const, label: "Face verification" },
   { icon: "speedometer-outline" as const, label: "Vehicle details" },
+  { icon: "images-outline" as const, label: "Vehicle photos (7-10)" },
 ];
 
 export default function OnboardingWelcomeScreen() {
@@ -24,7 +25,7 @@ export default function OnboardingWelcomeScreen() {
       <FlowHeader
         title="Let's get you verified"
         subtitle="To start earning, we need a few things from you"
-        progress={{ count: 5, active: 0 }}
+        progress={{ count: 6, active: 0 }}
       />
 
       <Animated.View entering={FadeInDown.delay(150).duration(400)} style={styles.steps}>
