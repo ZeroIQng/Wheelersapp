@@ -109,7 +109,11 @@ export default function DriverHomeScreen() {
       if (isOnline) {
         await goOffline();
       } else {
-        await goOnline();
+        if (!currentLocation) {
+          Alert.alert('Location unavailable', 'We need your location to go online. Please enable location services.');
+          return;
+        }
+        await goOnline(currentLocation.lat, currentLocation.lng);
       }
     } catch (err) {
       Alert.alert('Error', err instanceof Error ? err.message : 'Could not update status. Please try again.');

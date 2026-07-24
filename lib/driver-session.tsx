@@ -82,7 +82,7 @@ type DriverSessionContextValue = {
   session: DriverSessionState;
   chatMessages: ChatMessage[];
   error: string | null;
-  goOnline: () => Promise<void>;
+  goOnline: (lat: number, lng: number) => Promise<void>;
   goOffline: () => Promise<void>;
   acceptRide: (rideId: string) => Promise<void>;
   rejectRide: (rideId: string) => Promise<void>;
@@ -142,7 +142,7 @@ const defaultContext: DriverSessionContextValue = {
   session: defaultSession,
   chatMessages: [],
   error: null,
-  goOnline: async () => { throw new Error('Driver session unavailable.'); },
+  goOnline: async (_lat: number, _lng: number) => { throw new Error('Driver session unavailable.'); },
   goOffline: async () => { throw new Error('Driver session unavailable.'); },
   acceptRide: async () => { throw new Error('Driver session unavailable.'); },
   rejectRide: async () => { throw new Error('Driver session unavailable.'); },
@@ -455,16 +455,23 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
     [connect],
   );
 
-  const goOnline = useCallback(async () => {
+  const goOnline = useCallback(async (lat: number, lng: number) => {
+    console.log('[driver-session] goOnline called with', { lat, lng });
     await connect();
+    console.log('[driver-session] connected, sending driver:online');
+    await sendEnvelope('driver:online', { lat, lng });
+    console.log('[driver-session] driver:online sent');
     setSession((prev) => ({ ...prev, status: 'online' }));
     setError(null);
-  }, [connect]);
+  }, [connect, sendEnvelope]);
 
   const goOffline = useCallback(async () => {
+    const socket = socketRef.current;
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify({ type: 'driver:offline', payload: { reason: 'manual' } }));
+    }
     shouldMaintainConnectionRef.current = false;
     clearReconnectTimer();
-    const socket = socketRef.current;
     socketRef.current = null;
     if (socket) socket.close();
     connectPromiseRef.current = null;

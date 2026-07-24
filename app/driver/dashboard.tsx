@@ -30,7 +30,7 @@ export default function DriverDashboardScreen() {
   const { getAccessToken } = useAuth();
   const { session, goOnline, goOffline, connectionState } = useDriverSession();
   const { overview } = useWalletOverview();
-  const { permissionState, requestLocationAccess } = useAppLocation();
+  const { permissionState, requestLocationAccess, currentLocation } = useAppLocation();
   const { permissionGranted, requestNotificationAccess } = useAppNotifications();
   const notificationPromptedRef = useRef(false);
 
@@ -83,7 +83,12 @@ export default function DriverDashboardScreen() {
     if (isOnline) {
       await goOffline();
     } else {
-      await goOnline();
+      console.log('[dashboard] going online, currentLocation:', currentLocation);
+      if (!currentLocation) {
+        console.warn('[dashboard] no location available');
+        return;
+      }
+      await goOnline(currentLocation.lat, currentLocation.lng);
     }
   };
 

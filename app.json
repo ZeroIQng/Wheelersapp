@@ -40,6 +40,7 @@
     },
     "plugins": [
       "./plugins/withGradlePluginPortal",
+      "./plugins/withModularHeaders",
       "expo-router",
       "expo-apple-authentication",
       [
@@ -81,6 +82,9 @@
         {
           "android": {
             "minSdkVersion": 26
+          },
+          "ios": {
+            "deploymentTarget": "16.0"
           }
         }
       ],
