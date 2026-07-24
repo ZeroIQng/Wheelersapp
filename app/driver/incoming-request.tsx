@@ -46,6 +46,7 @@ export default function IncomingRequestScreen() {
   const [countdown, setCountdown] = useState(0);
   const [bidMode, setBidMode] = useState(false);
   const [bidAmount, setBidAmount] = useState('');
+  const [lastBidNgn, setLastBidNgn] = useState<number | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const bidInputRef = useRef<TextInput>(null);
 
@@ -159,6 +160,8 @@ export default function IncomingRequestScreen() {
     try {
       void stopRideRequestSound();
       Keyboard.dismiss();
+      setBidMode(false);
+      setLastBidNgn(amount);
       await acceptRide(offer.rideId, amount);
     } catch (err) {
       Alert.alert('Error', err instanceof Error ? err.message : 'Could not submit bid.');
@@ -173,10 +176,10 @@ export default function IncomingRequestScreen() {
 
   if (!offer) return null;
 
-  const baseFare = offer.fareEstimateNgn;
-  const vatAmount = Math.round(baseFare * VAT_RATE);
-  const totalCharged = baseFare + vatAmount + STATE_LEVY_NGN;
-  const driverPayout = baseFare;
+  const activeFare = lastBidNgn ?? offer.fareEstimateNgn;
+  const vatAmount = Math.round(activeFare * VAT_RATE);
+  const totalCharged = activeFare + vatAmount + STATE_LEVY_NGN;
+  const driverPayout = activeFare;
   const distanceKm = offer.plannedDistanceKm
     ? `${offer.plannedDistanceKm.toFixed(1)} km`
     : '--';
@@ -250,8 +253,10 @@ export default function IncomingRequestScreen() {
               <AppText variant="h3">{durationMin}</AppText>
             </View>
             <View style={styles.metricCard}>
-              <AppText variant="bodySmall" color={theme.colors.muted}>Rider's offer</AppText>
-              <AppText variant="h3">{formatNgn(baseFare)}</AppText>
+              <AppText variant="bodySmall" color={theme.colors.muted}>
+                {lastBidNgn ? 'Your bid' : "Rider's offer"}
+              </AppText>
+              <AppText variant="h3">{formatNgn(activeFare)}</AppText>
             </View>
           </View>
 
@@ -276,7 +281,7 @@ export default function IncomingRequestScreen() {
             </View>
           </View>
 
-          {/* Bid input mode */}
+          {/* Actions */}
           {bidMode ? (
             <View style={styles.bidInputWrap}>
               <View style={styles.bidInputRow}>

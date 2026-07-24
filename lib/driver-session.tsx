@@ -220,7 +220,17 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      if (type === 'driver:accept:accepted' || type === 'ride:matched') {
+      if (type === 'driver:accept:accepted') {
+        // Bid sent — stay on the offer screen, wait for rider to accept
+        setSession((prev) => ({
+          ...prev,
+          status: 'offered',
+        }));
+        return;
+      }
+
+      if (type === 'ride:matched') {
+        // Rider accepted — now navigate to pickup
         setSession((prev) => {
           const offer = prev.currentOffer;
           if (!offer) return prev;
@@ -235,7 +245,7 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
               pickup: offer.pickup,
               destination: offer.destination,
               stops: offer.stops,
-              fareNgn: offer.fareEstimateNgn,
+              fareNgn: getNumber(payload.agreedFareNgn) ?? offer.fareEstimateNgn,
               plannedDistanceKm: offer.plannedDistanceKm,
               plannedDurationSeconds: offer.plannedDurationSeconds,
               route: offer.route,
