@@ -10,6 +10,7 @@ import { RingStack, StarBurst } from "@/components/decorative-shapes";
 import { FlowHeader } from "@/components/flow-header";
 import { FloatingView, RevealView } from "@/components/motion";
 import { storeLocalAccessToken } from "@/lib/access-token";
+import { useAuth } from "@/lib/auth";
 import {
   appDisplayName,
   isDriverApp,
@@ -38,6 +39,7 @@ function normalizeUsername(input: string): string {
 
 export default function AccountAuthScreen() {
   const router = useRouter();
+  const { refreshAuthState } = useAuth();
   const [mode, setMode] = useState<AuthMode>("signup");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -100,6 +102,7 @@ export default function AccountAuthScreen() {
         response.user.role === "BOTH" ? targetAuthRole : response.user.role;
 
       await storeLocalAccessToken(response.accessToken);
+      await refreshAuthState();
 
       const nextState = await persistAuthenticatedRole(authenticatedRole, {
         phoneVerified:

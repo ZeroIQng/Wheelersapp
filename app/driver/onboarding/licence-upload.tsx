@@ -2,6 +2,7 @@ import { useRouter } from "expo-router";
 import { useState } from "react";
 import { Image, Pressable, StyleSheet, View } from "react-native";
 import * as ImagePicker from "expo-image-picker";
+import * as DocumentPicker from "expo-document-picker";
 import { Ionicons } from "@expo/vector-icons";
 
 import { AppButton } from "@/components/app-button";
@@ -15,6 +16,7 @@ export default function LicenceUploadScreen() {
   const router = useRouter();
   const { setLicenceUri, data } = useDriverOnboarding();
   const [imageUri, setImageUri] = useState<string | null>(data.licenceUri);
+  const [fileType, setFileType] = useState<"image" | "pdf">(data.licenceType);
 
   async function pickImage() {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -25,7 +27,8 @@ export default function LicenceUploadScreen() {
 
     if (!result.canceled && result.assets[0]) {
       setImageUri(result.assets[0].uri);
-      setLicenceUri(result.assets[0].uri);
+      setFileType("image");
+      setLicenceUri(result.assets[0].uri, "image");
     }
   }
 
@@ -40,7 +43,21 @@ export default function LicenceUploadScreen() {
 
     if (!result.canceled && result.assets[0]) {
       setImageUri(result.assets[0].uri);
-      setLicenceUri(result.assets[0].uri);
+      setFileType("image");
+      setLicenceUri(result.assets[0].uri, "image");
+    }
+  }
+
+  async function pickPdf() {
+    const result = await DocumentPicker.getDocumentAsync({
+      type: "application/pdf",
+      copyToCacheDirectory: true,
+    });
+
+    if (!result.canceled && result.assets[0]) {
+      setImageUri(result.assets[0].uri);
+      setFileType("pdf");
+      setLicenceUri(result.assets[0].uri, "pdf");
     }
   }
 
@@ -48,15 +65,24 @@ export default function LicenceUploadScreen() {
     <AppScreen scroll contentStyle={styles.container}>
       <FlowHeader
         title="Driver's Licence"
-        subtitle="Take a clear photo of your driver's licence (front)"
+        subtitle="Take a photo or upload a PDF of your driver's licence"
         showBack
-        progress={{ count: 5, active: 2 }}
+        progress={{ count: 6, active: 2 }}
       />
 
       <View style={styles.uploadArea}>
         {imageUri ? (
           <Pressable onPress={pickImage} style={styles.previewWrap}>
-            <Image source={{ uri: imageUri }} style={styles.preview} resizeMode="cover" />
+            {fileType === "image" ? (
+              <Image source={{ uri: imageUri }} style={styles.preview} resizeMode="cover" />
+            ) : (
+              <View style={styles.pdfPreview}>
+                <Ionicons name="document-text" size={48} color={theme.colors.orange} />
+                <AppText variant="bodyMedium" color={theme.colors.black}>
+                  PDF uploaded
+                </AppText>
+              </View>
+            )}
             <View style={styles.changeOverlay}>
               <AppText variant="label" color={theme.colors.white}>
                 Tap to change
@@ -80,6 +106,17 @@ export default function LicenceUploadScreen() {
               <Ionicons name="images-outline" size={20} color={theme.colors.muted} />
               <AppText variant="bodySmall" color={theme.colors.muted}>
                 Choose from gallery
+              </AppText>
+            </Pressable>
+
+            <AppText variant="bodySmall" color={theme.colors.muted}>
+              or
+            </AppText>
+
+            <Pressable onPress={pickPdf} style={styles.galleryButton}>
+              <Ionicons name="document-text-outline" size={20} color={theme.colors.muted} />
+              <AppText variant="bodySmall" color={theme.colors.muted}>
+                Upload PDF
               </AppText>
             </Pressable>
           </View>
@@ -135,6 +172,14 @@ const styles = StyleSheet.create({
   preview: {
     width: "100%",
     height: 220,
+  },
+  pdfPreview: {
+    width: "100%",
+    height: 220,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: theme.colors.orangeLight,
+    gap: theme.spacing.sm,
   },
   changeOverlay: {
     position: "absolute",

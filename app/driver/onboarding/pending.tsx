@@ -17,6 +17,7 @@ const FIELD_TO_ROUTE: Record<string, string> = {
   licence: "/driver/onboarding/licence-upload",
   selfie: "/driver/onboarding/face-verification",
   vehicle: "/driver/onboarding/vehicle-info",
+  vehiclePhotos: "/driver/onboarding/vehicle-photos",
 };
 
 const FIELD_LABELS: Record<string, string> = {
@@ -24,6 +25,7 @@ const FIELD_LABELS: Record<string, string> = {
   licence: "Driver's Licence",
   selfie: "Face Verification",
   vehicle: "Vehicle Details",
+  vehiclePhotos: "Vehicle Photos",
 };
 
 export default function PendingScreen() {

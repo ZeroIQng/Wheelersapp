@@ -1294,6 +1294,7 @@ export async function submitDriverKyc(input: {
   ninImage: string;
   licenceImage: string;
   selfieImage: string;
+  vehicleImages: string[];
   vehicleMake: string;
   vehicleModel: string;
   vehiclePlate: string;
@@ -1305,6 +1306,7 @@ export async function submitDriverKyc(input: {
       ninImage: input.ninImage,
       licenceImage: input.licenceImage,
       selfieImage: input.selfieImage,
+      vehicleImages: input.vehicleImages,
       vehicleMake: input.vehicleMake,
       vehicleModel: input.vehicleModel,
       vehiclePlate: input.vehiclePlate,

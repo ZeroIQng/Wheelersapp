@@ -7,19 +7,42 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
-      "environment": "development"
+      "environment": "development",
+      "env": {
+        "EXPO_PUBLIC_GOOGLE_MAPS_API_KEY": "AIzaSyAgZWNd_guJqkC3jxlVtP-V6b6zs1MtxO8"
+      }
     },
     "development:driver": {
       "developmentClient": true,
       "distribution": "internal",
       "environment": "development",
       "env": {
-        "APP_VARIANT": "driver"
+        "APP_VARIANT": "driver",
+        "EXPO_PUBLIC_GOOGLE_MAPS_API_KEY": "AIzaSyAgZWNd_guJqkC3jxlVtP-V6b6zs1MtxO8"
+      }
+    },
+    "development:driver:simulator": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "environment": "development",
+      "ios": {
+        "simulator": true
+      },
+      "env": {
+        "APP_VARIANT": "driver",
+        "EXPO_PUBLIC_APP_VARIANT": "driver",
+        "EXPO_PUBLIC_GOOGLE_MAPS_API_KEY": "AIzaSyAgZWNd_guJqkC3jxlVtP-V6b6zs1MtxO8",
+        "EXPO_PUBLIC_GOOGLE_CLIENT_ID": "915689509871-jceck5bg2mk6imvq46d6so2i8c26lnsb.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "915689509871-6sfdaphckt4r0ku30j3d2pg6nbef199a.apps.googleusercontent.com",
+        "EXPO_PUBLIC_API_BASE_URL": "https://app.wheelersng.com"
       }
     },
     "preview": {
       "distribution": "internal",
-      "environment": "preview"
+      "environment": "preview",
+      "env": {
+        "EXPO_PUBLIC_GOOGLE_MAPS_API_KEY": "AIzaSyAgZWNd_guJqkC3jxlVtP-V6b6zs1MtxO8"
+      }
     },
     "preview:driver": {
       "distribution": "internal",
@@ -30,15 +53,35 @@
       "env": {
         "APP_VARIANT": "driver",
         "EXPO_PUBLIC_APP_VARIANT": "driver",
+        "EXPO_PUBLIC_GOOGLE_MAPS_API_KEY": "AIzaSyAgZWNd_guJqkC3jxlVtP-V6b6zs1MtxO8",
         "EXPO_PUBLIC_GOOGLE_CLIENT_ID": "915689509871-jceck5bg2mk6imvq46d6so2i8c26lnsb.apps.googleusercontent.com",
         "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "915689509871-6sfdaphckt4r0ku30j3d2pg6nbef199a.apps.googleusercontent.com",
-        "EXPO_PUBLIC_API_BASE_URL": "https://1100-102-216-202-19.ngrok-free.app"
+        "EXPO_PUBLIC_API_BASE_URL": "https://app.wheelersng.com"
       }
     },
     "production": {
       "distribution": "store",
       "environment": "production",
-      "autoIncrement": true
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_GOOGLE_MAPS_API_KEY": "AIzaSyAgZWNd_guJqkC3jxlVtP-V6b6zs1MtxO8"
+      }
+    },
+    "production:driver": {
+      "distribution": "internal",
+      "environment": "production",
+      "autoIncrement": true,
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "APP_VARIANT": "driver",
+        "EXPO_PUBLIC_APP_VARIANT": "driver",
+        "EXPO_PUBLIC_GOOGLE_MAPS_API_KEY": "AIzaSyAgZWNd_guJqkC3jxlVtP-V6b6zs1MtxO8",
+        "EXPO_PUBLIC_GOOGLE_CLIENT_ID": "915689509871-jceck5bg2mk6imvq46d6so2i8c26lnsb.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "915689509871-6sfdaphckt4r0ku30j3d2pg6nbef199a.apps.googleusercontent.com",
+        "EXPO_PUBLIC_API_BASE_URL": "https://app.wheelersng.com"
+      }
     }
   },
   "submit": {

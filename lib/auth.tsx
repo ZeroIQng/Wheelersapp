@@ -25,6 +25,8 @@ interface AuthContextValue {
   user: { authenticated: true } | null;
   /** Clears the local token and auth state. */
   logout: () => Promise<void>;
+  /** Call after storing a new token to update auth state. */
+  refreshAuthState: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -53,6 +55,11 @@ export function AuthProvider({ children }: PropsWithChildren) {
     return getStoredLocalAccessToken();
   }, []);
 
+  const refreshAuthState = useCallback(async () => {
+    const token = await getStoredLocalAccessToken();
+    setHasToken(Boolean(token));
+  }, []);
+
   const logout = useCallback(async () => {
     // Tell the backend to blacklist this token
     try {
@@ -74,8 +81,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
   );
 
   const value = useMemo<AuthContextValue>(
-    () => ({ getAccessToken, isReady, user, logout }),
-    [getAccessToken, isReady, user, logout],
+    () => ({ getAccessToken, isReady, user, logout, refreshAuthState }),
+    [getAccessToken, isReady, user, logout, refreshAuthState],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

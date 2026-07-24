@@ -78,7 +78,7 @@ export default function FaceVerificationScreen() {
           title="Face Verification"
           subtitle="Camera permission is required"
           showBack
-          progress={{ count: 5, active: 3 }}
+          progress={{ count: 6, active: 3 }}
         />
         <View style={styles.center}>
           <AppText variant="body" color={theme.colors.muted}>
@@ -96,7 +96,7 @@ export default function FaceVerificationScreen() {
         title="Face Verification"
         subtitle={captured ? "Looking good!" : "Follow the prompts below"}
         showBack
-        progress={{ count: 5, active: 3 }}
+        progress={{ count: 6, active: 3 }}
       />
 
       <View style={styles.cameraSection}>

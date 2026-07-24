@@ -1,6 +1,6 @@
 import { useRouter } from "expo-router";
 import { useState } from "react";
-import { Alert, StyleSheet, TextInput, TextStyle, View } from "react-native";
+import { StyleSheet, TextInput, TextStyle, View } from "react-native";
 
 import { AppButton } from "@/components/app-button";
 import { AppScreen } from "@/components/app-screen";
@@ -8,12 +8,10 @@ import { AppText } from "@/components/app-text";
 import { FlowHeader } from "@/components/flow-header";
 import { theme } from "@/theme";
 import { useDriverOnboarding } from "@/lib/driver-onboarding";
-import { useAuth } from "@/lib/auth";
 
 export default function VehicleInfoScreen() {
   const router = useRouter();
-  const { submit, submitting } = useDriverOnboarding();
-  const { getAccessToken } = useAuth();
+  const { setVehicleInfo } = useDriverOnboarding();
   const [make, setMake] = useState("");
   const [model, setModel] = useState("");
   const [plate, setPlate] = useState("");
@@ -21,19 +19,9 @@ export default function VehicleInfoScreen() {
 
   const isValid = make.trim() && model.trim() && plate.trim() && year.trim().length === 4;
 
-  async function handleSubmit() {
-    try {
-      await submit(
-        { make: make.trim(), model: model.trim(), plate: plate.trim(), year: parseInt(year, 10) },
-        getAccessToken,
-      );
-      router.replace("/driver/onboarding/pending");
-    } catch (error) {
-      Alert.alert(
-        "Submission failed",
-        error instanceof Error ? error.message : "Could not submit your documents. Please try again.",
-      );
-    }
+  function handleContinue() {
+    setVehicleInfo({ make: make.trim(), model: model.trim(), plate: plate.trim(), year: parseInt(year, 10) });
+    router.push("/driver/onboarding/vehicle-photos");
   }
 
   return (
@@ -42,7 +30,7 @@ export default function VehicleInfoScreen() {
         title="Vehicle Details"
         subtitle="Tell us about the vehicle you'll be driving"
         showBack
-        progress={{ count: 5, active: 4 }}
+        progress={{ count: 6, active: 4 }}
       />
 
       <View style={styles.form}>
@@ -106,7 +94,7 @@ export default function VehicleInfoScreen() {
 
       <View style={styles.spacer} />
 
-      <AppButton title="Submit for Review" onPress={handleSubmit} disabled={!isValid} loading={submitting} />
+      <AppButton title="Continue" onPress={handleContinue} disabled={!isValid} />
     </AppScreen>
   );
 }
