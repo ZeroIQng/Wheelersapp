@@ -32,7 +32,8 @@ import { theme } from '@/theme';
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const DISMISS_THRESHOLD = 120;
 
-const PLATFORM_FEE_RATE = 0.0008;
+const VAT_RATE = 0.075;
+const STATE_LEVY_NGN = 30;
 
 function formatNgn(amount: number): string {
   return `₦${Math.round(amount).toLocaleString('en-NG')}`;
@@ -158,8 +159,7 @@ export default function IncomingRequestScreen() {
     try {
       void stopRideRequestSound();
       Keyboard.dismiss();
-      // Accept with the bid amount — the driver session sends agreedFareNgn
-      await acceptRide(offer.rideId);
+      await acceptRide(offer.rideId, amount);
     } catch (err) {
       Alert.alert('Error', err instanceof Error ? err.message : 'Could not submit bid.');
     }
@@ -173,9 +173,10 @@ export default function IncomingRequestScreen() {
 
   if (!offer) return null;
 
-  const grossFare = offer.fareEstimateNgn;
-  const platformFee = Math.round(grossFare * PLATFORM_FEE_RATE);
-  const driverPayout = grossFare - platformFee;
+  const baseFare = offer.fareEstimateNgn;
+  const vatAmount = Math.round(baseFare * VAT_RATE);
+  const totalCharged = baseFare + vatAmount + STATE_LEVY_NGN;
+  const driverPayout = baseFare;
   const distanceKm = offer.plannedDistanceKm
     ? `${offer.plannedDistanceKm.toFixed(1)} km`
     : '--';
@@ -249,19 +250,30 @@ export default function IncomingRequestScreen() {
               <AppText variant="h3">{durationMin}</AppText>
             </View>
             <View style={styles.metricCard}>
-              <AppText variant="bodySmall" color={theme.colors.muted}>You earn</AppText>
-              <AppText variant="h3" color={theme.colors.green}>{formatNgn(driverPayout)}</AppText>
+              <AppText variant="bodySmall" color={theme.colors.muted}>Rider's offer</AppText>
+              <AppText variant="h3">{formatNgn(baseFare)}</AppText>
             </View>
           </View>
 
           {/* Fare breakdown */}
-          <View style={styles.fareRow}>
-            <AppText variant="bodySmall" color={theme.colors.muted}>
-              Rider's offer: {formatNgn(grossFare)}
-            </AppText>
-            <AppText variant="bodySmall" color={theme.colors.muted}>
-              Fee (0.08%): -{formatNgn(platformFee)}
-            </AppText>
+          <View style={styles.fareBreakdown}>
+            <View style={styles.fareLineRow}>
+              <AppText variant="bodySmall" color={theme.colors.muted}>Rider pays</AppText>
+              <AppText variant="bodySmall" color={theme.colors.muted}>{formatNgn(totalCharged)}</AppText>
+            </View>
+            <View style={styles.fareLineRow}>
+              <AppText variant="bodySmall" color={theme.colors.muted}>VAT (7.5%)</AppText>
+              <AppText variant="bodySmall" color={theme.colors.muted}>-{formatNgn(vatAmount)}</AppText>
+            </View>
+            <View style={styles.fareLineRow}>
+              <AppText variant="bodySmall" color={theme.colors.muted}>State levy</AppText>
+              <AppText variant="bodySmall" color={theme.colors.muted}>-{formatNgn(STATE_LEVY_NGN)}</AppText>
+            </View>
+            <View style={styles.fareDivider} />
+            <View style={styles.fareLineRow}>
+              <AppText variant="label">You earn</AppText>
+              <AppText variant="label" color={theme.colors.green}>{formatNgn(driverPayout)}</AppText>
+            </View>
           </View>
 
           {/* Bid input mode */}
@@ -295,7 +307,7 @@ export default function IncomingRequestScreen() {
           ) : (
             <View style={styles.actions}>
               <AppButton title="Accept" onPress={handleAccept} style={styles.acceptBtn} />
-              <AppButton title="Bid" variant="ghost" onPress={handleBidPress} style={styles.bidBtn} />
+              <AppButton title="Bid" variant="inverse" onPress={handleBidPress} style={styles.bidBtn} />
             </View>
           )}
 
@@ -422,11 +434,24 @@ const styles = StyleSheet.create({
     ...theme.shadows.subtle,
   },
 
-  // Fare
-  fareRow: {
+  // Fare breakdown
+  fareBreakdown: {
+    backgroundColor: theme.colors.white,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    borderRadius: theme.radii.sm,
+    padding: theme.spacing.md,
+    gap: theme.spacing.xs,
+    ...theme.shadows.subtle,
+  },
+  fareLineRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingHorizontal: theme.spacing.xs,
+  },
+  fareDivider: {
+    height: 1,
+    backgroundColor: theme.colors.borderLight,
+    marginVertical: 2,
   },
 
   // Actions
