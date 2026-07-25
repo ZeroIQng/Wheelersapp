@@ -59,6 +59,8 @@ type DriverRide = {
   completedFareNgn?: number;
   distanceKm?: number;
   durationSeconds?: number;
+  riderPaid?: boolean;
+  riderPhone?: string;
 };
 
 export type ChatMessage = {
@@ -249,6 +251,8 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
               plannedDistanceKm: offer.plannedDistanceKm,
               plannedDurationSeconds: offer.plannedDurationSeconds,
               route: offer.route,
+              riderPaid: payload.riderPaid === true,
+              riderPhone: getString(payload.riderPhone),
             },
           };
         });
@@ -545,7 +549,6 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
       await sendEnvelope('ride:start', {
         rideId,
         riderId: ride?.riderId ?? '',
-        driverId: '',
         lockedFareNgn: ride?.fareNgn ?? 0,
       });
     },
@@ -558,7 +561,6 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
       await sendEnvelope('ride:end', {
         rideId,
         riderId: ride?.riderId ?? '',
-        driverId: '',
         fareNgn: ride?.fareNgn,
         endedBy: 'both_confirmed',
       });

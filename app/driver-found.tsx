@@ -1,7 +1,7 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useMemo } from "react";
-import { ScrollView, StyleSheet, useWindowDimensions, View } from "react-native";
+import { Linking, ScrollView, StyleSheet, useWindowDimensions, View } from "react-native";
 
 import { BackArrow } from "@/components/back-arrow";
 import { AppBadge } from "@/components/app-badge";
@@ -188,6 +188,12 @@ export default function DriverFoundScreen() {
                 title="Call driver"
                 variant="inverse"
                 style={styles.secondaryButton}
+                onPress={() => {
+                  if (liveDriver?.driverPhone) {
+                    Linking.openURL(`tel:${liveDriver.driverPhone}`);
+                  }
+                }}
+                disabled={!liveDriver?.driverPhone}
               />
               <AppButton
                 title="Cancel ride"

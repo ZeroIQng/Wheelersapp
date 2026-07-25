@@ -59,7 +59,14 @@ export default function DriverPayoutScreen() {
       </View>
 
       <AppCard style={styles.summaryCard}>
-        <SummaryRow label="Gross fare" value={formatNgn(grossFare)} />
+        <View style={styles.riderPaidRow}>
+          <AppText variant="bodySmall" color={theme.colors.muted}>
+            Rider paid
+          </AppText>
+          <AppText variant="monoLarge" color={theme.colors.green}>
+            {formatNgn(grossFare)}
+          </AppText>
+        </View>
         <SummaryRow
           color={theme.colors.danger}
           label={`Platform fee (${(PLATFORM_FEE_RATE * 100).toFixed(1)}%)`}
@@ -145,6 +152,14 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     gap: theme.spacing.md,
+  },
+  riderPaidRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingBottom: theme.spacing.md,
+    borderBottomWidth: theme.borders.thick,
+    borderBottomColor: theme.colors.borderLight,
   },
   totalRow: {
     flexDirection: 'row',

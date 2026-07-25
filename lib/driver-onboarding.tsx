@@ -8,6 +8,7 @@ interface VehicleInfo {
   model: string;
   plate: string;
   year: number;
+  phone: string;
 }
 
 interface OnboardingData {
@@ -125,6 +126,7 @@ export function DriverOnboardingProvider({ children }: { children: ReactNode }) 
         vehicleModel: data.vehicleInfo.model,
         vehiclePlate: data.vehicleInfo.plate,
         vehicleYear: data.vehicleInfo.year,
+        phone: data.vehicleInfo.phone || undefined,
       });
     } finally {
       setSubmitting(false);

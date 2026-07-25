@@ -1,7 +1,7 @@
 import { Href, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useMemo, useRef } from 'react';
-import { Alert, StyleSheet, View } from 'react-native';
+import { Alert, Linking, Pressable, StyleSheet, View } from 'react-native';
 import { Marker, Polyline } from 'react-native-maps';
 import type MapView from 'react-native-maps';
 
@@ -118,7 +118,7 @@ export default function DriverNavigationScreen() {
 
           <View style={styles.instructionBanner}>
             <InstructionCard
-              instruction={{ icon: '↖', title: 'Head to pickup', subtitle: ride.pickup.address }}
+              instruction={{ icon: '', title: 'Head to pickup', subtitle: ride.pickup.address }}
               variant="banner"
             />
           </View>
@@ -136,6 +136,12 @@ export default function DriverNavigationScreen() {
           variant="orange"
         />
 
+        {ride.riderPaid && (
+          <View style={styles.paidBadge}>
+            <AppText variant="label" color={theme.colors.green}>Rider has paid</AppText>
+          </View>
+        )}
+
         <View style={styles.metricsRow}>
           <MetricCard
             accent="orange"
@@ -151,6 +157,16 @@ export default function DriverNavigationScreen() {
             value={formatNgn(ride.fareNgn)}
           />
         </View>
+
+        {ride.riderPhone ? (
+          <Pressable
+            style={styles.callRiderButton}
+            onPress={() => Linking.openURL(`tel:${ride.riderPhone}`)}
+          >
+            <AppText style={styles.callRiderIcon}>📞</AppText>
+            <AppText variant="label">Call rider</AppText>
+          </Pressable>
+        ) : null}
 
         <AppButton title="I've arrived" onPress={handleArrived} />
       </View>
@@ -193,8 +209,32 @@ const styles = StyleSheet.create({
     paddingTop: theme.spacing.lg,
     gap: theme.spacing.md,
   },
+  paidBadge: {
+    backgroundColor: theme.colors.white,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.green,
+    borderRadius: theme.radii.sm,
+    paddingVertical: theme.spacing.xs,
+    paddingHorizontal: theme.spacing.md,
+    alignItems: 'center',
+  },
   metricsRow: {
     flexDirection: 'row',
     gap: theme.spacing.sm,
+  },
+  callRiderButton: {
+    flexDirection: 'row',
+    height: 46,
+    borderRadius: theme.radii.sm,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.green,
+    backgroundColor: theme.colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: theme.spacing.xs,
+    ...theme.shadows.card,
+  },
+  callRiderIcon: {
+    fontSize: 16,
   },
 });

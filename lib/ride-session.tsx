@@ -42,6 +42,7 @@ type RideDriver = {
   vehicleModel?: string;
   etaSeconds?: number;
   lockedFareNgn?: number;
+  driverPhone?: string;
 };
 
 type RideDriverLocation = {
@@ -354,6 +355,7 @@ export function RideSessionProvider({ children }: { children: ReactNode }) {
               etaSeconds: getNumber(payload.etaSeconds) ?? previous.driver?.etaSeconds,
               lockedFareNgn:
                 getNumber(payload.lockedFareNgn) ?? previous.driver?.lockedFareNgn,
+              driverPhone: getString(payload.driverPhone) ?? previous.driver?.driverPhone,
             },
           };
         });
@@ -536,6 +538,7 @@ export function RideSessionProvider({ children }: { children: ReactNode }) {
               vehiclePlate: getString(payload.vehiclePlate) ?? previous.driver?.vehiclePlate,
               vehicleModel: getString(payload.vehicleModel) ?? previous.driver?.vehicleModel,
               etaSeconds: getNumber(payload.etaSeconds) ?? previous.driver?.etaSeconds,
+              driverPhone: getString(payload.driverPhone) ?? previous.driver?.driverPhone,
             },
           };
         });

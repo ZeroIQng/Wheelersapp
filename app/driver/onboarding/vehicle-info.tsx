@@ -16,11 +16,12 @@ export default function VehicleInfoScreen() {
   const [model, setModel] = useState("");
   const [plate, setPlate] = useState("");
   const [year, setYear] = useState("");
+  const [phone, setPhone] = useState("");
 
-  const isValid = make.trim() && model.trim() && plate.trim() && year.trim().length === 4;
+  const isValid = make.trim() && model.trim() && plate.trim() && year.trim().length === 4 && phone.trim().length >= 10;
 
   function handleContinue() {
-    setVehicleInfo({ make: make.trim(), model: model.trim(), plate: plate.trim(), year: parseInt(year, 10) });
+    setVehicleInfo({ make: make.trim(), model: model.trim(), plate: plate.trim(), year: parseInt(year, 10), phone: phone.trim() });
     router.push("/driver/onboarding/vehicle-photos");
   }
 
@@ -89,6 +90,24 @@ export default function VehicleInfoScreen() {
             keyboardType="number-pad"
             maxLength={4}
           />
+        </View>
+
+        <View style={styles.field}>
+          <AppText variant="label" style={styles.label}>
+            Phone Number
+          </AppText>
+          <TextInput
+            style={styles.input}
+            placeholder="e.g. 08012345678"
+            placeholderTextColor={theme.colors.mutedLight}
+            value={phone}
+            onChangeText={setPhone}
+            keyboardType="phone-pad"
+            maxLength={15}
+          />
+          <AppText variant="bodySmall" color={theme.colors.muted} style={styles.label}>
+            Riders will use this to reach you
+          </AppText>
         </View>
       </View>
 

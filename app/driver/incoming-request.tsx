@@ -47,11 +47,16 @@ export default function IncomingRequestScreen() {
   const [bidMode, setBidMode] = useState(false);
   const [bidAmount, setBidAmount] = useState('');
   const [lastBidNgn, setLastBidNgn] = useState<number | null>(null);
+  const [bidSent, setBidSent] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const bidInputRef = useRef<TextInput>(null);
 
   // Swipe-to-dismiss
   const translateY = useSharedValue(0);
+
+  const stopSoundImmediately = () => {
+    void stopRideRequestSound();
+  };
 
   const dismiss = () => {
     void handleDismiss();
@@ -66,6 +71,7 @@ export default function IncomingRequestScreen() {
     })
     .onEnd((e) => {
       if (e.translationY > DISMISS_THRESHOLD) {
+        runOnJS(stopSoundImmediately)();
         translateY.value = withTiming(SCREEN_HEIGHT, { duration: 250 }, () => {
           runOnJS(dismiss)();
         });
@@ -124,10 +130,11 @@ export default function IncomingRequestScreen() {
   }, [session.status, router]);
 
   const handleAccept = async () => {
-    if (!offer) return;
+    if (!offer || bidSent) return;
     try {
       void stopRideRequestSound();
       await acceptRide(offer.rideId);
+      setBidSent(true);
     } catch (err) {
       Alert.alert('Error', err instanceof Error ? err.message : 'Could not accept ride.');
     }
@@ -151,7 +158,7 @@ export default function IncomingRequestScreen() {
   };
 
   const handleSubmitBid = async () => {
-    if (!offer) return;
+    if (!offer || bidSent) return;
     const amount = parseInt(bidAmount, 10);
     if (!amount || amount < 100) {
       Alert.alert('Invalid amount', 'Enter a valid bid amount.');
@@ -163,6 +170,7 @@ export default function IncomingRequestScreen() {
       setBidMode(false);
       setLastBidNgn(amount);
       await acceptRide(offer.rideId, amount);
+      setBidSent(true);
     } catch (err) {
       Alert.alert('Error', err instanceof Error ? err.message : 'Could not submit bid.');
     }
@@ -177,9 +185,9 @@ export default function IncomingRequestScreen() {
   if (!offer) return null;
 
   const activeFare = lastBidNgn ?? offer.fareEstimateNgn;
+  const totalCharged = activeFare;
   const vatAmount = Math.round(activeFare * VAT_RATE);
-  const totalCharged = activeFare + vatAmount + STATE_LEVY_NGN;
-  const driverPayout = activeFare;
+  const driverPayout = activeFare - vatAmount - STATE_LEVY_NGN;
   const distanceKm = offer.plannedDistanceKm
     ? `${offer.plannedDistanceKm.toFixed(1)} km`
     : '--';
@@ -282,7 +290,16 @@ export default function IncomingRequestScreen() {
           </View>
 
           {/* Actions */}
-          {bidMode ? (
+          {bidSent ? (
+            <View style={styles.bidSentWrap}>
+              <AppText variant="label" color={theme.colors.green}>
+                {lastBidNgn ? `Bid of ${formatNgn(lastBidNgn)} sent` : 'Offer accepted'}
+              </AppText>
+              <AppText variant="bodySmall" color={theme.colors.muted}>
+                Waiting for rider to confirm...
+              </AppText>
+            </View>
+          ) : bidMode ? (
             <View style={styles.bidInputWrap}>
               <View style={styles.bidInputRow}>
                 <AppText variant="h3" color={theme.colors.muted}>₦</AppText>
@@ -507,6 +524,17 @@ const styles = StyleSheet.create({
   },
   bidSubmitBtn: {
     flex: 2,
+  },
+
+  // Bid sent
+  bidSentWrap: {
+    alignItems: 'center',
+    gap: theme.spacing.xs,
+    paddingVertical: theme.spacing.md,
+    backgroundColor: theme.colors.white,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.green,
+    borderRadius: theme.radii.sm,
   },
 
   // Hint
