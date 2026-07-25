@@ -61,6 +61,7 @@ type DriverRide = {
   durationSeconds?: number;
   riderPaid?: boolean;
   riderPhone?: string;
+  liveDistanceKm?: number;
 };
 
 export type ChatMessage = {
@@ -315,6 +316,20 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
         return;
       }
 
+      if (type === 'ride:gps_update') {
+        setSession((prev) => {
+          if (!prev.currentRide) return prev;
+          return {
+            ...prev,
+            currentRide: {
+              ...prev.currentRide,
+              liveDistanceKm: getNumber(payload.totalDistanceKm) ?? prev.currentRide.liveDistanceKm,
+            },
+          };
+        });
+        return;
+      }
+
       if (type === 'ride:route:updated') {
         setSession((prev) => {
           if (!prev.currentRide) return prev;
@@ -481,9 +496,8 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
       console.log('[driver-session] driver:online sent');
       setSession((prev) => ({ ...prev, status: 'online' }));
       setError(null);
-    } catch {
-      // Silent retry — don't show connection errors to the driver
-      console.log('[driver-session] connection failed, will retry');
+    } catch (err) {
+      console.log('[driver-session] connection failed, will retry', err instanceof Error ? err.message : String(err));
       scheduleReconnect();
     }
   }, [connect, sendEnvelope, scheduleReconnect]);
@@ -572,10 +586,12 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
     (lat: number, lng: number) => {
       const socket = socketRef.current;
       if (!socket || socket.readyState !== WebSocket.OPEN) return;
+      const ride = sessionRef.current.currentRide;
+      if (!ride) return;
       socket.send(
         JSON.stringify({
           type: 'driver:gps',
-          payload: { lat, lng, timestamp: new Date().toISOString() },
+          payload: { rideId: ride.rideId, lat, lng, timestamp: new Date().toISOString() },
         }),
       );
     },

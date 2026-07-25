@@ -6,12 +6,10 @@ import { Marker, Polyline } from 'react-native-maps';
 import type MapView from 'react-native-maps';
 
 import { AppButton } from '@/components/app-button';
+import { AppCard } from '@/components/app-card';
 import { AppScreen } from '@/components/app-screen';
 import { AppText } from '@/components/app-text';
-import { BackArrow } from '@/components/back-arrow';
 import { GoogleMapView } from '@/components/GoogleMapView';
-import { InstructionCard } from '@/components/InstructionCard';
-import { MetricCard } from '@/components/MetricCard';
 import { StatusPill } from '@/components/StatusPill';
 import { useDriverSession } from '@/lib/driver-session';
 import { useAppLocation } from '@/lib/location';
@@ -23,10 +21,20 @@ function formatNgn(amount: number): string {
 
 export default function DriverNavigationScreen() {
   const router = useRouter();
-  const { session, arriveAtPickup } = useDriverSession();
+  const { session, arriveAtPickup, sendGps } = useDriverSession();
   const { currentLocation } = useAppLocation();
   const ride = session.currentRide;
   const mapRef = useRef<MapView>(null);
+  const lastGpsSentRef = useRef(0);
+
+  // Send GPS while navigating to pickup
+  useEffect(() => {
+    if (!currentLocation || !ride) return;
+    const now = Date.now();
+    if (now - lastGpsSentRef.current < 10000) return;
+    lastGpsSentRef.current = now;
+    sendGps(currentLocation.lat, currentLocation.lng);
+  }, [currentLocation, ride, sendGps]);
 
   useEffect(() => {
     if (!ride) {
@@ -40,7 +48,7 @@ export default function DriverNavigationScreen() {
     }
   }, [session.status, router]);
 
-  // Fit map to show driver + pickup when ride data is available
+  // Fit map to show driver + pickup
   useEffect(() => {
     if (!ride || !mapRef.current) return;
     const coords = [
@@ -92,7 +100,7 @@ export default function DriverNavigationScreen() {
     <AppScreen backgroundColor={theme.colors.offWhite} contentStyle={styles.container}>
       <StatusBar style="dark" backgroundColor={theme.colors.mapBase} />
       <View style={styles.mapWrap}>
-        <View style={{ height: 290, backgroundColor: theme.colors.mapBase }}>
+        <View style={styles.mapContainer}>
           <GoogleMapView
             ref={mapRef}
             initialRegion={initialRegion}
@@ -111,62 +119,69 @@ export default function DriverNavigationScreen() {
             )}
             <Marker coordinate={pickupCoord}>
               <View style={styles.pickupMarker}>
-                <AppText style={styles.markerEmoji}>🟢</AppText>
+                <View style={styles.pickupDot} />
               </View>
             </Marker>
           </GoogleMapView>
-
-          <View style={styles.instructionBanner}>
-            <InstructionCard
-              instruction={{ icon: '', title: 'Head to pickup', subtitle: ride.pickup.address }}
-              variant="banner"
-            />
-          </View>
-
-          <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
-            <BackArrow style={styles.backButton} />
-          </View>
         </View>
       </View>
 
       <View style={styles.content}>
-        <StatusPill
-          dotColor={theme.colors.green}
-          label="HEADING TO PICKUP"
-          variant="orange"
-        />
-
-        {ride.riderPaid && (
-          <View style={styles.paidBadge}>
-            <AppText variant="label" color={theme.colors.green}>Rider has paid</AppText>
-          </View>
-        )}
-
-        <View style={styles.metricsRow}>
-          <MetricCard
-            accent="orange"
-            label="MIN AWAY"
-            value={String(etaMinutes)}
+        <View style={styles.topRow}>
+          <StatusPill
+            dotColor={theme.colors.green}
+            label="HEADING TO PICKUP"
+            variant="dark"
           />
-          <MetricCard
-            label="KM LEFT"
-            value={String(distanceKm)}
-          />
-          <MetricCard
-            label="FARE"
-            value={formatNgn(ride.fareNgn)}
-          />
+          {ride.riderPaid && (
+            <StatusPill label="PAID" variant="green" />
+          )}
         </View>
 
-        {ride.riderPhone ? (
-          <Pressable
-            style={styles.callRiderButton}
-            onPress={() => Linking.openURL(`tel:${ride.riderPhone}`)}
-          >
-            <AppText style={styles.callRiderIcon}>📞</AppText>
-            <AppText variant="label">Call rider</AppText>
-          </Pressable>
-        ) : null}
+        {/* Stats */}
+        <View style={styles.statsRow}>
+          <View style={styles.stat}>
+            <AppText variant="monoLarge" color={theme.colors.orange}>
+              {etaMinutes}
+            </AppText>
+            <AppText variant="bodySmall" color={theme.colors.muted}>min away</AppText>
+          </View>
+          <View style={styles.statDivider} />
+          <View style={styles.stat}>
+            <AppText variant="monoLarge" color={theme.colors.black}>
+              {distanceKm}
+            </AppText>
+            <AppText variant="bodySmall" color={theme.colors.muted}>km left</AppText>
+          </View>
+          <View style={styles.statDivider} />
+          <View style={styles.stat}>
+            <AppText variant="monoLarge" color={theme.colors.green}>
+              {formatNgn(ride.fareNgn)}
+            </AppText>
+            <AppText variant="bodySmall" color={theme.colors.muted}>fare</AppText>
+          </View>
+        </View>
+
+        {/* Pickup card */}
+        <AppCard style={styles.pickupCard}>
+          <View style={styles.pickupRow}>
+            <View style={styles.pickupIcon}>
+              <View style={styles.pickupIconDot} />
+            </View>
+            <View style={styles.pickupCopy}>
+              <AppText variant="bodySmall" color={theme.colors.muted}>Pickup</AppText>
+              <AppText variant="h3" numberOfLines={2}>{ride.pickup.address}</AppText>
+            </View>
+          </View>
+          {ride.riderPhone ? (
+            <Pressable
+              style={styles.callButton}
+              onPress={() => Linking.openURL(`tel:${ride.riderPhone}`)}
+            >
+              <AppText variant="label">Call rider</AppText>
+            </Pressable>
+          ) : null}
+        </AppCard>
 
         <AppButton title="I've arrived" onPress={handleArrived} />
       </View>
@@ -183,25 +198,25 @@ const styles = StyleSheet.create({
     borderBottomWidth: theme.borders.thick,
     borderBottomColor: theme.colors.black,
   },
-  backButton: {
-    position: 'absolute',
-    top: 64,
-    left: theme.spacing.gutter,
+  mapContainer: {
+    height: 280,
+    backgroundColor: theme.colors.mapBase,
   },
   pickupMarker: {
-    width: 28,
-    height: 28,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: theme.colors.green,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  markerEmoji: {
-    fontSize: 16,
-  },
-  instructionBanner: {
-    position: 'absolute',
-    left: theme.spacing.gutter,
-    right: theme.spacing.gutter,
-    bottom: 12,
+  pickupDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: theme.colors.offWhite,
   },
   content: {
     flex: 1,
@@ -209,32 +224,66 @@ const styles = StyleSheet.create({
     paddingTop: theme.spacing.lg,
     gap: theme.spacing.md,
   },
-  paidBadge: {
-    backgroundColor: theme.colors.white,
-    borderWidth: theme.borders.thick,
-    borderColor: theme.colors.green,
-    borderRadius: theme.radii.sm,
-    paddingVertical: theme.spacing.xs,
-    paddingHorizontal: theme.spacing.md,
-    alignItems: 'center',
-  },
-  metricsRow: {
+  topRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     gap: theme.spacing.sm,
   },
-  callRiderButton: {
+  statsRow: {
     flexDirection: 'row',
-    height: 46,
+    backgroundColor: theme.colors.white,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    borderRadius: theme.radii.sm,
+    paddingVertical: theme.spacing.md,
+    ...theme.shadows.card,
+  },
+  stat: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 2,
+  },
+  statDivider: {
+    width: 1.5,
+    backgroundColor: theme.colors.borderLight,
+    alignSelf: 'stretch',
+  },
+  pickupCard: {
+    gap: theme.spacing.sm,
+  },
+  pickupRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.sm,
+  },
+  pickupIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: theme.colors.green,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pickupIconDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: theme.colors.offWhite,
+  },
+  pickupCopy: {
+    flex: 1,
+    gap: 1,
+  },
+  callButton: {
+    height: 42,
     borderRadius: theme.radii.sm,
     borderWidth: theme.borders.thick,
     borderColor: theme.colors.green,
     backgroundColor: theme.colors.white,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: theme.spacing.xs,
-    ...theme.shadows.card,
-  },
-  callRiderIcon: {
-    fontSize: 16,
+    ...theme.shadows.subtle,
   },
 });
