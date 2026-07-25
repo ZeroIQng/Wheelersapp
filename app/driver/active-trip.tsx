@@ -1,7 +1,7 @@
 import { Href, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Pressable, StyleSheet, View } from 'react-native';
+import { Alert, StyleSheet, View } from 'react-native';
 import { Marker, Polyline } from 'react-native-maps';
 import type MapView from 'react-native-maps';
 
@@ -12,7 +12,6 @@ import { BackArrow } from '@/components/back-arrow';
 import { GoogleMapView } from '@/components/GoogleMapView';
 import { InstructionCard } from '@/components/InstructionCard';
 import { MetricCard } from '@/components/MetricCard';
-import { RideChat } from '@/components/RideChat';
 import { StatusPill } from '@/components/StatusPill';
 import { useDriverSession } from '@/lib/driver-session';
 import { theme } from '@/theme';
@@ -23,12 +22,11 @@ function formatNgn(amount: number): string {
 
 export default function DriverActiveTripScreen() {
   const router = useRouter();
-  const { session, endTrip, chatMessages, sendChatMessage } = useDriverSession();
+  const { session, endTrip } = useDriverSession();
   const ride = session.currentRide;
 
   const mapRef = useRef<MapView>(null);
   const [elapsedMinutes, setElapsedMinutes] = useState(0);
-  const [chatOpen, setChatOpen] = useState(false);
 
   useEffect(() => {
     if (!ride) {
@@ -168,18 +166,6 @@ export default function DriverActiveTripScreen() {
         <AppButton title="End ride" onPress={handleEndRide} />
       </View>
 
-      <Pressable style={styles.chatFab} onPress={() => setChatOpen(true)}>
-        <AppText style={styles.chatFabIcon}>💬</AppText>
-      </Pressable>
-
-      <RideChat
-        visible={chatOpen}
-        onClose={() => setChatOpen(false)}
-        rideId={ride.rideId}
-        realtimeMessages={chatMessages}
-        onSend={sendChatMessage}
-        userRole="DRIVER"
-      />
     </AppScreen>
   );
 }
@@ -236,22 +222,5 @@ const styles = StyleSheet.create({
   metricsRow: {
     flexDirection: 'row',
     gap: theme.spacing.sm,
-  },
-  chatFab: {
-    position: 'absolute',
-    bottom: 24,
-    right: theme.spacing.gutter,
-    width: 56,
-    height: 56,
-    borderRadius: theme.radii.pill,
-    borderWidth: theme.borders.thick,
-    borderColor: theme.colors.black,
-    backgroundColor: theme.colors.orange,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...theme.shadows.card,
-  },
-  chatFabIcon: {
-    fontSize: 24,
   },
 });
