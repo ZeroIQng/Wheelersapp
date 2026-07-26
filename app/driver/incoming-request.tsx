@@ -97,6 +97,7 @@ export default function IncomingRequestScreen() {
         timerRef.current = null;
         void stopRideRequestSound();
         void rejectRide(offer.rideId).catch(() => {});
+        router.replace('/driver/(tabs)/home' as Href);
       }
     };
 
