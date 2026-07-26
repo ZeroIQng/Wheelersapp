@@ -34,6 +34,7 @@ const DISMISS_THRESHOLD = 120;
 
 const VAT_RATE = 0.075;
 const STATE_LEVY_NGN = 30;
+const SERVICE_FEE_NGN = 200;
 
 function formatNgn(amount: number): string {
   return `₦${Math.round(amount).toLocaleString('en-NG')}`;
@@ -94,7 +95,8 @@ export default function IncomingRequestScreen() {
       if (remaining <= 0 && timerRef.current) {
         clearInterval(timerRef.current);
         timerRef.current = null;
-        router.replace('/driver/(tabs)/home' as Href);
+        void stopRideRequestSound();
+        void rejectRide(offer.rideId).catch(() => {});
       }
     };
 
@@ -103,7 +105,7 @@ export default function IncomingRequestScreen() {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [offer?.expiresAt, router]);
+  }, [offer?.expiresAt, rejectRide, router]);
 
   // Play alert sound + haptic when offer arrives
   useEffect(() => {
@@ -187,7 +189,7 @@ export default function IncomingRequestScreen() {
   const activeFare = lastBidNgn ?? offer.fareEstimateNgn;
   const totalCharged = activeFare;
   const vatAmount = Math.round(activeFare * VAT_RATE);
-  const driverPayout = activeFare - vatAmount - STATE_LEVY_NGN;
+  const driverPayout = activeFare - vatAmount - STATE_LEVY_NGN - SERVICE_FEE_NGN;
   const distanceKm = offer.plannedDistanceKm
     ? `${offer.plannedDistanceKm.toFixed(1)} km`
     : '--';
@@ -281,6 +283,10 @@ export default function IncomingRequestScreen() {
             <View style={styles.fareLineRow}>
               <AppText variant="bodySmall" color={theme.colors.muted}>State levy</AppText>
               <AppText variant="bodySmall" color={theme.colors.muted}>-{formatNgn(STATE_LEVY_NGN)}</AppText>
+            </View>
+            <View style={styles.fareLineRow}>
+              <AppText variant="bodySmall" color={theme.colors.muted}>Service fee</AppText>
+              <AppText variant="bodySmall" color={theme.colors.muted}>-{formatNgn(SERVICE_FEE_NGN)}</AppText>
             </View>
             <View style={styles.fareDivider} />
             <View style={styles.fareLineRow}>
