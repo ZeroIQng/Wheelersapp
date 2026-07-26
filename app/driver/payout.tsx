@@ -13,7 +13,7 @@ import { theme } from '@/theme';
 
 const VAT_RATE = 0.075; // 7.5%
 const STATE_LEVY_NGN = 30; // ₦30 flat
-const SERVICE_FEE_NGN = 200; // ₦200 flat
+const SERVICE_FEE_NGN = 200; // ₦200 flat — added on top of fare
 
 function formatNgn(amount: number): string {
   return `NGN ${Math.round(amount).toLocaleString('en-NG')}`;
@@ -24,12 +24,13 @@ export default function DriverPayoutScreen() {
   const { session, goOffline, clearCompleted } = useDriverSession();
   const ride = session.currentRide;
 
-  const grossFare = ride?.completedFareNgn ?? ride?.fareNgn ?? 0;
-  const vatNgn = Math.round(grossFare * VAT_RATE * 100) / 100;
-  const stateLevyNgn = STATE_LEVY_NGN;
+  const baseFare = ride?.completedFareNgn ?? ride?.fareNgn ?? 0;
   const serviceFeeNgn = SERVICE_FEE_NGN;
-  const totalFees = vatNgn + stateLevyNgn + serviceFeeNgn;
-  const finalPayout = grossFare - totalFees;
+  const riderTotal = baseFare + serviceFeeNgn; // what rider paid
+  const vatNgn = Math.round(baseFare * VAT_RATE * 100) / 100;
+  const stateLevyNgn = STATE_LEVY_NGN;
+  const totalDeductions = vatNgn + stateLevyNgn + serviceFeeNgn;
+  const finalPayout = riderTotal - totalDeductions;
 
   const handleNextRide = () => {
     clearCompleted();
@@ -69,9 +70,14 @@ export default function DriverPayoutScreen() {
             Rider paid
           </AppText>
           <AppText variant="monoLarge" color={theme.colors.green}>
-            {formatNgn(grossFare)}
+            {formatNgn(riderTotal)}
           </AppText>
         </View>
+        <SummaryRow
+          color={theme.colors.danger}
+          label="Service fee"
+          value={`-${formatNgn(serviceFeeNgn)}`}
+        />
         <SummaryRow
           color={theme.colors.danger}
           label="VAT (7.5%)"
@@ -81,11 +87,6 @@ export default function DriverPayoutScreen() {
           color={theme.colors.danger}
           label="State levy"
           value={`-${formatNgn(stateLevyNgn)}`}
-        />
-        <SummaryRow
-          color={theme.colors.danger}
-          label="Service fee"
-          value={`-${formatNgn(serviceFeeNgn)}`}
         />
         {ride?.distanceKm != null && (
           <SummaryRow label="Distance" value={`${ride.distanceKm.toFixed(1)} km`} />
