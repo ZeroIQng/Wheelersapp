@@ -1299,6 +1299,7 @@ export async function submitDriverKyc(input: {
   vehicleModel: string;
   vehiclePlate: string;
   vehicleYear: number;
+  phone?: string;
 }): Promise<{ status: string }> {
   return postJson<{ status: string }>(
     "/drivers/kyc/submit",
@@ -1311,6 +1312,7 @@ export async function submitDriverKyc(input: {
       vehicleModel: input.vehicleModel,
       vehiclePlate: input.vehiclePlate,
       vehicleYear: input.vehicleYear,
+      phone: input.phone,
     },
     {
       accessToken: input.accessToken,

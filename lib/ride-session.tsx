@@ -42,6 +42,7 @@ type RideDriver = {
   vehicleModel?: string;
   etaSeconds?: number;
   lockedFareNgn?: number;
+  driverPhone?: string;
 };
 
 type RideDriverLocation = {
@@ -354,6 +355,7 @@ export function RideSessionProvider({ children }: { children: ReactNode }) {
               etaSeconds: getNumber(payload.etaSeconds) ?? previous.driver?.etaSeconds,
               lockedFareNgn:
                 getNumber(payload.lockedFareNgn) ?? previous.driver?.lockedFareNgn,
+              driverPhone: getString(payload.driverPhone) ?? previous.driver?.driverPhone,
             },
           };
         });
@@ -536,6 +538,7 @@ export function RideSessionProvider({ children }: { children: ReactNode }) {
               vehiclePlate: getString(payload.vehiclePlate) ?? previous.driver?.vehiclePlate,
               vehicleModel: getString(payload.vehicleModel) ?? previous.driver?.vehicleModel,
               etaSeconds: getNumber(payload.etaSeconds) ?? previous.driver?.etaSeconds,
+              driverPhone: getString(payload.driverPhone) ?? previous.driver?.driverPhone,
             },
           };
         });
@@ -623,7 +626,7 @@ export function RideSessionProvider({ children }: { children: ReactNode }) {
           try {
             handleGatewayMessage(JSON.parse(raw) as GatewayMessage);
           } catch {
-            setError('Received an invalid live ride update.');
+            // Ignore malformed messages — don't surface to UI
           }
         };
 
@@ -634,7 +637,7 @@ export function RideSessionProvider({ children }: { children: ReactNode }) {
 
           settled = true;
           setConnectionState('disconnected');
-          setError(connectionError.message);
+          scheduleReconnect();
           reject(connectionError);
         };
 
@@ -643,7 +646,7 @@ export function RideSessionProvider({ children }: { children: ReactNode }) {
           setConnectionState('disconnected');
           if (!settled) {
             settled = true;
-            setError(connectionError.message);
+            scheduleReconnect();
             reject(connectionError);
             return;
           }
@@ -717,11 +720,10 @@ export function RideSessionProvider({ children }: { children: ReactNode }) {
         });
       } catch (requestError) {
         setRideState(null);
-        const message =
-          requestError instanceof Error
-            ? requestError.message
-            : 'Could not request this ride.';
-        setError(message);
+        // Only show non-connection errors (e.g. bad address, missing destination)
+        if (requestError instanceof Error && !requestError.message.includes('WebSocket') && !requestError.message.includes('connect')) {
+          setError(requestError.message);
+        }
       }
     },
     [sendEnvelope, setRideState, user],
@@ -850,12 +852,9 @@ export function RideSessionProvider({ children }: { children: ReactNode }) {
     }
 
     shouldMaintainConnectionRef.current = true;
-    void connect().catch((connectionError) => {
-      setError(
-        connectionError instanceof Error
-          ? connectionError.message
-          : 'Could not start the ride session.',
-      );
+    void connect().catch(() => {
+      // Silent retry — don't show connection errors to the rider
+      // scheduleReconnect is already called in socket.onerror/onclose
     });
 
     return () => {

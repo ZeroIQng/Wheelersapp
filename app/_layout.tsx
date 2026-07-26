@@ -1,5 +1,6 @@
 import "fast-text-encoding";
 import "react-native-reanimated";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 
 import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
@@ -43,22 +44,24 @@ export default function RootLayout() {
   }
 
   return (
-    <ThemeProvider>
-      <AuthProvider>
-        <LocationProvider>
-          <RideSessionProvider>
-            <AppNotificationsProvider>
-              <QuestBadgeProvider>
-                <AppLockProvider>
-                  <ThemedLayout />
-                  <AuthAppLockOverlay />
-                </AppLockProvider>
-              </QuestBadgeProvider>
-            </AppNotificationsProvider>
-          </RideSessionProvider>
-        </LocationProvider>
-      </AuthProvider>
-    </ThemeProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <ThemeProvider>
+        <AuthProvider>
+          <LocationProvider>
+            <RideSessionProvider>
+              <AppNotificationsProvider>
+                <QuestBadgeProvider>
+                  <AppLockProvider>
+                    <ThemedLayout />
+                    <AuthAppLockOverlay />
+                  </AppLockProvider>
+                </QuestBadgeProvider>
+              </AppNotificationsProvider>
+            </RideSessionProvider>
+          </LocationProvider>
+        </AuthProvider>
+      </ThemeProvider>
+    </GestureHandlerRootView>
   );
 }
 

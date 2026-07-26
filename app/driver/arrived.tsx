@@ -2,17 +2,22 @@ import { Href, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Linking, Pressable, StyleSheet, View } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 
 import { AppButton } from '@/components/app-button';
 import { AppCard } from '@/components/app-card';
 import { AppScreen } from '@/components/app-screen';
 import { AppText } from '@/components/app-text';
-import { BackArrow } from '@/components/back-arrow';
+import { StatusPill } from '@/components/StatusPill';
 import { TripProgressBar } from '@/components/TripProgressBar';
 import { useDriverSession } from '@/lib/driver-session';
 import { theme } from '@/theme';
 
 const FREE_WAIT_SECONDS = 180; // 3 minutes
+
+function formatNgn(amount: number): string {
+  return `NGN ${Math.round(amount).toLocaleString('en-NG')}`;
+}
 
 export default function DriverArrivedScreen() {
   const router = useRouter();
@@ -21,6 +26,8 @@ export default function DriverArrivedScreen() {
 
   const arrivedAtRef = useRef(Date.now());
   const [waitProgress, setWaitProgress] = useState(0);
+  const [waitSeconds, setWaitSeconds] = useState(0);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     if (!ride) {
@@ -31,6 +38,7 @@ export default function DriverArrivedScreen() {
     const tick = () => {
       const elapsed = (Date.now() - arrivedAtRef.current) / 1000;
       setWaitProgress(Math.min(1, elapsed / FREE_WAIT_SECONDS));
+      setWaitSeconds(Math.floor(elapsed));
     };
     tick();
     const interval = setInterval(tick, 1000);
@@ -45,8 +53,18 @@ export default function DriverArrivedScreen() {
 
   if (!ride) return null;
 
-  const handleCallSupport = () => {
-    Linking.openURL('https://wa.me/2349060003900?text=Hi%2C%20I%20need%20help%20reaching%20my%20rider').catch(() => {});
+  const handleCallRider = () => {
+    if (ride.riderPhone) {
+      Linking.openURL(`tel:${ride.riderPhone}`);
+    }
+  };
+
+  const handleCopyPhone = async () => {
+    if (ride.riderPhone) {
+      await Clipboard.setStringAsync(ride.riderPhone);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
   };
 
   const handleStartTrip = async () => {
@@ -57,46 +75,68 @@ export default function DriverArrivedScreen() {
     }
   };
 
-  const waitLabel = `Free wait time (${Math.ceil(FREE_WAIT_SECONDS / 60)} min)`;
+  const remainingSeconds = Math.max(0, FREE_WAIT_SECONDS - waitSeconds);
+  const remainingMin = Math.floor(remainingSeconds / 60);
+  const remainingSec = remainingSeconds % 60;
+  const waitOverdue = waitSeconds >= FREE_WAIT_SECONDS;
 
   return (
     <AppScreen backgroundColor={theme.colors.offWhite} contentStyle={styles.container}>
       <StatusBar style="dark" backgroundColor={theme.colors.offWhite} />
-      <BackArrow style={styles.backButton} />
 
-      <View style={styles.pinBadge}>
-        <AppText style={styles.pinEmoji}>📍</AppText>
-      </View>
-
-      <View style={styles.header}>
+      <View style={styles.headerSection}>
+        <StatusPill
+          dotColor={theme.colors.orange}
+          label="WAITING FOR RIDER"
+          variant="dark"
+        />
         <AppText variant="h1" style={styles.center}>
-          You&apos;ve arrived!
-        </AppText>
-        <AppText variant="bodySmall" color={theme.colors.muted} style={styles.center}>
-          Waiting for your rider at {ride.pickup.address}
+          You&apos;ve arrived
         </AppText>
       </View>
 
+      {/* Rider card */}
       <AppCard style={styles.riderCard}>
-        <View style={styles.avatar}>
-          <AppText variant="h3">R</AppText>
+        <View style={styles.riderInfo}>
+          <View style={styles.avatar}>
+            <AppText variant="h3" color={theme.colors.orange}>R</AppText>
+          </View>
+          <View style={styles.riderCopy}>
+            <AppText variant="h3">Rider</AppText>
+            <AppText variant="bodySmall" color={theme.colors.muted} numberOfLines={1}>
+              {ride.pickup.address}
+            </AppText>
+          </View>
+          <View style={styles.fareTag}>
+            <AppText variant="mono" color={theme.colors.green}>{formatNgn(ride.fareNgn)}</AppText>
+          </View>
         </View>
-        <View style={styles.riderCopy}>
-          <AppText variant="h3">Rider</AppText>
-          <AppText variant="bodySmall" color={theme.colors.muted}>
-            {ride.pickup.address}
-          </AppText>
-        </View>
-        <Pressable style={styles.callButton} onPress={handleCallSupport}>
-          <AppText style={styles.callText}>📞</AppText>
-        </Pressable>
+
+        {ride.riderPhone ? (
+          <View style={styles.phoneRow}>
+            <Pressable style={styles.callButton} onPress={handleCallRider}>
+              <AppText variant="label">Call rider</AppText>
+            </Pressable>
+            <Pressable style={styles.copyButton} onPress={handleCopyPhone}>
+              <AppText variant="bodySmall" color={theme.colors.muted}>
+                {copied ? 'Copied!' : ride.riderPhone}
+              </AppText>
+            </Pressable>
+          </View>
+        ) : null}
       </AppCard>
 
-      <TripProgressBar
-        fillColor={theme.colors.green}
-        label={waitLabel}
-        progress={waitProgress}
-      />
+      {/* Wait timer */}
+      <View style={styles.waitSection}>
+        <TripProgressBar
+          fillColor={waitOverdue ? theme.colors.danger : theme.colors.green}
+          label={waitOverdue
+            ? 'Free wait time exceeded'
+            : `Free wait: ${remainingMin}:${remainingSec.toString().padStart(2, '0')} left`
+          }
+          progress={waitProgress}
+        />
+      </View>
 
       <AppButton title="Start trip" onPress={handleStartTrip} />
     </AppScreen>
@@ -109,40 +149,24 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: theme.spacing.lg,
   },
-  backButton: {
-    position: 'absolute',
-    top: 18,
-    left: theme.spacing.gutter,
-  },
-  pinBadge: {
-    alignSelf: 'center',
-    width: 96,
-    height: 96,
-    borderRadius: theme.radii.pill,
-    backgroundColor: theme.colors.orange,
-    borderWidth: theme.borders.thick,
-    borderColor: theme.colors.black,
+  headerSection: {
     alignItems: 'center',
-    justifyContent: 'center',
-    ...theme.shadows.card,
-  },
-  pinEmoji: {
-    fontSize: 40,
-  },
-  header: {
-    gap: theme.spacing.xs,
+    gap: theme.spacing.md,
   },
   center: {
     textAlign: 'center',
   },
   riderCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
     gap: theme.spacing.md,
   },
+  riderInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.sm,
+  },
   avatar: {
-    width: 46,
-    height: 46,
+    width: 44,
+    height: 44,
     borderRadius: theme.radii.pill,
     backgroundColor: theme.colors.orangeLight,
     borderWidth: theme.borders.thick,
@@ -152,20 +176,46 @@ const styles = StyleSheet.create({
   },
   riderCopy: {
     flex: 1,
-    gap: 2,
+    gap: 1,
+  },
+  fareTag: {
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: 4,
+    borderRadius: theme.radii.sm,
+    borderWidth: theme.borders.regular,
+    borderColor: theme.colors.green,
+    backgroundColor: theme.colors.successLight,
+  },
+  phoneRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.sm,
+    paddingTop: theme.spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.borderLight,
   },
   callButton: {
-    width: 46,
-    height: 46,
+    flex: 1,
+    height: 42,
+    borderRadius: theme.radii.sm,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.green,
+    backgroundColor: theme.colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...theme.shadows.subtle,
+  },
+  copyButton: {
+    height: 42,
     borderRadius: theme.radii.sm,
     borderWidth: theme.borders.thick,
     borderColor: theme.colors.black,
+    backgroundColor: theme.colors.white,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: theme.colors.white,
-    ...theme.shadows.card,
+    paddingHorizontal: theme.spacing.md,
   },
-  callText: {
-    fontSize: 18,
+  waitSection: {
+    gap: theme.spacing.xs,
   },
 });

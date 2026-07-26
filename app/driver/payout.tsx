@@ -11,7 +11,9 @@ import { SectionHeader } from '@/components/SectionHeader';
 import { useDriverSession } from '@/lib/driver-session';
 import { theme } from '@/theme';
 
-const PLATFORM_FEE_RATE = 0.0008; // 0.08%
+const VAT_RATE = 0.075; // 7.5%
+const STATE_LEVY_NGN = 30; // ₦30 flat
+const SERVICE_FEE_NGN = 200; // ₦200 flat — deducted from fare
 
 function formatNgn(amount: number): string {
   return `NGN ${Math.round(amount).toLocaleString('en-NG')}`;
@@ -23,8 +25,11 @@ export default function DriverPayoutScreen() {
   const ride = session.currentRide;
 
   const grossFare = ride?.completedFareNgn ?? ride?.fareNgn ?? 0;
-  const platformFee = Math.round(grossFare * PLATFORM_FEE_RATE);
-  const finalPayout = grossFare - platformFee;
+  const serviceFeeNgn = SERVICE_FEE_NGN;
+  const vatNgn = Math.round(grossFare * VAT_RATE * 100) / 100;
+  const stateLevyNgn = STATE_LEVY_NGN;
+  const totalDeductions = vatNgn + stateLevyNgn + serviceFeeNgn;
+  const finalPayout = grossFare - totalDeductions;
 
   const handleNextRide = () => {
     clearCompleted();
@@ -59,11 +64,28 @@ export default function DriverPayoutScreen() {
       </View>
 
       <AppCard style={styles.summaryCard}>
-        <SummaryRow label="Gross fare" value={formatNgn(grossFare)} />
+        <View style={styles.riderPaidRow}>
+          <AppText variant="bodySmall" color={theme.colors.muted}>
+            Rider paid
+          </AppText>
+          <AppText variant="monoLarge" color={theme.colors.green}>
+            {formatNgn(grossFare)}
+          </AppText>
+        </View>
         <SummaryRow
           color={theme.colors.danger}
-          label={`Platform fee (${(PLATFORM_FEE_RATE * 100).toFixed(1)}%)`}
-          value={`-${formatNgn(platformFee)}`}
+          label="Service fee"
+          value={`-${formatNgn(serviceFeeNgn)}`}
+        />
+        <SummaryRow
+          color={theme.colors.danger}
+          label="VAT (7.5%)"
+          value={`-${formatNgn(vatNgn)}`}
+        />
+        <SummaryRow
+          color={theme.colors.danger}
+          label="State levy"
+          value={`-${formatNgn(stateLevyNgn)}`}
         />
         {ride?.distanceKm != null && (
           <SummaryRow label="Distance" value={`${ride.distanceKm.toFixed(1)} km`} />
@@ -72,7 +94,7 @@ export default function DriverPayoutScreen() {
           <SummaryRow label="Duration" value={`${Math.ceil(ride.durationSeconds / 60)} min`} />
         )}
         <View style={styles.totalRow}>
-          <AppText variant="bodyMedium">You receive</AppText>
+          <AppText variant="bodyMedium">Credited to wallet</AppText>
           <AppText variant="monoLarge" color={theme.colors.orange}>
             {formatNgn(finalPayout)}
           </AppText>
@@ -145,6 +167,14 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     gap: theme.spacing.md,
+  },
+  riderPaidRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingBottom: theme.spacing.md,
+    borderBottomWidth: theme.borders.thick,
+    borderBottomColor: theme.colors.borderLight,
   },
   totalRow: {
     flexDirection: 'row',

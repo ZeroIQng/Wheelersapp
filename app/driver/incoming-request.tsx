@@ -32,7 +32,8 @@ import { theme } from '@/theme';
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const DISMISS_THRESHOLD = 120;
 
-const PLATFORM_FEE_RATE = 0.0008;
+const VAT_RATE = 0.075;
+const STATE_LEVY_NGN = 30;
 
 function formatNgn(amount: number): string {
   return `₦${Math.round(amount).toLocaleString('en-NG')}`;
@@ -45,11 +46,17 @@ export default function IncomingRequestScreen() {
   const [countdown, setCountdown] = useState(0);
   const [bidMode, setBidMode] = useState(false);
   const [bidAmount, setBidAmount] = useState('');
+  const [lastBidNgn, setLastBidNgn] = useState<number | null>(null);
+  const [bidSent, setBidSent] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const bidInputRef = useRef<TextInput>(null);
 
   // Swipe-to-dismiss
   const translateY = useSharedValue(0);
+
+  const stopSoundImmediately = () => {
+    void stopRideRequestSound();
+  };
 
   const dismiss = () => {
     void handleDismiss();
@@ -64,6 +71,7 @@ export default function IncomingRequestScreen() {
     })
     .onEnd((e) => {
       if (e.translationY > DISMISS_THRESHOLD) {
+        runOnJS(stopSoundImmediately)();
         translateY.value = withTiming(SCREEN_HEIGHT, { duration: 250 }, () => {
           runOnJS(dismiss)();
         });
@@ -122,10 +130,11 @@ export default function IncomingRequestScreen() {
   }, [session.status, router]);
 
   const handleAccept = async () => {
-    if (!offer) return;
+    if (!offer || bidSent) return;
     try {
       void stopRideRequestSound();
       await acceptRide(offer.rideId);
+      setBidSent(true);
     } catch (err) {
       Alert.alert('Error', err instanceof Error ? err.message : 'Could not accept ride.');
     }
@@ -149,7 +158,7 @@ export default function IncomingRequestScreen() {
   };
 
   const handleSubmitBid = async () => {
-    if (!offer) return;
+    if (!offer || bidSent) return;
     const amount = parseInt(bidAmount, 10);
     if (!amount || amount < 100) {
       Alert.alert('Invalid amount', 'Enter a valid bid amount.');
@@ -158,8 +167,10 @@ export default function IncomingRequestScreen() {
     try {
       void stopRideRequestSound();
       Keyboard.dismiss();
-      // Accept with the bid amount — the driver session sends agreedFareNgn
-      await acceptRide(offer.rideId);
+      setBidMode(false);
+      setLastBidNgn(amount);
+      await acceptRide(offer.rideId, amount);
+      setBidSent(true);
     } catch (err) {
       Alert.alert('Error', err instanceof Error ? err.message : 'Could not submit bid.');
     }
@@ -173,9 +184,10 @@ export default function IncomingRequestScreen() {
 
   if (!offer) return null;
 
-  const grossFare = offer.fareEstimateNgn;
-  const platformFee = Math.round(grossFare * PLATFORM_FEE_RATE);
-  const driverPayout = grossFare - platformFee;
+  const activeFare = lastBidNgn ?? offer.fareEstimateNgn;
+  const totalCharged = activeFare;
+  const vatAmount = Math.round(activeFare * VAT_RATE);
+  const driverPayout = activeFare - vatAmount - STATE_LEVY_NGN;
   const distanceKm = offer.plannedDistanceKm
     ? `${offer.plannedDistanceKm.toFixed(1)} km`
     : '--';
@@ -249,23 +261,45 @@ export default function IncomingRequestScreen() {
               <AppText variant="h3">{durationMin}</AppText>
             </View>
             <View style={styles.metricCard}>
-              <AppText variant="bodySmall" color={theme.colors.muted}>You earn</AppText>
-              <AppText variant="h3" color={theme.colors.green}>{formatNgn(driverPayout)}</AppText>
+              <AppText variant="bodySmall" color={theme.colors.muted}>
+                {lastBidNgn ? 'Your bid' : "Rider's offer"}
+              </AppText>
+              <AppText variant="h3">{formatNgn(activeFare)}</AppText>
             </View>
           </View>
 
           {/* Fare breakdown */}
-          <View style={styles.fareRow}>
-            <AppText variant="bodySmall" color={theme.colors.muted}>
-              Rider's offer: {formatNgn(grossFare)}
-            </AppText>
-            <AppText variant="bodySmall" color={theme.colors.muted}>
-              Fee (0.08%): -{formatNgn(platformFee)}
-            </AppText>
+          <View style={styles.fareBreakdown}>
+            <View style={styles.fareLineRow}>
+              <AppText variant="bodySmall" color={theme.colors.muted}>Rider pays</AppText>
+              <AppText variant="bodySmall" color={theme.colors.muted}>{formatNgn(totalCharged)}</AppText>
+            </View>
+            <View style={styles.fareLineRow}>
+              <AppText variant="bodySmall" color={theme.colors.muted}>VAT (7.5%)</AppText>
+              <AppText variant="bodySmall" color={theme.colors.muted}>-{formatNgn(vatAmount)}</AppText>
+            </View>
+            <View style={styles.fareLineRow}>
+              <AppText variant="bodySmall" color={theme.colors.muted}>State levy</AppText>
+              <AppText variant="bodySmall" color={theme.colors.muted}>-{formatNgn(STATE_LEVY_NGN)}</AppText>
+            </View>
+            <View style={styles.fareDivider} />
+            <View style={styles.fareLineRow}>
+              <AppText variant="label">You earn</AppText>
+              <AppText variant="label" color={theme.colors.green}>{formatNgn(driverPayout)}</AppText>
+            </View>
           </View>
 
-          {/* Bid input mode */}
-          {bidMode ? (
+          {/* Actions */}
+          {bidSent ? (
+            <View style={styles.bidSentWrap}>
+              <AppText variant="label" color={theme.colors.green}>
+                {lastBidNgn ? `Bid of ${formatNgn(lastBidNgn)} sent` : 'Offer accepted'}
+              </AppText>
+              <AppText variant="bodySmall" color={theme.colors.muted}>
+                Waiting for rider to confirm...
+              </AppText>
+            </View>
+          ) : bidMode ? (
             <View style={styles.bidInputWrap}>
               <View style={styles.bidInputRow}>
                 <AppText variant="h3" color={theme.colors.muted}>₦</AppText>
@@ -295,7 +329,7 @@ export default function IncomingRequestScreen() {
           ) : (
             <View style={styles.actions}>
               <AppButton title="Accept" onPress={handleAccept} style={styles.acceptBtn} />
-              <AppButton title="Bid" variant="ghost" onPress={handleBidPress} style={styles.bidBtn} />
+              <AppButton title="Bid" variant="inverse" onPress={handleBidPress} style={styles.bidBtn} />
             </View>
           )}
 
@@ -422,11 +456,24 @@ const styles = StyleSheet.create({
     ...theme.shadows.subtle,
   },
 
-  // Fare
-  fareRow: {
+  // Fare breakdown
+  fareBreakdown: {
+    backgroundColor: theme.colors.white,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    borderRadius: theme.radii.sm,
+    padding: theme.spacing.md,
+    gap: theme.spacing.xs,
+    ...theme.shadows.subtle,
+  },
+  fareLineRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingHorizontal: theme.spacing.xs,
+  },
+  fareDivider: {
+    height: 1,
+    backgroundColor: theme.colors.borderLight,
+    marginVertical: 2,
   },
 
   // Actions
@@ -477,6 +524,17 @@ const styles = StyleSheet.create({
   },
   bidSubmitBtn: {
     flex: 2,
+  },
+
+  // Bid sent
+  bidSentWrap: {
+    alignItems: 'center',
+    gap: theme.spacing.xs,
+    paddingVertical: theme.spacing.md,
+    backgroundColor: theme.colors.white,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.green,
+    borderRadius: theme.radii.sm,
   },
 
   // Hint

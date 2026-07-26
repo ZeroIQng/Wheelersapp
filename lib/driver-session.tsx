@@ -59,6 +59,9 @@ type DriverRide = {
   completedFareNgn?: number;
   distanceKm?: number;
   durationSeconds?: number;
+  riderPaid?: boolean;
+  riderPhone?: string;
+  liveDistanceKm?: number;
 };
 
 export type ChatMessage = {
@@ -84,7 +87,7 @@ type DriverSessionContextValue = {
   error: string | null;
   goOnline: (lat: number, lng: number) => Promise<void>;
   goOffline: () => Promise<void>;
-  acceptRide: (rideId: string) => Promise<void>;
+  acceptRide: (rideId: string, counterOfferNgn?: number) => Promise<void>;
   rejectRide: (rideId: string) => Promise<void>;
   arriveAtPickup: (rideId: string) => Promise<void>;
   startTrip: (rideId: string) => Promise<void>;
@@ -144,7 +147,7 @@ const defaultContext: DriverSessionContextValue = {
   error: null,
   goOnline: async (_lat: number, _lng: number) => { throw new Error('Driver session unavailable.'); },
   goOffline: async () => { throw new Error('Driver session unavailable.'); },
-  acceptRide: async () => { throw new Error('Driver session unavailable.'); },
+  acceptRide: async (_rideId: string, _counterOfferNgn?: number) => { throw new Error('Driver session unavailable.'); },
   rejectRide: async () => { throw new Error('Driver session unavailable.'); },
   arriveAtPickup: async () => { throw new Error('Driver session unavailable.'); },
   startTrip: async () => { throw new Error('Driver session unavailable.'); },
@@ -220,7 +223,17 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      if (type === 'driver:accept:accepted' || type === 'ride:matched') {
+      if (type === 'driver:accept:accepted') {
+        // Bid sent — stay on the offer screen, wait for rider to accept
+        setSession((prev) => ({
+          ...prev,
+          status: 'offered',
+        }));
+        return;
+      }
+
+      if (type === 'ride:matched') {
+        // Rider accepted — now navigate to pickup
         setSession((prev) => {
           const offer = prev.currentOffer;
           if (!offer) return prev;
@@ -235,10 +248,12 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
               pickup: offer.pickup,
               destination: offer.destination,
               stops: offer.stops,
-              fareNgn: offer.fareEstimateNgn,
+              fareNgn: getNumber(payload.agreedFareNgn) ?? offer.fareEstimateNgn,
               plannedDistanceKm: offer.plannedDistanceKm,
               plannedDurationSeconds: offer.plannedDurationSeconds,
               route: offer.route,
+              riderPaid: payload.riderPaid === true,
+              riderPhone: getString(payload.riderPhone),
             },
           };
         });
@@ -298,6 +313,20 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
           currentRide: null,
         }));
         setError('Ride was cancelled.');
+        return;
+      }
+
+      if (type === 'ride:gps_update') {
+        setSession((prev) => {
+          if (!prev.currentRide) return prev;
+          return {
+            ...prev,
+            currentRide: {
+              ...prev.currentRide,
+              liveDistanceKm: getNumber(payload.totalDistanceKm) ?? prev.currentRide.liveDistanceKm,
+            },
+          };
+        });
         return;
       }
 
@@ -421,6 +450,8 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
         socket.onerror = () => {
           clearTimeout(timeout);
           connectPromiseRef.current = null;
+          setConnectionState('disconnected');
+          scheduleReconnect();
           reject(new Error('WebSocket connection error.'));
         };
 
@@ -457,13 +488,19 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
 
   const goOnline = useCallback(async (lat: number, lng: number) => {
     console.log('[driver-session] goOnline called with', { lat, lng });
-    await connect();
-    console.log('[driver-session] connected, sending driver:online');
-    await sendEnvelope('driver:online', { lat, lng });
-    console.log('[driver-session] driver:online sent');
-    setSession((prev) => ({ ...prev, status: 'online' }));
-    setError(null);
-  }, [connect, sendEnvelope]);
+    shouldMaintainConnectionRef.current = true;
+    try {
+      await connect();
+      console.log('[driver-session] connected, sending driver:online');
+      await sendEnvelope('driver:online', { lat, lng });
+      console.log('[driver-session] driver:online sent');
+      setSession((prev) => ({ ...prev, status: 'online' }));
+      setError(null);
+    } catch (err) {
+      console.log('[driver-session] connection failed, will retry', err instanceof Error ? err.message : String(err));
+      scheduleReconnect();
+    }
+  }, [connect, sendEnvelope, scheduleReconnect]);
 
   const goOffline = useCallback(async () => {
     const socket = socketRef.current;
@@ -481,13 +518,11 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
   }, [clearReconnectTimer]);
 
   const acceptRide = useCallback(
-    async (rideId: string) => {
+    async (rideId: string, counterOfferNgn?: number) => {
       const offer = sessionRef.current.currentOffer;
       if (!offer || offer.rideId !== rideId) {
         throw new Error('No matching ride offer to accept.');
       }
-
-      const driverStats = sessionRef.current;
 
       await sendEnvelope('driver:accept', {
         rideId,
@@ -497,7 +532,7 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
         vehiclePlate: 'N/A',
         vehicleModel: 'N/A',
         etaSeconds: 300,
-        agreedFareNgn: offer.fareEstimateNgn,
+        agreedFareNgn: counterOfferNgn ?? offer.fareEstimateNgn,
       });
     },
     [sendEnvelope],
@@ -528,7 +563,6 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
       await sendEnvelope('ride:start', {
         rideId,
         riderId: ride?.riderId ?? '',
-        driverId: '',
         lockedFareNgn: ride?.fareNgn ?? 0,
       });
     },
@@ -541,7 +575,6 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
       await sendEnvelope('ride:end', {
         rideId,
         riderId: ride?.riderId ?? '',
-        driverId: '',
         fareNgn: ride?.fareNgn,
         endedBy: 'both_confirmed',
       });
@@ -553,10 +586,12 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
     (lat: number, lng: number) => {
       const socket = socketRef.current;
       if (!socket || socket.readyState !== WebSocket.OPEN) return;
+      const ride = sessionRef.current.currentRide;
+      if (!ride) return;
       socket.send(
         JSON.stringify({
           type: 'driver:gps',
-          payload: { lat, lng, timestamp: new Date().toISOString() },
+          payload: { rideId: ride.rideId, lat, lng, timestamp: new Date().toISOString() },
         }),
       );
     },
