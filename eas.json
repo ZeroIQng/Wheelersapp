@@ -85,11 +85,39 @@
         "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "915689509871-6sfdaphckt4r0ku30j3d2pg6nbef199a.apps.googleusercontent.com",
         "EXPO_PUBLIC_API_BASE_URL": "https://app.wheelersng.com"
       }
+    },
+    "production:driver:play": {
+      "distribution": "store",
+      "environment": "production",
+      "autoIncrement": true,
+      "env": {
+        "APP_VARIANT": "driver",
+        "EXPO_PUBLIC_APP_VARIANT": "driver",
+        "EXPO_PUBLIC_GOOGLE_MAPS_API_KEY": "AIzaSyAgZWNd_guJqkC3jxlVtP-V6b6zs1MtxO8",
+        "EXPO_PUBLIC_GOOGLE_CLIENT_ID": "915689509871-jceck5bg2mk6imvq46d6so2i8c26lnsb.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "915689509871-6sfdaphckt4r0ku30j3d2pg6nbef199a.apps.googleusercontent.com",
+        "EXPO_PUBLIC_API_BASE_URL": "https://app.wheelersng.com"
+      }
     }
   },
   "submit": {
     "production": {
       "ios": {}
+    },
+    "production:driver": {
+      "android": {
+        "applicationId": "com.timmy133.wheelers.driver",
+        "track": "internal"
+      },
+      "ios": {
+        "bundleIdentifier": "com.timmy133.wheelers.driver"
+      }
+    },
+    "preview:driver": {
+      "extends": "production:driver"
+    },
+    "production:driver:play": {
+      "extends": "production:driver"
     }
   }
 }
