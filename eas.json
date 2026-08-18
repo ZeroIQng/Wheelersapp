@@ -50,6 +50,7 @@
     "preview:driver": {
       "distribution": "store",
       "environment": "preview",
+      "autoIncrement": true,
       "android": {
         "buildType": "apk"
       },
@@ -110,7 +111,11 @@
         "track": "internal"
       },
       "ios": {
-        "bundleIdentifier": "com.timmy133.wheelers.driver"
+        "bundleIdentifier": "com.timmy133.wheelers.driver",
+        "appName": "Wheelers Driver",
+        "language": "en-US",
+        "sku": "wheelers-driver-001",
+        "companyName": "Hyge Innovations Limited"
       }
     },
     "preview:driver": {
