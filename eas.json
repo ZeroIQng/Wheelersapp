@@ -48,7 +48,7 @@
       }
     },
     "preview:driver": {
-      "distribution": "internal",
+      "distribution": "store",
       "environment": "preview",
       "android": {
         "buildType": "apk"
