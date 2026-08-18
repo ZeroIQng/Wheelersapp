@@ -1,7 +1,9 @@
 import { Tabs } from 'expo-router';
-import { Platform, View, StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Line, Path, Polyline, Rect } from 'react-native-svg';
 import { useQuestBadge } from '@/lib/quest-badge-context';
+import { useResponsive } from '@/lib/responsive';
 import { useAppTheme } from '@/lib/theme-context';
 import { theme } from '@/theme';
 
@@ -80,6 +82,14 @@ const tabStyles = StyleSheet.create({
 export default function DriverTabsLayout() {
   const { isDark } = useAppTheme();
   const { showBadge } = useQuestBadge();
+  const insets = useSafeAreaInsets();
+  const responsive = useResponsive();
+
+  // Bar height follows the device: the row itself scales with screen width,
+  // then the real bottom inset (home indicator / gesture pill / nothing on
+  // older Androids) is added on top instead of a hard-coded 28 vs 10.
+  const barRowHeight = responsive.scale(responsive.isShort ? 52 : 58);
+  const bottomPadding = Math.max(insets.bottom, 8);
 
   return (
     <Tabs
@@ -89,16 +99,19 @@ export default function DriverTabsLayout() {
         tabBarInactiveTintColor: isDark ? theme.colors.darkMuted : theme.colors.mutedLight,
         tabBarLabelStyle: {
           fontFamily: 'ClashDisplay_600Semibold',
-          fontSize: 11,
+          fontSize: responsive.font(11),
           letterSpacing: 0.2,
+        },
+        tabBarIconStyle: {
+          marginTop: responsive.isShort ? 0 : 2,
         },
         tabBarStyle: {
           backgroundColor: isDark ? theme.colors.darkSurface : theme.colors.white,
           borderTopWidth: theme.borders.thick,
           borderTopColor: isDark ? theme.colors.darkBorder : theme.colors.black,
-          height: Platform.OS === 'ios' ? 88 : 64,
-          paddingTop: 8,
-          paddingBottom: Platform.OS === 'ios' ? 28 : 10,
+          height: barRowHeight + bottomPadding,
+          paddingTop: 6,
+          paddingBottom: bottomPadding,
           elevation: 0,
           shadowOpacity: 0,
         },

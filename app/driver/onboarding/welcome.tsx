@@ -7,6 +7,7 @@ import { AppButton } from "@/components/app-button";
 import { AppScreen } from "@/components/app-screen";
 import { AppText } from "@/components/app-text";
 import { FlowHeader } from "@/components/flow-header";
+import { useResponsive } from "@/lib/responsive";
 import { theme } from "@/theme";
 
 const STEPS = [
@@ -19,6 +20,11 @@ const STEPS = [
 
 export default function OnboardingWelcomeScreen() {
   const router = useRouter();
+  const responsive = useResponsive();
+
+  // Five rows plus a header have to clear the button on a 320x568 phone —
+  // tighten the rhythm there instead of pushing the CTA off-screen.
+  const iconSize = responsive.scale(44);
 
   return (
     <AppScreen scroll contentStyle={styles.container}>
@@ -28,13 +34,21 @@ export default function OnboardingWelcomeScreen() {
         progress={{ count: 6, active: 0 }}
       />
 
-      <Animated.View entering={FadeInDown.delay(150).duration(400)} style={styles.steps}>
-        {STEPS.map((step, i) => (
+      <Animated.View
+        entering={FadeInDown.delay(150).duration(400)}
+        style={[
+          styles.steps,
+          {
+            marginTop: responsive.isShort ? theme.spacing.lg : theme.spacing.xxl,
+            gap: responsive.isShort ? theme.spacing.md : theme.spacing.lg,
+          },
+        ]}>
+        {STEPS.map((step) => (
           <View key={step.label} style={styles.stepRow}>
-            <View style={styles.stepIcon}>
-              <Ionicons name={step.icon} size={22} color={theme.colors.orange} />
+            <View style={[styles.stepIcon, { width: iconSize, height: iconSize }]}>
+              <Ionicons name={step.icon} size={responsive.scale(22)} color={theme.colors.orange} />
             </View>
-            <AppText variant="bodyMedium">{step.label}</AppText>
+            <AppText variant="bodyMedium" numberOfLines={2}>{step.label}</AppText>
           </View>
         ))}
       </Animated.View>
@@ -51,8 +65,7 @@ const styles = StyleSheet.create({
     paddingTop: theme.spacing.xxxl,
   },
   steps: {
-    marginTop: theme.spacing.xxl,
-    gap: theme.spacing.lg,
+    width: "100%",
   },
   stepRow: {
     flexDirection: "row",
@@ -60,8 +73,7 @@ const styles = StyleSheet.create({
     gap: theme.spacing.md,
   },
   stepIcon: {
-    width: 44,
-    height: 44,
+    flexShrink: 0,
     borderRadius: theme.radius.sm,
     borderWidth: theme.borders.thick,
     borderColor: theme.colors.black,
@@ -71,7 +83,9 @@ const styles = StyleSheet.create({
     ...theme.shadows.subtle,
   },
   spacer: {
-    flex: 1,
-    minHeight: theme.spacing.xxxl,
+    // flexGrow, not flex: inside a ScrollView's content container `flex: 1`
+    // collapses the spacer instead of pushing the button to the bottom.
+    flexGrow: 1,
+    minHeight: theme.spacing.xxl,
   },
 });

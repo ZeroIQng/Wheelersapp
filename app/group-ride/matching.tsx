@@ -354,7 +354,7 @@ export default function GroupRideMatchingScreen() {
               Group ride matching
             </AppText>
             <AppText variant="bodySmall" color={theme.colors.muted}>
-              {formatGenderPreference(genderPreference)}
+              Any verified rider
             </AppText>
           </View>
         </View>
@@ -383,12 +383,6 @@ function normalizeGenderPreference(
   }
 
   return "any";
-}
-
-function formatGenderPreference(value: GroupRideGenderPreference): string {
-  if (value === "women_only") return "Women only";
-  if (value === "men_only") return "Men only";
-  return "Any verified rider";
 }
 
 const RADAR_SIZE = 220;

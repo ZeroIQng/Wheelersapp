@@ -11,6 +11,7 @@ import { AppText } from '@/components/app-text';
 import { StatusPill } from '@/components/StatusPill';
 import { TripProgressBar } from '@/components/TripProgressBar';
 import { useDriverSession } from '@/lib/driver-session';
+import { useResponsive } from '@/lib/responsive';
 import { theme } from '@/theme';
 
 const FREE_WAIT_SECONDS = 180; // 3 minutes
@@ -22,6 +23,7 @@ function formatNgn(amount: number): string {
 export default function DriverArrivedScreen() {
   const router = useRouter();
   const { session, startTrip } = useDriverSession();
+  const responsive = useResponsive();
   const ride = session.currentRide;
 
   const arrivedAtRef = useRef(Date.now());
@@ -75,13 +77,16 @@ export default function DriverArrivedScreen() {
     }
   };
 
+  const avatarSize = responsive.scale(44);
+  const actionHeight = responsive.scale(42);
+
   const remainingSeconds = Math.max(0, FREE_WAIT_SECONDS - waitSeconds);
   const remainingMin = Math.floor(remainingSeconds / 60);
   const remainingSec = remainingSeconds % 60;
   const waitOverdue = waitSeconds >= FREE_WAIT_SECONDS;
 
   return (
-    <AppScreen backgroundColor={theme.colors.offWhite} contentStyle={styles.container}>
+    <AppScreen backgroundColor={theme.colors.offWhite} scroll contentStyle={styles.container}>
       <StatusBar style="dark" backgroundColor={theme.colors.offWhite} />
 
       <View style={styles.headerSection}>
@@ -98,27 +103,29 @@ export default function DriverArrivedScreen() {
       {/* Rider card */}
       <AppCard style={styles.riderCard}>
         <View style={styles.riderInfo}>
-          <View style={styles.avatar}>
+          <View style={[styles.avatar, { width: avatarSize, height: avatarSize }]}>
             <AppText variant="h3" color={theme.colors.orange}>R</AppText>
           </View>
           <View style={styles.riderCopy}>
-            <AppText variant="h3">Rider</AppText>
+            <AppText variant="h3" numberOfLines={1}>Rider</AppText>
             <AppText variant="bodySmall" color={theme.colors.muted} numberOfLines={1}>
               {ride.pickup.address}
             </AppText>
           </View>
           <View style={styles.fareTag}>
-            <AppText variant="mono" color={theme.colors.green}>{formatNgn(ride.fareNgn)}</AppText>
+            <AppText variant="mono" color={theme.colors.green} numberOfLines={1}>
+              {formatNgn(ride.fareNgn)}
+            </AppText>
           </View>
         </View>
 
         {ride.riderPhone ? (
           <View style={styles.phoneRow}>
-            <Pressable style={styles.callButton} onPress={handleCallRider}>
+            <Pressable style={[styles.callButton, { minHeight: actionHeight }]} onPress={handleCallRider}>
               <AppText variant="label">Call rider</AppText>
             </Pressable>
-            <Pressable style={styles.copyButton} onPress={handleCopyPhone}>
-              <AppText variant="bodySmall" color={theme.colors.muted}>
+            <Pressable style={[styles.copyButton, { minHeight: actionHeight }]} onPress={handleCopyPhone}>
+              <AppText variant="bodySmall" color={theme.colors.muted} numberOfLines={1}>
                 {copied ? 'Copied!' : ride.riderPhone}
               </AppText>
             </Pressable>
@@ -145,7 +152,9 @@ export default function DriverArrivedScreen() {
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
+    // flexGrow (not flex) keeps the centred layout on tall screens while
+    // still allowing the content to scroll on short ones.
+    flexGrow: 1,
     justifyContent: 'center',
     gap: theme.spacing.lg,
   },
@@ -165,8 +174,7 @@ const styles = StyleSheet.create({
     gap: theme.spacing.sm,
   },
   avatar: {
-    width: 44,
-    height: 44,
+    flexShrink: 0,
     borderRadius: theme.radii.pill,
     backgroundColor: theme.colors.orangeLight,
     borderWidth: theme.borders.thick,
@@ -179,6 +187,8 @@ const styles = StyleSheet.create({
     gap: 1,
   },
   fareTag: {
+    flexShrink: 0,
+    maxWidth: '45%',
     paddingHorizontal: theme.spacing.sm,
     paddingVertical: 4,
     borderRadius: theme.radii.sm,
@@ -196,7 +206,7 @@ const styles = StyleSheet.create({
   },
   callButton: {
     flex: 1,
-    height: 42,
+    minWidth: 0,
     borderRadius: theme.radii.sm,
     borderWidth: theme.borders.thick,
     borderColor: theme.colors.green,
@@ -206,7 +216,7 @@ const styles = StyleSheet.create({
     ...theme.shadows.subtle,
   },
   copyButton: {
-    height: 42,
+    flexShrink: 1,
     borderRadius: theme.radii.sm,
     borderWidth: theme.borders.thick,
     borderColor: theme.colors.black,

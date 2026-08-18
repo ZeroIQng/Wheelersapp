@@ -10,6 +10,7 @@ import { useAuth } from '@/lib/auth';
 import { getAccessTokenWithRetry } from '@/lib/access-token';
 import { getDriverStats, getDriverEarnings } from '@/lib/api';
 import { useQuestBadge } from '@/lib/quest-badge-context';
+import { useResponsive } from '@/lib/responsive';
 import { useAppTheme } from '@/lib/theme-context';
 import { theme } from '@/theme';
 
@@ -76,12 +77,12 @@ function DollarIcon({ size = 18, color = theme.colors.orange }: { size?: number;
   );
 }
 
-function getQuestIcon(icon: Quest['icon']) {
+function getQuestIcon(icon: Quest['icon'], size: number) {
   switch (icon) {
-    case 'rides': return <CarIcon />;
-    case 'streak': return <FireIcon />;
-    case 'rating': return <StarIcon />;
-    case 'earnings': return <DollarIcon />;
+    case 'rides': return <CarIcon size={size} />;
+    case 'streak': return <FireIcon size={size} />;
+    case 'rating': return <StarIcon size={size} />;
+    case 'earnings': return <DollarIcon size={size} />;
   }
 }
 
@@ -94,6 +95,7 @@ function formatNgn(amount: number): string {
 export default function DriverQuestsScreen() {
   const { getAccessToken } = useAuth();
   const { isDark } = useAppTheme();
+  const responsive = useResponsive();
   const { reportCompletedCount, markSeen } = useQuestBadge();
   const [refreshing, setRefreshing] = useState(false);
   const [todayRides, setTodayRides] = useState(0);
@@ -198,7 +200,9 @@ export default function DriverQuestsScreen() {
   return (
     <AppScreen
       scroll
-      contentStyle={styles.container}
+      // The tab bar owns the bottom inset; claiming it again would leave a gap.
+      safeAreaEdges={['top', 'left', 'right']}
+      contentStyle={[styles.container, { gap: responsive.scale(16) }]}
       refreshControl={
         <RefreshControl
           refreshing={refreshing}
@@ -208,16 +212,20 @@ export default function DriverQuestsScreen() {
         />
       }
     >
-      <AppText variant="h1">Quests</AppText>
+      <AppText variant="h1" numberOfLines={1}>Quests</AppText>
 
       {/* Summary banner */}
       <Animated.View entering={FadeInDown.delay(100).duration(400)}>
         <View style={[styles.summaryBanner, isDark && { backgroundColor: theme.colors.darkSurface }]}>
-          <View style={styles.trophyWrap}>
-            <TrophyIcon size={28} />
+          <View
+            style={[
+              styles.trophyWrap,
+              { width: responsive.scale(52), height: responsive.scale(52) },
+            ]}>
+            <TrophyIcon size={responsive.scale(28)} />
           </View>
           <View style={styles.summaryText}>
-            <AppText variant="h3">
+            <AppText variant="h3" adjustsFontSizeToFit minimumFontScale={0.75} numberOfLines={1}>
               {completedCount}/{activeQuests.length} completed
             </AppText>
             <AppText variant="bodySmall" color={theme.colors.muted}>
@@ -230,12 +238,17 @@ export default function DriverQuestsScreen() {
       {/* Today's stats mini row */}
       <View style={styles.statsRow}>
         <View style={[styles.statChip, isDark && { backgroundColor: theme.colors.darkSurface }]}>
-          <AppText variant="bodySmall" color={theme.colors.muted}>Rides today</AppText>
-          <AppText variant="h3" color={theme.colors.orange}>{todayRides}</AppText>
+          <AppText variant="bodySmall" color={theme.colors.muted} numberOfLines={1}>Rides today</AppText>
+          <AppText variant="h3" color={theme.colors.orange} adjustsFontSizeToFit minimumFontScale={0.7} numberOfLines={1}>
+            {todayRides}
+          </AppText>
         </View>
         <View style={[styles.statChip, isDark && { backgroundColor: theme.colors.darkSurface }]}>
-          <AppText variant="bodySmall" color={theme.colors.muted}>Earned</AppText>
-          <AppText variant="h3" color={theme.colors.orange}>{formatNgn(todayEarnings)}</AppText>
+          <AppText variant="bodySmall" color={theme.colors.muted} numberOfLines={1}>Earned</AppText>
+          {/* A six-figure day would blow past a half-width chip at full size. */}
+          <AppText variant="h3" color={theme.colors.orange} adjustsFontSizeToFit minimumFontScale={0.55} numberOfLines={1}>
+            {formatNgn(todayEarnings)}
+          </AppText>
         </View>
       </View>
 
@@ -254,19 +267,20 @@ export default function DriverQuestsScreen() {
                 <View style={styles.questTop}>
                   <View style={[
                     styles.questIconWrap,
+                    { width: responsive.scale(42), height: responsive.scale(42) },
                     isComplete && { backgroundColor: theme.colors.successLight, borderColor: theme.colors.green },
                   ]}>
-                    {getQuestIcon(quest.icon)}
+                    {getQuestIcon(quest.icon, responsive.scale(18))}
                   </View>
                   <View style={styles.questInfo}>
-                    <AppText variant="h3">{quest.title}</AppText>
-                    <AppText variant="bodySmall" color={theme.colors.muted}>
+                    <AppText variant="h3" numberOfLines={1}>{quest.title}</AppText>
+                    <AppText variant="bodySmall" color={theme.colors.muted} numberOfLines={2}>
                       {quest.description}
                     </AppText>
                   </View>
                   {isComplete && (
                     <View style={styles.completeBadge}>
-                      <AppText variant="monoSmall" color={theme.colors.white}>DONE</AppText>
+                      <AppText variant="monoSmall" color={theme.colors.white} numberOfLines={1}>DONE</AppText>
                     </View>
                   )}
                 </View>
@@ -285,7 +299,7 @@ export default function DriverQuestsScreen() {
                 </View>
 
                 <View style={styles.questBottom}>
-                  <AppText variant="bodySmall" color={theme.colors.muted}>
+                  <AppText variant="bodySmall" color={theme.colors.muted} numberOfLines={1}>
                     {quest.icon === 'rating'
                       ? `${quest.current.toFixed(1)} / ${quest.target}`
                       : quest.icon === 'earnings'
@@ -294,7 +308,7 @@ export default function DriverQuestsScreen() {
                     }
                   </AppText>
                   <View style={styles.rewardChip}>
-                    <AppText variant="monoSmall" color={theme.colors.orange}>
+                    <AppText variant="monoSmall" color={theme.colors.orange} numberOfLines={1}>
                       {quest.rewardLabel}
                     </AppText>
                   </View>
@@ -312,9 +326,8 @@ export default function DriverQuestsScreen() {
 
 const styles = StyleSheet.create({
   container: {
-    gap: 16,
     paddingTop: theme.spacing.lg,
-    paddingBottom: 40,
+    paddingBottom: theme.spacing.xxxl,
   },
 
   // Summary banner
@@ -330,8 +343,7 @@ const styles = StyleSheet.create({
     ...theme.shadows.card,
   },
   trophyWrap: {
-    width: 52,
-    height: 52,
+    flexShrink: 0,
     borderRadius: theme.radii.sm,
     borderWidth: theme.borders.thick,
     borderColor: theme.colors.black,
@@ -341,6 +353,7 @@ const styles = StyleSheet.create({
   },
   summaryText: {
     flex: 1,
+    minWidth: 0,
     gap: 2,
   },
 
@@ -351,6 +364,7 @@ const styles = StyleSheet.create({
   },
   statChip: {
     flex: 1,
+    minWidth: 0,
     backgroundColor: theme.colors.white,
     borderRadius: theme.radii.sm,
     borderWidth: theme.borders.thick,
@@ -374,8 +388,7 @@ const styles = StyleSheet.create({
     gap: theme.spacing.md,
   },
   questIconWrap: {
-    width: 42,
-    height: 42,
+    flexShrink: 0,
     borderRadius: theme.radii.xs,
     borderWidth: theme.borders.thick,
     borderColor: theme.colors.black,
@@ -385,9 +398,11 @@ const styles = StyleSheet.create({
   },
   questInfo: {
     flex: 1,
+    minWidth: 0,
     gap: 2,
   },
   completeBadge: {
+    flexShrink: 0,
     backgroundColor: theme.colors.green,
     borderRadius: theme.radii.xs,
     borderWidth: theme.borders.regular,
@@ -415,6 +430,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    // "NGN 10,000 / NGN 10,000" next to a reward chip does not fit one line on
+    // a 320pt phone — let the chip drop below rather than squeeze both.
+    flexWrap: 'wrap',
+    gap: theme.spacing.sm,
   },
   rewardChip: {
     backgroundColor: theme.colors.orangeLight,

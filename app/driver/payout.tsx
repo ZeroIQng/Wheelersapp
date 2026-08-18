@@ -9,6 +9,7 @@ import { AppText } from '@/components/app-text';
 import { FloatingView } from '@/components/motion';
 import { SectionHeader } from '@/components/SectionHeader';
 import { useDriverSession } from '@/lib/driver-session';
+import { useResponsive } from '@/lib/responsive';
 import { theme } from '@/theme';
 
 const VAT_RATE = 0.075; // 7.5%
@@ -22,6 +23,7 @@ function formatNgn(amount: number): string {
 export default function DriverPayoutScreen() {
   const router = useRouter();
   const { session, goOffline, clearCompleted } = useDriverSession();
+  const responsive = useResponsive();
   const ride = session.currentRide;
 
   const grossFare = ride?.completedFareNgn ?? ride?.fareNgn ?? 0;
@@ -42,7 +44,7 @@ export default function DriverPayoutScreen() {
   };
 
   return (
-    <AppScreen backgroundColor={theme.colors.offWhite} contentStyle={styles.container}>
+    <AppScreen backgroundColor={theme.colors.offWhite} scroll contentStyle={styles.container}>
       <StatusBar style="dark" backgroundColor={theme.colors.offWhite} />
       <Confetti color={theme.colors.orange} style={styles.confettiOne} />
       <Confetti color={theme.colors.black} style={styles.confettiTwo} />
@@ -58,7 +60,13 @@ export default function DriverPayoutScreen() {
         <AppText variant="bodySmall" color={theme.colors.muted}>
           YOU EARNED
         </AppText>
-        <AppText variant="display" color={theme.colors.orange} style={styles.amount}>
+        <AppText
+          variant="display"
+          color={theme.colors.orange}
+          style={styles.amount}
+          adjustsFontSizeToFit
+          minimumFontScale={0.6}
+          numberOfLines={1}>
           {formatNgn(finalPayout)}
         </AppText>
       </View>
@@ -68,7 +76,7 @@ export default function DriverPayoutScreen() {
           <AppText variant="bodySmall" color={theme.colors.muted}>
             Rider paid
           </AppText>
-          <AppText variant="monoLarge" color={theme.colors.green}>
+          <AppText variant="monoLarge" color={theme.colors.green} numberOfLines={1} style={styles.rowValue}>
             {formatNgn(grossFare)}
           </AppText>
         </View>
@@ -95,14 +103,16 @@ export default function DriverPayoutScreen() {
         )}
         <View style={styles.totalRow}>
           <AppText variant="bodyMedium">Credited to wallet</AppText>
-          <AppText variant="monoLarge" color={theme.colors.orange}>
+          <AppText variant="monoLarge" color={theme.colors.orange} numberOfLines={1} style={styles.rowValue}>
             {formatNgn(finalPayout)}
           </AppText>
         </View>
       </AppCard>
 
       <AppButton title="Next ride" onPress={handleNextRide} />
-      <Pressable style={styles.offlineButton} onPress={handleGoOffline}>
+      <Pressable
+        style={[styles.offlineButton, { minHeight: responsive.scale(52) }]}
+        onPress={handleGoOffline}>
         <AppText variant="label" color={theme.colors.offWhite}>
           Go offline
         </AppText>
@@ -122,10 +132,10 @@ function SummaryRow({
 }) {
   return (
     <View style={styles.row}>
-      <AppText variant="bodySmall" color={theme.colors.muted}>
+      <AppText variant="bodySmall" color={theme.colors.muted} numberOfLines={2}>
         {label}
       </AppText>
-      <AppText variant="mono" color={color}>
+      <AppText variant="mono" color={color} numberOfLines={1} style={styles.rowValue}>
         {value}
       </AppText>
     </View>
@@ -148,7 +158,7 @@ function Confetti({
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
+    flexGrow: 1,
     justifyContent: 'center',
     gap: theme.spacing.lg,
   },
@@ -168,10 +178,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: theme.spacing.md,
   },
+  rowValue: {
+    flexShrink: 0,
+    textAlign: 'right',
+  },
   riderPaidRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    gap: theme.spacing.md,
     paddingBottom: theme.spacing.md,
     borderBottomWidth: theme.borders.thick,
     borderBottomColor: theme.colors.borderLight,
@@ -185,8 +200,8 @@ const styles = StyleSheet.create({
     borderTopColor: theme.colors.black,
   },
   offlineButton: {
-    minHeight: 52,
     borderRadius: theme.radii.sm,
+    paddingHorizontal: theme.spacing.md,
     borderWidth: theme.borders.thick,
     borderColor: theme.colors.black,
     backgroundColor: theme.colors.black,

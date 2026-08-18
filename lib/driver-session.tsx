@@ -42,6 +42,11 @@ type RideOffer = {
   plannedDurationSeconds?: number;
   expiresAt: string;
   route?: RideRouteGeometry;
+  /** Shared ride: several riders picked up and dropped along one route. */
+  isGroupRide?: boolean;
+  riderCount?: number;
+  /** Parallel to `stops` — which waypoints are pickups vs drop-offs. */
+  stopKinds?: Array<'pickup' | 'dropoff'>;
 };
 
 type DriverRide = {
@@ -218,6 +223,13 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
             plannedDurationSeconds: getNumber(payload.plannedDurationSeconds),
             expiresAt: getString(payload.expiresAt) ?? '',
             route: payload.route as RideRouteGeometry | undefined,
+            isGroupRide: payload.isGroupRide === true,
+            riderCount: getNumber(payload.riderCount),
+            stopKinds: Array.isArray(payload.stopKinds)
+              ? (payload.stopKinds.filter(
+                  (k): k is 'pickup' | 'dropoff' => k === 'pickup' || k === 'dropoff',
+                ))
+              : undefined,
           },
         }));
         return;

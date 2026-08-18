@@ -10,6 +10,7 @@ import { AppButton } from "@/components/app-button";
 import { AppScreen } from "@/components/app-screen";
 import { AppText } from "@/components/app-text";
 import { FlowHeader } from "@/components/flow-header";
+import { useResponsive } from "@/lib/responsive";
 import { theme } from "@/theme";
 import { useDriverOnboarding } from "@/lib/driver-onboarding";
 
@@ -24,6 +25,7 @@ const CHALLENGES: { key: Challenge; instruction: string }[] = [
 
 export default function FaceVerificationScreen() {
   const router = useRouter();
+  const responsive = useResponsive();
   const { setSelfieUri } = useDriverOnboarding();
   const [permission, requestPermission] = useCameraPermissions();
   const [currentStep, setCurrentStep] = useState(0);
@@ -90,8 +92,14 @@ export default function FaceVerificationScreen() {
     );
   }
 
+  // The preview takes whatever height is left after header, prompts and CTA,
+  // capped to a 3:4 frame — so it shrinks on an SE instead of pushing the
+  // Continue button off screen.
+  const cameraHeight = responsive.vh(46, 240, 460);
+  const guideHeight = Math.round(cameraHeight * 0.7);
+
   return (
-    <AppScreen contentStyle={styles.container}>
+    <AppScreen scroll contentStyle={styles.container}>
       <FlowHeader
         title="Face Verification"
         subtitle={captured ? "Looking good!" : "Follow the prompts below"}
@@ -99,8 +107,8 @@ export default function FaceVerificationScreen() {
         progress={{ count: 6, active: 3 }}
       />
 
-      <View style={styles.cameraSection}>
-        <View style={styles.cameraWrap}>
+      <View style={[styles.cameraSection, { gap: responsive.scale(16) }]}>
+        <View style={[styles.cameraWrap, { height: cameraHeight, maxWidth: Math.round(cameraHeight * 0.75) }]}>
           <CameraView
             ref={cameraRef}
             style={styles.camera}
@@ -108,7 +116,16 @@ export default function FaceVerificationScreen() {
             mode="picture"
           />
           <View style={styles.overlay}>
-            <View style={styles.faceGuide} />
+            <View
+              style={[
+                styles.faceGuide,
+                {
+                  height: guideHeight,
+                  width: Math.round(guideHeight * 0.77),
+                  borderRadius: Math.round(guideHeight * 0.4),
+                },
+              ]}
+            />
           </View>
         </View>
 
@@ -168,15 +185,13 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   cameraSection: {
-    flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    gap: theme.spacing.lg,
     marginTop: theme.spacing.lg,
   },
   cameraWrap: {
     width: "90%",
-    aspectRatio: 3 / 4,
+    alignSelf: "center",
     borderRadius: theme.radius.lg,
     borderWidth: theme.borders.thick,
     borderColor: theme.colors.black,
@@ -192,9 +207,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   faceGuide: {
-    width: 200,
-    height: 260,
-    borderRadius: 100,
     borderWidth: 2.5,
     borderColor: theme.colors.orange,
     borderStyle: "dashed",
@@ -235,6 +247,7 @@ const styles = StyleSheet.create({
     gap: theme.spacing.sm,
   },
   spacer: {
+    flexGrow: 1,
     minHeight: theme.spacing.xl,
   },
 });

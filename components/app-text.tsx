@@ -15,11 +15,20 @@ export function AppText({
   variant = 'body',
   color,
   style,
+  maxFontSizeMultiplier = 1.25,
   ...props
 }: AppTextProps) {
   const { isDark } = useAppTheme();
   const resolvedColor = color ?? (isDark ? theme.colors.offWhite : theme.colors.black);
-  return <Text {...props} style={[styles.base, styles[variant], { color: resolvedColor }, style]} />;
+  return (
+    <Text
+      {...props}
+      // Cap OS font scaling: past ~1.25x the bordered cards and metric rows
+      // start clipping on small phones.
+      maxFontSizeMultiplier={maxFontSizeMultiplier}
+      style={[styles.base, styles[variant], { color: resolvedColor }, style]}
+    />
+  );
 }
 
 const styles = StyleSheet.create({

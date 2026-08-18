@@ -612,7 +612,9 @@ export default function FaceVerifyScreen() {
 
     setGroupRideFaceCapture(capturedPhoto);
     setState("verified");
-    router.replace("/group-ride/gender");
+    // Group rides are no longer gender-specific — the gender step is gone, so
+    // go straight to picking the destination.
+    router.replace("/group-ride/destination");
   }, [capturedPhoto, router]);
 
   // ── Cleanup ───────────────────────────────────────────────────────────────

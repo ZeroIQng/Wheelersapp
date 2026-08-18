@@ -6,12 +6,13 @@ import {
   Alert,
   Dimensions,
   Keyboard,
-  Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   TextInput,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   FadeIn,
   FadeInDown,
@@ -25,7 +26,9 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 
 import { AppButton } from '@/components/app-button';
 import { AppText } from '@/components/app-text';
+import { useKeyboardHeight } from '@/hooks/use-keyboard';
 import { useDriverSession } from '@/lib/driver-session';
+import { useResponsive } from '@/lib/responsive';
 import { playRideRequestSound, stopRideRequestSound } from '@/lib/sounds';
 import { theme } from '@/theme';
 
@@ -39,9 +42,74 @@ function formatNgn(amount: number): string {
   return `₦${Math.round(amount).toLocaleString('en-NG')}`;
 }
 
+type RouteStopRow = {
+  label: string;
+  address: string;
+  kind: 'pickup' | 'dropoff';
+  /** Seat number shown inside the marker on shared rides. */
+  seat?: string;
+};
+
+/**
+ * Turns an offer into the ordered list of stops the driver will actually make.
+ * On a shared ride the waypoints carry their kind, so each one reads as
+ * "Pickup 2" / "Drop-off 1" rather than an anonymous coordinate.
+ */
+function buildRouteStops(params: {
+  pickup: string;
+  destination: string;
+  stops: string[];
+  stopKinds?: Array<'pickup' | 'dropoff'>;
+  isGroupRide: boolean;
+}): RouteStopRow[] {
+  const { pickup, destination, stops, stopKinds, isGroupRide } = params;
+
+  if (!isGroupRide) {
+    return [
+      { label: 'Pickup', address: pickup, kind: 'pickup' },
+      ...stops.map((address, i) => ({
+        label: `Stop ${i + 1}`,
+        address,
+        kind: 'dropoff' as const,
+      })),
+      { label: 'Destination', address: destination, kind: 'dropoff' },
+    ];
+  }
+
+  let pickups = 1;
+  let dropoffs = 0;
+  const rows: RouteStopRow[] = [
+    { label: 'Pickup 1', address: pickup, kind: 'pickup', seat: '1' },
+  ];
+
+  stops.forEach((address, i) => {
+    // Fall back to pickup-then-dropoff ordering if kinds are unavailable.
+    const kind = stopKinds?.[i] ?? (i < stops.length / 2 ? 'pickup' : 'dropoff');
+    const seat = kind === 'pickup' ? ++pickups : ++dropoffs;
+    rows.push({
+      label: kind === 'pickup' ? `Pickup ${seat}` : `Drop-off ${seat}`,
+      address,
+      kind,
+      seat: String(seat),
+    });
+  });
+
+  rows.push({
+    label: `Drop-off ${dropoffs + 1}`,
+    address: destination,
+    kind: 'dropoff',
+    seat: String(dropoffs + 1),
+  });
+
+  return rows;
+}
+
 export default function IncomingRequestScreen() {
   const router = useRouter();
   const { session, acceptRide, rejectRide } = useDriverSession();
+  const insets = useSafeAreaInsets();
+  const responsive = useResponsive();
+  const keyboardHeight = useKeyboardHeight();
   const offer = session.currentOffer;
   const [countdown, setCountdown] = useState(0);
   const [bidMode, setBidMode] = useState(false);
@@ -195,6 +263,20 @@ export default function IncomingRequestScreen() {
     ? `${Math.ceil(offer.plannedDurationSeconds / 60)} min`
     : '--';
 
+  const isGroupRide = offer.isGroupRide === true;
+  const riderCount = offer.riderCount ?? 1;
+  const stopCount = offer.stops.length + 2; // intermediates plus both ends
+
+  // One ordered timeline: first pickup, every waypoint between, final drop-off.
+  // Solo rides collapse to the same two-row shape the screen always had.
+  const routeStops = buildRouteStops({
+    pickup: offer.pickup.address,
+    destination: offer.destination.address,
+    stops: offer.stops.map((s) => s.address),
+    stopKinds: offer.stopKinds,
+    isGroupRide,
+  });
+
   return (
     <View style={styles.screen}>
       <StatusBar style="dark" />
@@ -205,23 +287,54 @@ export default function IncomingRequestScreen() {
       </Animated.View>
 
       {/* Swipeable card */}
-      <GestureDetector gesture={panGesture}>
-        <Animated.View
-          entering={FadeInDown.duration(350).springify().damping(18)}
-          style={[styles.cardWrap, cardAnimatedStyle]}
-        >
-          {/* Swipe handle */}
+      <Animated.View
+        entering={FadeInDown.duration(350).springify().damping(18)}
+        style={[
+          styles.cardWrap,
+          cardAnimatedStyle,
+          {
+            // Never taller than the screen, and always clear of the keyboard
+            // so the bid field stays visible while typing.
+            maxHeight: responsive.height - keyboardHeight - insets.top - responsive.scale(24),
+            paddingBottom:
+              Math.max(insets.bottom, responsive.scale(16)) +
+              (keyboardHeight > 0 ? responsive.scale(8) : 0),
+          },
+        ]}
+      >
+        {/* Swipe handle — the drag target, kept outside the scroll area so
+            swipe-to-dismiss and scrolling never fight each other. */}
+        <GestureDetector gesture={panGesture}>
           <View style={styles.handleWrap}>
             <View style={styles.handle} />
           </View>
+        </GestureDetector>
 
+        <ScrollView
+          bounces={false}
+          contentContainerStyle={[styles.cardScrollContent, { gap: responsive.scale(12) }]}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}>
           {/* Header row */}
           <View style={styles.header}>
             <View style={styles.headerLeft}>
-              <AppText variant="monoSmall" color={theme.colors.muted}>
-                NEW REQUEST
-              </AppText>
-              <AppText variant="h2">Ride request</AppText>
+              {isGroupRide ? (
+                <View style={styles.groupBadge}>
+                  <View style={styles.groupBadgeDots}>
+                    {Array.from({ length: Math.min(riderCount, 4) }).map((_, i) => (
+                      <View key={i} style={[styles.groupBadgeDot, i > 0 && styles.groupBadgeDotOverlap]} />
+                    ))}
+                  </View>
+                  <AppText variant="monoSmall" color={theme.colors.orange}>
+                    GROUP · {riderCount} RIDERS
+                  </AppText>
+                </View>
+              ) : (
+                <AppText variant="monoSmall" color={theme.colors.muted}>
+                  NEW REQUEST
+                </AppText>
+              )}
+              <AppText variant="h2">{isGroupRide ? 'Shared ride' : 'Ride request'}</AppText>
             </View>
             <View style={styles.timerBadge}>
               <AppText variant="monoLarge" color={countdown <= 10 ? theme.colors.danger : theme.colors.black}>
@@ -230,41 +343,72 @@ export default function IncomingRequestScreen() {
             </View>
           </View>
 
-          {/* Route */}
+          {/* Group rides are a different job at the same distance — say so up front. */}
+          {isGroupRide && (
+            <View style={styles.groupNotice}>
+              <AppText variant="bodySmall" color={theme.colors.black}>
+                {stopCount} stops · pick up and drop {riderCount} riders along one route
+              </AppText>
+            </View>
+          )}
+
+          {/* Route — a full stop-by-stop timeline when several riders share it,
+              so the driver can see the real shape of the job before bidding. */}
           <View style={styles.routeCard}>
-            <View style={styles.routeConnector}>
-              <View style={[styles.routeDot, { backgroundColor: theme.colors.green }]} />
-              <View style={styles.routeLine} />
-              <View style={[styles.routeDot, { backgroundColor: theme.colors.black }]} />
-            </View>
-            <View style={styles.routeLabels}>
-              <View style={styles.routeStop}>
-                <AppText variant="bodySmall" color={theme.colors.muted}>Pickup</AppText>
-                <AppText variant="bodyMedium" numberOfLines={2}>{offer.pickup.address}</AppText>
-              </View>
-              <View style={styles.routeDivider} />
-              <View style={styles.routeStop}>
-                <AppText variant="bodySmall" color={theme.colors.muted}>Destination</AppText>
-                <AppText variant="bodyMedium" numberOfLines={2}>{offer.destination.address}</AppText>
-              </View>
-            </View>
+            {routeStops.map((stop, index) => {
+              const isLast = index === routeStops.length - 1;
+              return (
+                <View key={`${stop.label}-${index}`} style={styles.timelineRow}>
+                  <View style={styles.timelineGutter}>
+                    <View
+                      style={[
+                        styles.timelineMarker,
+                        stop.kind === 'pickup'
+                          ? styles.timelineMarkerPickup
+                          : styles.timelineMarkerDropoff,
+                      ]}>
+                      {stop.seat ? (
+                        <AppText variant="monoSmall" color={theme.colors.white}>
+                          {stop.seat}
+                        </AppText>
+                      ) : null}
+                    </View>
+                    {!isLast && <View style={styles.timelineLine} />}
+                  </View>
+                  <View style={[styles.timelineBody, !isLast && styles.timelineBodySpaced]}>
+                    <AppText variant="bodySmall" color={theme.colors.muted}>
+                      {stop.label}
+                    </AppText>
+                    <AppText variant="bodyMedium" numberOfLines={2}>
+                      {stop.address}
+                    </AppText>
+                  </View>
+                </View>
+              );
+            })}
           </View>
 
           {/* Metrics row */}
           <View style={styles.metricsRow}>
             <View style={styles.metricCard}>
-              <AppText variant="bodySmall" color={theme.colors.muted}>Distance</AppText>
-              <AppText variant="h3">{distanceKm}</AppText>
+              <AppText variant="bodySmall" color={theme.colors.muted} numberOfLines={1}>Distance</AppText>
+              <AppText variant="h3" adjustsFontSizeToFit minimumFontScale={0.7} numberOfLines={1}>
+                {distanceKm}
+              </AppText>
             </View>
             <View style={styles.metricCard}>
-              <AppText variant="bodySmall" color={theme.colors.muted}>Duration</AppText>
-              <AppText variant="h3">{durationMin}</AppText>
+              <AppText variant="bodySmall" color={theme.colors.muted} numberOfLines={1}>Duration</AppText>
+              <AppText variant="h3" adjustsFontSizeToFit minimumFontScale={0.7} numberOfLines={1}>
+                {durationMin}
+              </AppText>
             </View>
             <View style={styles.metricCard}>
-              <AppText variant="bodySmall" color={theme.colors.muted}>
+              <AppText variant="bodySmall" color={theme.colors.muted} numberOfLines={1}>
                 {lastBidNgn ? 'Your bid' : "Rider's offer"}
               </AppText>
-              <AppText variant="h3">{formatNgn(activeFare)}</AppText>
+              <AppText variant="h3" adjustsFontSizeToFit minimumFontScale={0.7} numberOfLines={1}>
+                {formatNgn(activeFare)}
+              </AppText>
             </View>
           </View>
 
@@ -337,8 +481,8 @@ export default function IncomingRequestScreen() {
           <AppText variant="bodySmall" color={theme.colors.mutedLight} style={styles.hint}>
             Swipe down to ignore
           </AppText>
-        </Animated.View>
-      </GestureDetector>
+        </ScrollView>
+      </Animated.View>
     </View>
   );
 }
@@ -361,14 +505,16 @@ const styles = StyleSheet.create({
     borderColor: theme.colors.black,
     paddingHorizontal: theme.spacing.lg,
     paddingTop: theme.spacing.sm,
-    paddingBottom: Platform.OS === 'ios' ? 40 : 24,
-    gap: theme.spacing.md,
+  },
+  cardScrollContent: {
+    paddingBottom: theme.spacing.sm,
   },
 
   // Handle
   handleWrap: {
     alignItems: 'center',
-    paddingVertical: theme.spacing.xs,
+    // Generous vertical padding: this is now the only drag target.
+    paddingVertical: theme.spacing.sm,
   },
   handle: {
     width: 48,
@@ -398,16 +544,91 @@ const styles = StyleSheet.create({
     ...theme.shadows.subtle,
   },
 
+  // Group badge
+  groupBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: theme.spacing.sm,
+    backgroundColor: theme.colors.orangeLight,
+    borderWidth: theme.borders.regular,
+    borderColor: theme.colors.orange,
+    borderRadius: theme.radii.pill,
+    paddingVertical: 3,
+    paddingHorizontal: theme.spacing.sm,
+  },
+  groupBadgeDots: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  groupBadgeDot: {
+    width: 9,
+    height: 9,
+    borderRadius: theme.radii.pill,
+    backgroundColor: theme.colors.orange,
+    borderWidth: 1,
+    borderColor: theme.colors.orangeLight,
+  },
+  groupBadgeDotOverlap: {
+    marginLeft: -3,
+  },
+  groupNotice: {
+    backgroundColor: theme.colors.orangeLight,
+    borderWidth: theme.borders.regular,
+    borderColor: theme.colors.orange,
+    borderRadius: theme.radii.sm,
+    paddingVertical: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.md,
+  },
+
   // Route card
   routeCard: {
-    flexDirection: 'row',
     backgroundColor: theme.colors.white,
     borderWidth: theme.borders.thick,
     borderColor: theme.colors.black,
     borderRadius: theme.radii.sm,
     padding: theme.spacing.md,
-    gap: theme.spacing.sm,
     ...theme.shadows.subtle,
+  },
+
+  // Stop timeline
+  timelineRow: {
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+  },
+  timelineGutter: {
+    alignItems: 'center',
+    width: 22,
+  },
+  timelineMarker: {
+    width: 22,
+    height: 22,
+    borderRadius: theme.radii.pill,
+    borderWidth: theme.borders.regular,
+    borderColor: theme.colors.black,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  timelineMarkerPickup: {
+    backgroundColor: theme.colors.green,
+  },
+  timelineMarkerDropoff: {
+    backgroundColor: theme.colors.black,
+  },
+  timelineLine: {
+    width: 2,
+    flex: 1,
+    minHeight: 14,
+    backgroundColor: theme.colors.borderLight,
+    marginVertical: 2,
+  },
+  timelineBody: {
+    flex: 1,
+    gap: 1,
+    paddingTop: 1,
+  },
+  timelineBodySpaced: {
+    paddingBottom: theme.spacing.md,
   },
   routeConnector: {
     alignItems: 'center',
@@ -446,6 +667,7 @@ const styles = StyleSheet.create({
   },
   metricCard: {
     flex: 1,
+    minWidth: 0,
     backgroundColor: theme.colors.white,
     borderWidth: theme.borders.thick,
     borderColor: theme.colors.black,

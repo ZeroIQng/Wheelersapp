@@ -56,14 +56,20 @@ export default function DriverWalletScreen() {
       />
 
       <AppCard backgroundColor={theme.colors.black} style={styles.balanceCard}>
-        <AppText variant="bodySmall" color="#9C948D">
+        <AppText variant="bodySmall" color="#9C948D" numberOfLines={1}>
           Available balance
         </AppText>
-        <AppText variant="display" color={theme.colors.offWhite}>
+        {/* Balances run to seven figures — shrink the digits rather than clip them. */}
+        <AppText
+          variant="display"
+          color={theme.colors.offWhite}
+          adjustsFontSizeToFit
+          minimumFontScale={0.6}
+          numberOfLines={1}>
           {formatNgn(balanceNgn)}
         </AppText>
         {lockedNgn > 0 && (
-          <AppText variant="bodySmall" color="#9C948D">
+          <AppText variant="bodySmall" color="#9C948D" numberOfLines={1}>
             Locked: {formatNgn(lockedNgn)}
           </AppText>
         )}
@@ -78,7 +84,7 @@ export default function DriverWalletScreen() {
         </View>
       ) : transactions.length > 0 ? (
         <AppCard style={styles.activityCard}>
-          <AppText variant="h3">Recent wallet activity</AppText>
+          <AppText variant="h3" numberOfLines={1}>Recent wallet activity</AppText>
           {transactions.map((entry, index) => {
             const isCredit = entry.direction === 'CREDIT';
             return (
@@ -86,8 +92,8 @@ export default function DriverWalletScreen() {
                 key={entry.id}
                 style={[styles.activityRow, index < transactions.length - 1 ? styles.divider : null]}>
                 <View style={styles.activityCopy}>
-                  <AppText variant="bodyMedium">{entry.type.replace(/_/g, ' ')}</AppText>
-                  <AppText variant="bodySmall" color={theme.colors.muted}>
+                  <AppText variant="bodyMedium" numberOfLines={2}>{entry.type.replace(/_/g, ' ')}</AppText>
+                  <AppText variant="bodySmall" color={theme.colors.muted} numberOfLines={1}>
                     {new Date(entry.createdAt).toLocaleDateString('en-NG', {
                       day: 'numeric',
                       month: 'short',
@@ -98,6 +104,8 @@ export default function DriverWalletScreen() {
                 </View>
                 <AppText
                   variant="mono"
+                  style={styles.activityAmount}
+                  numberOfLines={1}
                   color={isCredit ? theme.colors.green : theme.colors.danger}>
                   {isCredit ? '+' : '-'}{formatNgn(Math.abs(entry.amountNgn))}
                 </AppText>
@@ -132,7 +140,12 @@ const styles = StyleSheet.create({
   },
   activityCopy: {
     flex: 1,
+    minWidth: 0,
     gap: 2,
+  },
+  // The amount must never be truncated to fit the label beside it.
+  activityAmount: {
+    flexShrink: 0,
   },
   divider: {
     borderBottomWidth: 1,

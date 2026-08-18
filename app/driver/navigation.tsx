@@ -13,6 +13,7 @@ import { GoogleMapView } from '@/components/GoogleMapView';
 import { StatusPill } from '@/components/StatusPill';
 import { useDriverSession } from '@/lib/driver-session';
 import { useAppLocation } from '@/lib/location';
+import { useResponsive } from '@/lib/responsive';
 import { theme } from '@/theme';
 
 function formatNgn(amount: number): string {
@@ -23,6 +24,7 @@ export default function DriverNavigationScreen() {
   const router = useRouter();
   const { session, arriveAtPickup, sendGps } = useDriverSession();
   const { currentLocation } = useAppLocation();
+  const responsive = useResponsive();
   const ride = session.currentRide;
   const mapRef = useRef<MapView>(null);
   const lastGpsSentRef = useRef(0);
@@ -97,10 +99,12 @@ export default function DriverNavigationScreen() {
   };
 
   return (
-    <AppScreen backgroundColor={theme.colors.offWhite} contentStyle={styles.container}>
+    <AppScreen backgroundColor={theme.colors.offWhite} scroll contentStyle={styles.container}>
       <StatusBar style="dark" backgroundColor={theme.colors.mapBase} />
       <View style={styles.mapWrap}>
-        <View style={styles.mapContainer}>
+        {/* Map takes a share of the screen rather than a fixed 280pt, so the
+            stats, pickup card and CTA still fit on a 4.7" phone. */}
+        <View style={[styles.mapContainer, { height: responsive.vh(32, 170, 340) }]}>
           <GoogleMapView
             ref={mapRef}
             initialRegion={initialRegion}
@@ -141,24 +145,24 @@ export default function DriverNavigationScreen() {
         {/* Stats */}
         <View style={styles.statsRow}>
           <View style={styles.stat}>
-            <AppText variant="monoLarge" color={theme.colors.orange}>
+            <AppText variant="monoLarge" color={theme.colors.orange} adjustsFontSizeToFit minimumFontScale={0.7} numberOfLines={1}>
               {etaMinutes}
             </AppText>
-            <AppText variant="bodySmall" color={theme.colors.muted}>min away</AppText>
+            <AppText variant="bodySmall" color={theme.colors.muted} numberOfLines={1}>min away</AppText>
           </View>
           <View style={styles.statDivider} />
           <View style={styles.stat}>
-            <AppText variant="monoLarge" color={theme.colors.black}>
+            <AppText variant="monoLarge" color={theme.colors.black} adjustsFontSizeToFit minimumFontScale={0.7} numberOfLines={1}>
               {distanceKm}
             </AppText>
-            <AppText variant="bodySmall" color={theme.colors.muted}>km left</AppText>
+            <AppText variant="bodySmall" color={theme.colors.muted} numberOfLines={1}>km left</AppText>
           </View>
           <View style={styles.statDivider} />
           <View style={styles.stat}>
-            <AppText variant="monoLarge" color={theme.colors.green}>
+            <AppText variant="monoLarge" color={theme.colors.green} adjustsFontSizeToFit minimumFontScale={0.6} numberOfLines={1}>
               {formatNgn(ride.fareNgn)}
             </AppText>
-            <AppText variant="bodySmall" color={theme.colors.muted}>fare</AppText>
+            <AppText variant="bodySmall" color={theme.colors.muted} numberOfLines={1}>fare</AppText>
           </View>
         </View>
 
@@ -191,7 +195,7 @@ export default function DriverNavigationScreen() {
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
+    flexGrow: 1,
     paddingHorizontal: 0,
   },
   mapWrap: {
@@ -199,7 +203,6 @@ const styles = StyleSheet.create({
     borderBottomColor: theme.colors.black,
   },
   mapContainer: {
-    height: 280,
     backgroundColor: theme.colors.mapBase,
   },
   pickupMarker: {
@@ -219,7 +222,7 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.offWhite,
   },
   content: {
-    flex: 1,
+    flexGrow: 1,
     paddingHorizontal: theme.spacing.gutter,
     paddingTop: theme.spacing.lg,
     gap: theme.spacing.md,
@@ -240,8 +243,10 @@ const styles = StyleSheet.create({
   },
   stat: {
     flex: 1,
+    minWidth: 0,
     alignItems: 'center',
     gap: 2,
+    paddingHorizontal: 4,
   },
   statDivider: {
     width: 1.5,

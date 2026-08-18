@@ -7,6 +7,7 @@ import { AppText } from '@/components/app-text';
 import { useAuth } from '@/lib/auth';
 import { getAccessTokenWithRetry } from '@/lib/access-token';
 import { deleteAccount } from '@/lib/api';
+import { useResponsive } from '@/lib/responsive';
 import { useAppTheme } from '@/lib/theme-context';
 import { theme } from '@/theme';
 
@@ -90,6 +91,7 @@ export default function DriverSettingsScreen() {
   const router = useRouter();
   const { getAccessToken, logout } = useAuth();
   const { isDark, toggleTheme } = useAppTheme();
+  const responsive = useResponsive();
 
   const handleLogout = () => {
     Alert.alert(
@@ -150,41 +152,67 @@ export default function DriverSettingsScreen() {
   const pressedBg = isDark ? theme.colors.darkSurfaceSoft : theme.colors.offWhite;
   const dividerColor = isDark ? theme.colors.darkBorder : theme.colors.borderLight;
 
+  // Row metrics scale together so the divider stays aligned to the text column
+  // instead of the old hard-coded 66pt inset.
+  const iconSize = responsive.scale(36);
+  const rowGap = responsive.scale(14);
+  const rowPaddingH = responsive.scale(16);
+  const glyphSize = responsive.scale(18);
+  const menuIconStyle = { width: iconSize, height: iconSize };
+  const menuItemStyle = {
+    gap: rowGap,
+    paddingHorizontal: rowPaddingH,
+    paddingVertical: responsive.scale(14),
+  };
+  const dividerInset = { marginLeft: rowPaddingH + iconSize + rowGap };
+
   return (
-    <AppScreen scroll contentStyle={styles.container}>
-      <AppText variant="h1">Settings</AppText>
+    <AppScreen
+      scroll
+      // The tab bar owns the bottom inset; claiming it again would leave a gap.
+      safeAreaEdges={['top', 'left', 'right']}
+      contentStyle={styles.container}>
+      <AppText variant="h1" numberOfLines={1}>Settings</AppText>
 
       {/* ── Account section ── */}
       <View style={styles.section}>
-        <AppText variant="label" color={theme.colors.muted} style={styles.sectionLabel}>
+        <AppText
+          variant="label"
+          color={theme.colors.muted}
+          style={[styles.sectionLabel, { fontSize: responsive.font(10) }]}
+          numberOfLines={1}>
           ACCOUNT
         </AppText>
         <View style={[styles.card, { backgroundColor: cardBg }]}>
           <Pressable
             onPress={() => router.push('/driver/profile' as Href)}
-            style={({ pressed }) => [styles.menuItem, pressed && { backgroundColor: pressedBg }]}
+            style={({ pressed }) => [styles.menuItem, menuItemStyle, pressed && { backgroundColor: pressedBg }]}
           >
-            <View style={[styles.menuIcon, { backgroundColor: theme.colors.orangeLight }]}>
-              <UserIcon color={theme.colors.orange} size={18} />
+            <View style={[styles.menuIcon, menuIconStyle, { backgroundColor: theme.colors.orangeLight }]}>
+              <UserIcon color={theme.colors.orange} size={glyphSize} />
             </View>
             <View style={styles.menuInfo}>
               <AppText variant="bodyMedium">Profile</AppText>
               <AppText variant="bodySmall" color={theme.colors.muted}>Manage your personal info</AppText>
             </View>
-            <ChevronRightIcon />
+            <ChevronRightIcon size={responsive.scale(18)} />
           </Pressable>
         </View>
       </View>
 
       {/* ── Appearance section ── */}
       <View style={styles.section}>
-        <AppText variant="label" color={theme.colors.muted} style={styles.sectionLabel}>
+        <AppText
+          variant="label"
+          color={theme.colors.muted}
+          style={[styles.sectionLabel, { fontSize: responsive.font(10) }]}
+          numberOfLines={1}>
           APPEARANCE
         </AppText>
         <View style={[styles.card, { backgroundColor: cardBg }]}>
-          <View style={styles.menuItem}>
-            <View style={[styles.menuIcon, { backgroundColor: subtleBg }]}>
-              <PaletteIcon color={theme.colors.muted} size={18} />
+          <View style={[styles.menuItem, menuItemStyle]}>
+            <View style={[styles.menuIcon, menuIconStyle, { backgroundColor: subtleBg }]}>
+              <PaletteIcon color={theme.colors.muted} size={glyphSize} />
             </View>
             <View style={styles.menuInfo}>
               <AppText variant="bodyMedium">Dark mode</AppText>
@@ -204,40 +232,48 @@ export default function DriverSettingsScreen() {
 
       {/* ── Support section ── */}
       <View style={styles.section}>
-        <AppText variant="label" color={theme.colors.muted} style={styles.sectionLabel}>
+        <AppText
+          variant="label"
+          color={theme.colors.muted}
+          style={[styles.sectionLabel, { fontSize: responsive.font(10) }]}
+          numberOfLines={1}>
           SUPPORT
         </AppText>
         <View style={[styles.card, { backgroundColor: cardBg }]}>
           <Pressable
             onPress={handleContactSupport}
-            style={({ pressed }) => [styles.menuItem, pressed && { backgroundColor: pressedBg }]}
+            style={({ pressed }) => [styles.menuItem, menuItemStyle, pressed && { backgroundColor: pressedBg }]}
           >
-            <View style={[styles.menuIcon, { backgroundColor: theme.colors.orangeLight }]}>
-              <HeadphonesIcon color={theme.colors.orange} size={18} />
+            <View style={[styles.menuIcon, menuIconStyle, { backgroundColor: theme.colors.orangeLight }]}>
+              <HeadphonesIcon color={theme.colors.orange} size={glyphSize} />
             </View>
             <View style={styles.menuInfo}>
               <AppText variant="bodyMedium">Customer support</AppText>
               <AppText variant="bodySmall" color={theme.colors.muted}>Chat with us on WhatsApp</AppText>
             </View>
-            <ChevronRightIcon />
+            <ChevronRightIcon size={responsive.scale(18)} />
           </Pressable>
         </View>
       </View>
 
       {/* ── About section ── */}
       <View style={styles.section}>
-        <AppText variant="label" color={theme.colors.muted} style={styles.sectionLabel}>
+        <AppText
+          variant="label"
+          color={theme.colors.muted}
+          style={[styles.sectionLabel, { fontSize: responsive.font(10) }]}
+          numberOfLines={1}>
           ABOUT
         </AppText>
         <View style={[styles.card, { backgroundColor: cardBg }]}>
-          <View style={styles.menuItem}>
-            <View style={[styles.menuIcon, { backgroundColor: subtleBg }]}>
-              <InfoIcon color={theme.colors.muted} size={18} />
+          <View style={[styles.menuItem, menuItemStyle]}>
+            <View style={[styles.menuIcon, menuIconStyle, { backgroundColor: subtleBg }]}>
+              <InfoIcon color={theme.colors.muted} size={glyphSize} />
             </View>
             <View style={styles.menuInfo}>
-              <AppText variant="bodyMedium">App version</AppText>
+              <AppText variant="bodyMedium" numberOfLines={1}>App version</AppText>
             </View>
-            <AppText variant="mono" color={theme.colors.muted}>{APP_VERSION}</AppText>
+            <AppText variant="mono" color={theme.colors.muted} numberOfLines={1}>{APP_VERSION}</AppText>
           </View>
         </View>
       </View>
@@ -247,31 +283,31 @@ export default function DriverSettingsScreen() {
         <View style={[styles.card, { backgroundColor: cardBg }]}>
           <Pressable
             onPress={handleLogout}
-            style={({ pressed }) => [styles.menuItem, pressed && { backgroundColor: pressedBg }]}
+            style={({ pressed }) => [styles.menuItem, menuItemStyle, pressed && { backgroundColor: pressedBg }]}
           >
-            <View style={[styles.menuIcon, { backgroundColor: subtleBg }]}>
-              <LogoutIcon color={isDark ? theme.colors.offWhite : theme.colors.black} size={18} />
+            <View style={[styles.menuIcon, menuIconStyle, { backgroundColor: subtleBg }]}>
+              <LogoutIcon color={isDark ? theme.colors.offWhite : theme.colors.black} size={glyphSize} />
             </View>
             <View style={styles.menuInfo}>
               <AppText variant="bodyMedium">Log out</AppText>
             </View>
-            <ChevronRightIcon />
+            <ChevronRightIcon size={responsive.scale(18)} />
           </Pressable>
 
-          <View style={[styles.menuDivider, { borderBottomColor: dividerColor }]} />
+          <View style={[styles.menuDivider, dividerInset, { borderBottomColor: dividerColor }]} />
 
           <Pressable
             onPress={handleDeleteAccount}
-            style={({ pressed }) => [styles.menuItem, pressed && { backgroundColor: pressedBg }]}
+            style={({ pressed }) => [styles.menuItem, menuItemStyle, pressed && { backgroundColor: pressedBg }]}
           >
-            <View style={[styles.menuIcon, { backgroundColor: theme.colors.dangerLight }]}>
-              <TrashIcon size={18} />
+            <View style={[styles.menuIcon, menuIconStyle, { backgroundColor: theme.colors.dangerLight }]}>
+              <TrashIcon size={glyphSize} />
             </View>
             <View style={styles.menuInfo}>
               <AppText variant="bodyMedium" color={theme.colors.danger}>Delete account</AppText>
               <AppText variant="bodySmall" color={theme.colors.muted}>Permanently remove your data</AppText>
             </View>
-            <ChevronRightIcon />
+            <ChevronRightIcon size={responsive.scale(18)} />
           </Pressable>
         </View>
       </View>
@@ -289,7 +325,7 @@ const styles = StyleSheet.create({
   container: {
     gap: 4,
     paddingTop: theme.spacing.lg,
-    paddingBottom: 40,
+    paddingBottom: theme.spacing.xxxl,
   },
 
   // Sections
@@ -298,7 +334,6 @@ const styles = StyleSheet.create({
     marginTop: 16,
   },
   sectionLabel: {
-    fontSize: 10,
     letterSpacing: 0.5,
     paddingHorizontal: 4,
   },
@@ -316,13 +351,9 @@ const styles = StyleSheet.create({
   menuItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
   },
   menuIcon: {
-    width: 36,
-    height: 36,
+    flexShrink: 0,
     borderRadius: theme.radii.xs,
     borderWidth: theme.borders.regular,
     borderColor: theme.colors.black,
@@ -331,12 +362,12 @@ const styles = StyleSheet.create({
   },
   menuInfo: {
     flex: 1,
+    minWidth: 0,
     gap: 2,
   },
   menuDivider: {
     height: 1,
     borderBottomWidth: 1,
-    marginLeft: 66,
   },
 
   // Footer

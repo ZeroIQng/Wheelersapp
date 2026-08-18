@@ -18,6 +18,7 @@ import { getDriverStats, getDriverEarnings, type DriverStatsResponse } from '@/l
 import { useDriverSession } from '@/lib/driver-session';
 import { useAppLocation } from '@/lib/location';
 import { useAppNotifications } from '@/lib/notifications';
+import { useResponsive } from '@/lib/responsive';
 import { useWalletOverview } from '@/lib/wallet-overview';
 import { theme } from '@/theme';
 
@@ -32,6 +33,7 @@ export default function DriverDashboardScreen() {
   const { overview } = useWalletOverview();
   const { permissionState, requestLocationAccess, currentLocation } = useAppLocation();
   const { permissionGranted, requestNotificationAccess } = useAppNotifications();
+  const responsive = useResponsive();
   const notificationPromptedRef = useRef(false);
 
   const [stats, setStats] = useState<DriverStatsResponse | null>(null);
@@ -129,8 +131,10 @@ export default function DriverDashboardScreen() {
       )}
 
       <Pressable style={styles.mapPressable}>
-        <MapMock height={220} showPulse variant="driverDashboard" />
-        <AppText variant="bodySmall" color={theme.colors.muted} style={styles.nearbyLabel}>
+        {/* A quarter of the viewport instead of a flat 220pt: the map stays a
+            map on a short phone and does not swallow a tablet. */}
+        <MapMock height={responsive.vh(26, 150, 300)} showPulse variant="driverDashboard" />
+        <AppText variant="bodySmall" color={theme.colors.muted} style={styles.nearbyLabel} numberOfLines={2}>
           {isOnline ? 'Waiting for ride requests nearby...' : 'Go online to see ride requests'}
         </AppText>
       </Pressable>
@@ -138,12 +142,18 @@ export default function DriverDashboardScreen() {
       <Pressable onPress={() => router.push('/driver/wallet' as Href)}>
         <AppCard backgroundColor={theme.colors.orangeLight} borderColor={theme.colors.orange} style={styles.walletCard}>
           <View style={styles.walletCopy}>
-            <AppText variant="h3">Driver wallet</AppText>
-            <AppText variant="bodySmall" color={theme.colors.muted}>
+            <AppText variant="h3" numberOfLines={1}>Driver wallet</AppText>
+            <AppText variant="bodySmall" color={theme.colors.muted} numberOfLines={2}>
               Balance, payouts, and recent transfers
             </AppText>
           </View>
-          <AppText variant="monoLarge" color={theme.colors.orange}>
+          <AppText
+            variant="monoLarge"
+            color={theme.colors.orange}
+            style={styles.walletBalance}
+            adjustsFontSizeToFit
+            minimumFontScale={0.6}
+            numberOfLines={1}>
             {formatNgn(balanceNgn)}
           </AppText>
         </AppCard>
@@ -160,8 +170,14 @@ export default function DriverDashboardScreen() {
         variant="ghost"
       />
 
-      <Pressable style={[styles.toggleButton, isOnline && styles.toggleButtonOffline]} onPress={handleToggleOnline}>
-        <AppText variant="label" color={theme.colors.offWhite}>
+      <Pressable
+        style={[
+          styles.toggleButton,
+          { minHeight: responsive.scale(52) },
+          isOnline && styles.toggleButtonOffline,
+        ]}
+        onPress={handleToggleOnline}>
+        <AppText variant="label" color={theme.colors.offWhite} numberOfLines={1}>
           {isOnline ? 'Go offline' : 'Go online'}
         </AppText>
       </Pressable>
@@ -205,11 +221,16 @@ const styles = StyleSheet.create({
   },
   walletCopy: {
     flex: 1,
+    minWidth: 0,
     gap: 2,
   },
+  walletBalance: {
+    flexShrink: 0,
+    maxWidth: '45%',
+  },
   toggleButton: {
-    minHeight: 52,
     borderRadius: theme.radii.sm,
+    paddingHorizontal: theme.spacing.md,
     borderWidth: theme.borders.thick,
     borderColor: theme.colors.orange,
     backgroundColor: theme.colors.orange,

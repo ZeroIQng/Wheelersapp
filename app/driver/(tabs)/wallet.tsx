@@ -15,6 +15,7 @@ import {
   type DriverEarningsResponse,
   type ProvisionVirtualAccountResponse,
 } from '@/lib/api';
+import { useResponsive } from '@/lib/responsive';
 import { useAppTheme } from '@/lib/theme-context';
 import { useWalletOverview } from '@/lib/wallet-overview';
 import { theme } from '@/theme';
@@ -68,6 +69,7 @@ export default function DriverWalletTabScreen() {
   const router = useRouter();
   const { getAccessToken } = useAuth();
   const { isDark } = useAppTheme();
+  const responsive = useResponsive();
   const { overview } = useWalletOverview();
   const [balanceVisible, setBalanceVisible] = useState(true);
   const [earnings, setEarnings] = useState<DriverEarningsResponse | null>(null);
@@ -114,46 +116,76 @@ export default function DriverWalletTabScreen() {
   };
 
   return (
-    <AppScreen scroll contentStyle={styles.container} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.colors.orange} colors={[theme.colors.orange]} />}>
+    <AppScreen
+      scroll
+      // The tab bar already reserves the bottom inset — claiming it here too
+      // would leave a dead strip above it on gesture-nav phones.
+      safeAreaEdges={['top', 'left', 'right']}
+      contentStyle={[styles.container, { gap: responsive.scale(16) }]}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.colors.orange} colors={[theme.colors.orange]} />}>
       {/* ── Balance card ── */}
-      <View style={styles.balanceCard}>
+      <View style={[styles.balanceCard, { padding: responsive.scale(24) }]}>
         <View style={styles.balanceHeader}>
-          <AppText variant="bodySmall" color="#9C948D">Available balance</AppText>
+          <AppText variant="bodySmall" color="#9C948D" numberOfLines={1}>Available balance</AppText>
           <Pressable onPress={() => setBalanceVisible(!balanceVisible)} hitSlop={12}>
-            <EyeIcon open={balanceVisible} size={18} />
+            <EyeIcon open={balanceVisible} size={responsive.scale(18)} />
           </Pressable>
         </View>
-        <AppText variant="display" color={theme.colors.offWhite}>
+        {/* Balances run to seven figures — shrink the digits rather than clip them. */}
+        <AppText
+          variant="display"
+          color={theme.colors.offWhite}
+          adjustsFontSizeToFit
+          minimumFontScale={0.6}
+          numberOfLines={1}>
           {balanceVisible ? formatNgn(balanceNgn) : 'NGN ****'}
         </AppText>
         {lockedNgn > 0 && (
-          <AppText variant="bodySmall" color="#9C948D">
+          <AppText variant="bodySmall" color="#9C948D" numberOfLines={1}>
             Locked: {balanceVisible ? formatNgn(lockedNgn) : '****'}
           </AppText>
         )}
       </View>
 
       {/* ── Virtual account (fund wallet) ── */}
-      <View style={[styles.accountCard, isDark && { backgroundColor: theme.colors.darkSurface }]}>
-        <AppText variant="label" color={theme.colors.muted} style={styles.accountLabel}>
+      <View
+        style={[
+          styles.accountCard,
+          { padding: responsive.scale(18) },
+          isDark && { backgroundColor: theme.colors.darkSurface },
+        ]}>
+        <AppText
+          variant="label"
+          color={theme.colors.muted}
+          style={[styles.accountLabel, { fontSize: responsive.font(10) }]}
+          numberOfLines={1}>
           Fund your wallet
         </AppText>
         {loadingAccount ? (
           <ActivityIndicator size="small" color={theme.colors.orange} style={{ paddingVertical: 12 }} />
         ) : account ? (
           <>
-            <View style={styles.accountRow}>
+            <View style={[styles.accountRow, { gap: responsive.scale(12) }]}>
               <View style={styles.accountInfo}>
-                <AppText variant="h2">{account.accountNumber}</AppText>
-                <AppText variant="bodySmall" color={theme.colors.muted}>
+                <AppText variant="h2" adjustsFontSizeToFit minimumFontScale={0.7} numberOfLines={1}>
+                  {account.accountNumber}
+                </AppText>
+                <AppText variant="bodySmall" color={theme.colors.muted} numberOfLines={2}>
                   {account.bankName} — {account.accountName}
                 </AppText>
               </View>
-              <Pressable onPress={handleCopy} style={styles.copyBtn} hitSlop={8}>
+              <Pressable
+                onPress={handleCopy}
+                style={[
+                  styles.copyBtn,
+                  { width: responsive.scale(40), height: responsive.scale(40) },
+                  copied && styles.copyBtnWide,
+                ]}
+                hitSlop={8}>
                 {copied ? (
-                  <AppText variant="bodySmall" color={theme.colors.orange}>Copied</AppText>
+                  <AppText variant="bodySmall" color={theme.colors.orange} numberOfLines={1}>Copied</AppText>
                 ) : (
-                  <CopyIcon />
+                  <CopyIcon size={responsive.scale(16)} />
                 )}
               </Pressable>
             </View>
@@ -170,31 +202,49 @@ export default function DriverWalletTabScreen() {
 
       {/* ── Withdraw button ── */}
       <Pressable
-        style={({ pressed }) => [styles.withdrawBtn, pressed && styles.btnPressed]}
+        style={({ pressed }) => [
+          styles.withdrawBtn,
+          { minHeight: responsive.scale(52) },
+          pressed && styles.btnPressed,
+        ]}
         onPress={() => router.push('/driver/withdraw' as Href)}
       >
-        <ArrowUpIcon size={18} />
-        <AppText variant="label" color={theme.colors.white}>Withdraw</AppText>
+        <ArrowUpIcon size={responsive.scale(18)} />
+        <AppText variant="label" color={theme.colors.white} numberOfLines={1}>Withdraw</AppText>
       </Pressable>
 
       {/* ── Earnings quick card ── */}
       <Pressable
         onPress={() => router.push('/driver/earnings' as Href)}
-        style={({ pressed }) => [styles.earningsCard, isDark && { backgroundColor: theme.colors.darkSurface }, pressed && styles.btnPressed]}
+        style={({ pressed }) => [
+          styles.earningsCard,
+          { padding: responsive.scale(20), gap: responsive.scale(12) },
+          isDark && { backgroundColor: theme.colors.darkSurface },
+          pressed && styles.btnPressed,
+        ]}
       >
         <View style={styles.earningsLeft}>
-          <AppText variant="bodySmall" color={theme.colors.muted}>
+          <AppText variant="bodySmall" color={theme.colors.muted} numberOfLines={1}>
             {loadingEarnings ? 'Loading...' : `Today's earnings`}
           </AppText>
-          <AppText variant="h1" color={theme.colors.orange}>
+          <AppText
+            variant="h1"
+            color={theme.colors.orange}
+            adjustsFontSizeToFit
+            minimumFontScale={0.65}
+            numberOfLines={1}>
             {loadingEarnings ? '--' : formatNgn(totalEarnings)}
           </AppText>
-          <AppText variant="bodySmall" color={theme.colors.muted}>
+          <AppText variant="bodySmall" color={theme.colors.muted} numberOfLines={1}>
             {loadingEarnings ? '' : `${rideCount} ride${rideCount !== 1 ? 's' : ''}`}
           </AppText>
         </View>
-        <View style={styles.earningsArrow}>
-          <Svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke={theme.colors.muted} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+        <View
+          style={[
+            styles.earningsArrow,
+            { width: responsive.scale(36), height: responsive.scale(36) },
+          ]}>
+          <Svg width={responsive.scale(20)} height={responsive.scale(20)} viewBox="0 0 24 24" fill="none" stroke={theme.colors.muted} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
             <Polyline points="9 18 15 12 9 6" />
           </Svg>
         </View>
@@ -207,7 +257,6 @@ export default function DriverWalletTabScreen() {
 
 const styles = StyleSheet.create({
   container: {
-    gap: 16,
     paddingTop: theme.spacing.lg,
   },
 
@@ -215,7 +264,6 @@ const styles = StyleSheet.create({
   balanceCard: {
     backgroundColor: theme.colors.black,
     borderRadius: theme.radii.lg,
-    padding: 24,
     gap: 6,
     borderWidth: theme.borders.thick,
     borderColor: theme.colors.black,
@@ -225,6 +273,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    gap: theme.spacing.sm,
     marginBottom: 4,
   },
 
@@ -232,7 +281,6 @@ const styles = StyleSheet.create({
   accountCard: {
     backgroundColor: theme.colors.white,
     borderRadius: theme.radii.md,
-    padding: 18,
     gap: 8,
     borderWidth: theme.borders.thick,
     borderColor: theme.colors.black,
@@ -250,17 +298,22 @@ const styles = StyleSheet.create({
   },
   accountInfo: {
     flex: 1,
+    minWidth: 0,
     gap: 2,
   },
   copyBtn: {
-    width: 40,
-    height: 40,
+    flexShrink: 0,
     borderRadius: theme.radii.xs,
     backgroundColor: theme.colors.orangeLight,
     borderWidth: theme.borders.regular,
     borderColor: theme.colors.black,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  // "Copied" is wider than the icon it replaces — let the box grow for it.
+  copyBtnWide: {
+    width: 'auto',
+    paddingHorizontal: theme.spacing.sm,
   },
 
   // Withdraw
@@ -269,7 +322,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    height: 52,
+    paddingHorizontal: theme.spacing.md,
     borderRadius: theme.radii.sm,
     backgroundColor: theme.colors.orange,
     borderWidth: theme.borders.thick,
@@ -287,18 +340,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: theme.colors.white,
     borderRadius: theme.radii.md,
-    padding: 20,
     borderWidth: theme.borders.thick,
     borderColor: theme.colors.black,
     ...theme.shadows.card,
   },
   earningsLeft: {
     flex: 1,
+    minWidth: 0,
     gap: 4,
   },
   earningsArrow: {
-    width: 36,
-    height: 36,
+    flexShrink: 0,
     borderRadius: theme.radii.xs,
     backgroundColor: theme.colors.offWhite,
     borderWidth: theme.borders.regular,

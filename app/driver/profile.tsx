@@ -8,6 +8,7 @@ import { AppText } from '@/components/app-text';
 import { getAccessTokenWithRetry } from '@/lib/access-token';
 import { getCurrentProfile, getDriverStats } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import { useResponsive } from '@/lib/responsive';
 import { useAppTheme } from '@/lib/theme-context';
 import { theme } from '@/theme';
 
@@ -74,6 +75,7 @@ export default function DriverProfileScreen() {
   const router = useRouter();
   const { isDark } = useAppTheme();
   const { getAccessToken } = useAuth();
+  const responsive = useResponsive();
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -121,16 +123,43 @@ export default function DriverProfileScreen() {
   const displayEmail = email || '—';
   const hasVehicle = vehicleMake || vehicleModel || vehiclePlate;
 
+  // Row metrics scale together so the divider stays aligned to the text column
+  // instead of the old hard-coded 66pt inset.
+  const iconSize = responsive.scale(36);
+  const rowGap = responsive.scale(14);
+  const rowPaddingH = responsive.scale(16);
+  const backSize = responsive.scale(40);
+  const infoIconStyle = { width: iconSize, height: iconSize };
+  const infoRowStyle = {
+    gap: rowGap,
+    paddingHorizontal: rowPaddingH,
+    paddingVertical: responsive.scale(16),
+  };
+  const dividerInset = { marginLeft: rowPaddingH + iconSize + rowGap };
+  const backBtnStyle = { width: backSize, height: backSize };
+  const avatarSize = responsive.scale(80);
+
+  const header = (
+    <View style={[styles.header, { gap: rowGap }]}>
+      <Pressable
+        onPress={() => router.back()}
+        hitSlop={12}
+        style={[styles.backBtn, backBtnStyle, isDark && { backgroundColor: theme.colors.darkSurface }]}>
+        <BackIcon size={responsive.scale(22)} />
+      </Pressable>
+      <AppText variant="h1" numberOfLines={1}>Profile</AppText>
+    </View>
+  );
+
   if (loading) {
     return (
       <AppScreen contentStyle={[styles.container, styles.centered]}>
-        <View style={styles.header}>
-          <Pressable onPress={() => router.back()} hitSlop={12} style={[styles.backBtn, isDark && { backgroundColor: theme.colors.darkSurface }]}>
-            <BackIcon />
-          </Pressable>
-          <AppText variant="h1">Profile</AppText>
-        </View>
-        <ActivityIndicator size="large" color={theme.colors.orange} style={{ marginTop: 60 }} />
+        {header}
+        <ActivityIndicator
+          size="large"
+          color={theme.colors.orange}
+          style={{ marginTop: responsive.vh(8, 32, 60) }}
+        />
       </AppScreen>
     );
   }
@@ -138,47 +167,56 @@ export default function DriverProfileScreen() {
   return (
     <AppScreen scroll contentStyle={styles.container} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.colors.orange} colors={[theme.colors.orange]} />}>
       {/* Header */}
-      <View style={styles.header}>
-        <Pressable onPress={() => router.back()} hitSlop={12} style={[styles.backBtn, isDark && { backgroundColor: theme.colors.darkSurface }]}>
-          <BackIcon />
-        </Pressable>
-        <AppText variant="h1">Profile</AppText>
-      </View>
+      {header}
 
       {/* Avatar + name */}
       <View style={styles.avatarSection}>
-        <View style={[styles.avatarCircle, isDark && { backgroundColor: theme.colors.darkSurfaceSoft }]}>
-          <AvatarIcon />
+        <View
+          style={[
+            styles.avatarCircle,
+            { width: avatarSize, height: avatarSize, borderRadius: avatarSize / 2 },
+            isDark && { backgroundColor: theme.colors.darkSurfaceSoft },
+          ]}>
+          <AvatarIcon size={responsive.scale(48)} />
         </View>
-        <AppText variant="h2">{displayName}</AppText>
-        <AppText variant="bodySmall" color={theme.colors.muted}>{displayEmail}</AppText>
+        <AppText variant="h2" numberOfLines={1}>{displayName}</AppText>
+        <AppText variant="bodySmall" color={theme.colors.muted} numberOfLines={1}>
+          {displayEmail}
+        </AppText>
       </View>
 
       {/* Personal info */}
       <View style={styles.section}>
-        <AppText variant="label" color={theme.colors.muted} style={styles.sectionLabel}>
+        <AppText
+          variant="label"
+          color={theme.colors.muted}
+          style={[styles.sectionLabel, { fontSize: responsive.font(10) }]}
+          numberOfLines={1}>
           PERSONAL INFO
         </AppText>
         <View style={[styles.card, { backgroundColor: cardBg }]}>
-          <View style={styles.infoRow}>
-            <View style={[styles.infoIcon, { backgroundColor: theme.colors.orangeLight }]}>
+          <View style={[styles.infoRow, infoRowStyle]}>
+            <View style={[styles.infoIcon, infoIconStyle, { backgroundColor: theme.colors.orangeLight }]}>
               <UserIcon />
             </View>
             <View style={styles.infoContent}>
-              <AppText variant="bodySmall" color={theme.colors.muted}>Full name</AppText>
-              <AppText variant="bodyMedium">{displayName}</AppText>
+              <AppText variant="bodySmall" color={theme.colors.muted} numberOfLines={1}>Full name</AppText>
+              <AppText variant="bodyMedium" numberOfLines={2}>{displayName}</AppText>
             </View>
           </View>
 
-          <View style={[styles.divider, isDark && { backgroundColor: theme.colors.darkBorder }]} />
+          <View style={[styles.divider, dividerInset, isDark && { backgroundColor: theme.colors.darkBorder }]} />
 
-          <View style={styles.infoRow}>
-            <View style={[styles.infoIcon, { backgroundColor: theme.colors.orangeLight }]}>
+          <View style={[styles.infoRow, infoRowStyle]}>
+            <View style={[styles.infoIcon, infoIconStyle, { backgroundColor: theme.colors.orangeLight }]}>
               <MailIcon />
             </View>
             <View style={styles.infoContent}>
-              <AppText variant="bodySmall" color={theme.colors.muted}>Email</AppText>
-              <AppText variant="bodyMedium">{displayEmail}</AppText>
+              <AppText variant="bodySmall" color={theme.colors.muted} numberOfLines={1}>Email</AppText>
+              {/* Long addresses shrink rather than push the row wider. */}
+              <AppText variant="bodyMedium" adjustsFontSizeToFit minimumFontScale={0.8} numberOfLines={1}>
+                {displayEmail}
+              </AppText>
             </View>
           </View>
         </View>
@@ -187,17 +225,21 @@ export default function DriverProfileScreen() {
       {/* Vehicle info */}
       {hasVehicle && (
         <View style={styles.section}>
-          <AppText variant="label" color={theme.colors.muted} style={styles.sectionLabel}>
+          <AppText
+          variant="label"
+          color={theme.colors.muted}
+          style={[styles.sectionLabel, { fontSize: responsive.font(10) }]}
+          numberOfLines={1}>
             VEHICLE INFO
           </AppText>
           <View style={[styles.card, { backgroundColor: cardBg }]}>
-            <View style={styles.infoRow}>
-              <View style={[styles.infoIcon, { backgroundColor: theme.colors.orangeLight }]}>
+            <View style={[styles.infoRow, infoRowStyle]}>
+              <View style={[styles.infoIcon, infoIconStyle, { backgroundColor: theme.colors.orangeLight }]}>
                 <CarIcon />
               </View>
               <View style={styles.infoContent}>
-                <AppText variant="bodySmall" color={theme.colors.muted}>Vehicle</AppText>
-                <AppText variant="bodyMedium">
+                <AppText variant="bodySmall" color={theme.colors.muted} numberOfLines={1}>Vehicle</AppText>
+                <AppText variant="bodyMedium" numberOfLines={2}>
                   {[vehicleYear, vehicleMake, vehicleModel].filter(Boolean).join(' ') || '—'}
                 </AppText>
               </View>
@@ -205,14 +247,14 @@ export default function DriverProfileScreen() {
 
             {vehiclePlate && (
               <>
-                <View style={[styles.divider, isDark && { backgroundColor: theme.colors.darkBorder }]} />
-                <View style={styles.infoRow}>
-                  <View style={[styles.infoIcon, { backgroundColor: theme.colors.orangeLight }]}>
+                <View style={[styles.divider, dividerInset, isDark && { backgroundColor: theme.colors.darkBorder }]} />
+                <View style={[styles.infoRow, infoRowStyle]}>
+                  <View style={[styles.infoIcon, infoIconStyle, { backgroundColor: theme.colors.orangeLight }]}>
                     <PlateIcon />
                   </View>
                   <View style={styles.infoContent}>
-                    <AppText variant="bodySmall" color={theme.colors.muted}>Plate number</AppText>
-                    <AppText variant="bodyMedium">{vehiclePlate}</AppText>
+                    <AppText variant="bodySmall" color={theme.colors.muted} numberOfLines={1}>Plate number</AppText>
+                    <AppText variant="bodyMedium" numberOfLines={1}>{vehiclePlate}</AppText>
                   </View>
                 </View>
               </>
@@ -228,21 +270,19 @@ const styles = StyleSheet.create({
   container: {
     gap: 4,
     paddingTop: theme.spacing.lg,
-    paddingBottom: 40,
+    paddingBottom: theme.spacing.xxxl,
   },
   centered: {
-    flex: 1,
+    flexGrow: 1,
   },
 
   // Header
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
   },
   backBtn: {
-    width: 40,
-    height: 40,
+    flexShrink: 0,
     borderRadius: theme.radii.xs,
     backgroundColor: theme.colors.white,
     alignItems: 'center',
@@ -260,9 +300,6 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   avatarCircle: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
     backgroundColor: theme.colors.orangeLight,
     borderWidth: theme.borders.thick,
     borderColor: theme.colors.black,
@@ -278,7 +315,6 @@ const styles = StyleSheet.create({
     marginTop: 20,
   },
   sectionLabel: {
-    fontSize: 10,
     letterSpacing: 0.5,
     paddingHorizontal: 4,
   },
@@ -296,13 +332,9 @@ const styles = StyleSheet.create({
   infoRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 16,
   },
   infoIcon: {
-    width: 36,
-    height: 36,
+    flexShrink: 0,
     borderRadius: theme.radii.xs,
     borderWidth: theme.borders.regular,
     borderColor: theme.colors.black,
@@ -311,11 +343,11 @@ const styles = StyleSheet.create({
   },
   infoContent: {
     flex: 1,
+    minWidth: 0,
     gap: 2,
   },
   divider: {
     height: 1,
     backgroundColor: theme.colors.borderLight,
-    marginLeft: 66,
   },
 });

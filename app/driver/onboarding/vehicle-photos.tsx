@@ -7,6 +7,7 @@ import { AppButton } from "@/components/app-button";
 import { AppScreen } from "@/components/app-screen";
 import { AppText } from "@/components/app-text";
 import { FlowHeader } from "@/components/flow-header";
+import { useResponsive } from "@/lib/responsive";
 import { theme } from "@/theme";
 import { useDriverOnboarding } from "@/lib/driver-onboarding";
 import { useAuth } from "@/lib/auth";
@@ -28,9 +29,20 @@ export default function VehiclePhotosScreen() {
   const router = useRouter();
   const { data, addVehiclePhoto, removeVehiclePhoto, submit, submitting } = useDriverOnboarding();
   const { getAccessToken } = useAuth();
+  const responsive = useResponsive();
   const photos = data.vehiclePhotos;
   const canAddMore = photos.length < MAX_PHOTOS;
   const isValid = photos.length >= MIN_PHOTOS;
+
+  // The grid is measured, not guessed: a fixed "31%" left a ragged right edge
+  // at some widths and gave tablets three enormous tiles. Derive the tile size
+  // from the real content width so the columns always fill the row exactly.
+  const GRID_GAP = theme.spacing.sm;
+  const columns = responsive.isTablet ? 4 : 3;
+  const contentWidth =
+    (responsive.isTablet ? Math.min(responsive.width, theme.layout.maxWidth) : responsive.width) -
+    responsive.gutter * 2;
+  const photoSize = Math.floor((contentWidth - GRID_GAP * (columns - 1)) / columns);
 
   async function takePhoto() {
     if (!canAddMore) return;
@@ -90,24 +102,32 @@ export default function VehiclePhotosScreen() {
         <AppText
           variant="bodyMedium"
           color={isValid ? theme.colors.green : theme.colors.orange}
+          numberOfLines={1}
         >
           {photos.length} / {MAX_PHOTOS} photos
         </AppText>
         {!isValid && (
-          <AppText variant="bodySmall" color={theme.colors.muted}>
+          <AppText variant="bodySmall" color={theme.colors.muted} numberOfLines={1}>
             (minimum {MIN_PHOTOS})
           </AppText>
         )}
       </View>
 
       {photos.length === 0 && (
-        <View style={styles.tipsBox}>
-          <AppText variant="label" color={theme.colors.black}>
+        <View
+          style={[
+            styles.tipsBox,
+            {
+              marginTop: responsive.isShort ? theme.spacing.lg : theme.spacing.xl,
+              padding: responsive.scale(16),
+            },
+          ]}>
+          <AppText variant="label" color={theme.colors.black} numberOfLines={1}>
             Suggested angles:
           </AppText>
           {PHOTO_TIPS.map((tip, i) => (
             <View key={tip} style={styles.tipRow}>
-              <AppText variant="bodySmall" color={theme.colors.muted}>
+              <AppText variant="bodySmall" color={theme.colors.muted} numberOfLines={1}>
                 {i + 1}. {tip}
               </AppText>
             </View>
@@ -116,16 +136,16 @@ export default function VehiclePhotosScreen() {
       )}
 
       {photos.length > 0 && (
-        <View style={styles.grid}>
+        <View style={[styles.grid, { gap: GRID_GAP }]}>
           {photos.map((uri, index) => (
-            <View key={`${uri}-${index}`} style={styles.photoCard}>
+            <View key={`${uri}-${index}`} style={[styles.photoCard, { width: photoSize }]}>
               <Image source={{ uri }} style={styles.photoImage} resizeMode="cover" />
               <Pressable
                 style={styles.removeButton}
                 onPress={() => handleRemove(index)}
                 hitSlop={8}
               >
-                <Ionicons name="close-circle" size={24} color={theme.colors.danger} />
+                <Ionicons name="close-circle" size={responsive.scale(24)} color={theme.colors.danger} />
               </Pressable>
             </View>
           ))}
@@ -133,17 +153,25 @@ export default function VehiclePhotosScreen() {
       )}
 
       {canAddMore && (
-        <View style={styles.addButtons}>
-          <Pressable onPress={takePhoto} style={styles.addButton}>
-            <Ionicons name="camera" size={24} color={theme.colors.orange} />
-            <AppText variant="label" color={theme.colors.orange}>
+        <View
+          style={[
+            styles.addButtons,
+            { marginTop: responsive.isShort ? theme.spacing.lg : theme.spacing.xl },
+          ]}>
+          <Pressable
+            onPress={takePhoto}
+            style={[styles.addButton, { paddingVertical: responsive.scale(16) }]}>
+            <Ionicons name="camera" size={responsive.scale(24)} color={theme.colors.orange} />
+            <AppText variant="label" color={theme.colors.orange} numberOfLines={1}>
               Take Photo
             </AppText>
           </Pressable>
 
-          <Pressable onPress={pickFromGallery} style={styles.addButton}>
-            <Ionicons name="images-outline" size={24} color={theme.colors.orange} />
-            <AppText variant="label" color={theme.colors.orange}>
+          <Pressable
+            onPress={pickFromGallery}
+            style={[styles.addButton, { paddingVertical: responsive.scale(16) }]}>
+            <Ionicons name="images-outline" size={responsive.scale(24)} color={theme.colors.orange} />
+            <AppText variant="label" color={theme.colors.orange} numberOfLines={1}>
               Gallery
             </AppText>
           </Pressable>
@@ -179,12 +207,11 @@ const styles = StyleSheet.create({
   counterRow: {
     flexDirection: "row",
     alignItems: "center",
+    flexWrap: "wrap",
     gap: theme.spacing.sm,
     marginTop: theme.spacing.lg,
   },
   tipsBox: {
-    marginTop: theme.spacing.xl,
-    padding: theme.spacing.lg,
     borderRadius: theme.radius.md,
     backgroundColor: theme.colors.orangeLight,
     borderWidth: theme.borders.regular,
@@ -197,11 +224,9 @@ const styles = StyleSheet.create({
   grid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: theme.spacing.sm,
     marginTop: theme.spacing.lg,
   },
   photoCard: {
-    width: "31%",
     aspectRatio: 1,
     borderRadius: theme.radius.sm,
     borderWidth: theme.borders.thick,
@@ -222,15 +247,18 @@ const styles = StyleSheet.create({
   },
   addButtons: {
     flexDirection: "row",
-    gap: theme.spacing.lg,
-    marginTop: theme.spacing.xl,
+    gap: theme.spacing.md,
     justifyContent: "center",
   },
   addButton: {
+    // Share the row evenly instead of sizing to their labels — two fixed-width
+    // buttons overflowed a 320pt screen.
+    flex: 1,
+    minWidth: 0,
     alignItems: "center",
+    justifyContent: "center",
     gap: theme.spacing.xs,
-    paddingVertical: theme.spacing.lg,
-    paddingHorizontal: theme.spacing.xl,
+    paddingHorizontal: theme.spacing.sm,
     borderWidth: theme.borders.thick,
     borderStyle: "dashed",
     borderColor: theme.colors.orange,
@@ -238,7 +266,9 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.orangeLight,
   },
   spacer: {
-    flex: 1,
-    minHeight: theme.spacing.xxxl,
+    // flexGrow, not flex: inside a ScrollView's content container `flex: 1`
+    // collapses the spacer instead of pushing the button to the bottom.
+    flexGrow: 1,
+    minHeight: theme.spacing.xxl,
   },
 });

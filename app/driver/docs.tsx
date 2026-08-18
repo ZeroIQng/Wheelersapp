@@ -17,9 +17,9 @@ export default function DriverDocsScreen() {
       <DecorativeBackground motif="docs" />
       <View style={styles.headerRow}>
         <BackArrow />
-        <View>
-          <AppText variant="screenTitle">Driver Docs</AppText>
-          <AppText variant="bodySmall" color={theme.colors.muted}>
+        <View style={styles.headerCopy}>
+          <AppText variant="screenTitle" numberOfLines={1}>Driver Docs</AppText>
+          <AppText variant="bodySmall" color={theme.colors.muted} numberOfLines={2}>
             Upload once. Drive forever.
           </AppText>
         </View>
@@ -46,6 +46,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: theme.spacing.md,
+  },
+  headerCopy: {
+    flex: 1,
+    minWidth: 0,
   },
   section: {
     gap: theme.spacing.sm,

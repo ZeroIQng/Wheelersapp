@@ -3,6 +3,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Platform, Pressable, StyleSheet, View } from 'react-native';
 import MapView, { Circle, PROVIDER_GOOGLE } from 'react-native-maps';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/app-text';
 import { useAuth } from '@/lib/auth';
@@ -12,6 +13,7 @@ import { useDriverSession } from '@/lib/driver-session';
 import { useAppLocation } from '@/lib/location';
 import { useAppNotifications } from '@/lib/notifications';
 import { useQuestBadge } from '@/lib/quest-badge-context';
+import { useResponsive } from '@/lib/responsive';
 import { theme } from '@/theme';
 
 function countCompletedQuests(todayRides: number, todayEarnings: number, totalRides: number, rating: number): number {
@@ -42,6 +44,8 @@ export default function DriverHomeScreen() {
   const { permissionState, requestLocationAccess, currentLocation } = useAppLocation();
   const { permissionGranted, requestNotificationAccess } = useAppNotifications();
   const { reportCompletedCount } = useQuestBadge();
+  const insets = useSafeAreaInsets();
+  const responsive = useResponsive();
   const notificationPromptedRef = useRef(false);
   const mapRef = useRef<MapView>(null);
 
@@ -160,7 +164,15 @@ export default function DriverHomeScreen() {
       </MapView>
 
       {/* Top status bar overlay */}
-      <View style={styles.topOverlay}>
+      <View
+        style={[
+          styles.topOverlay,
+          {
+            top: insets.top + responsive.scale(12),
+            left: responsive.gutter,
+            right: responsive.gutter,
+          },
+        ]}>
         <View style={[styles.statusChip, isOnline ? styles.statusOnline : styles.statusOffline]}>
           <View style={[styles.statusDot, { backgroundColor: isOnline ? theme.colors.green : theme.colors.mutedLight }]} />
           <AppText variant="label" color={isOnline ? theme.colors.green : theme.colors.muted}>
@@ -170,22 +182,42 @@ export default function DriverHomeScreen() {
       </View>
 
       {/* Bottom card overlay */}
-      <View style={styles.bottomOverlay}>
+      <View
+        style={[
+          styles.bottomOverlay,
+          {
+            bottom: Math.max(insets.bottom, responsive.scale(12)),
+            left: responsive.gutter,
+            right: responsive.gutter,
+            gap: responsive.scale(12),
+          },
+        ]}>
         {/* Metrics row */}
-        <View style={styles.metricsCard}>
+        <View style={[styles.metricsCard, { paddingVertical: responsive.scale(14) }]}>
           <View style={styles.metricItem}>
-            <AppText variant="bodySmall" color={theme.colors.muted}>Today</AppText>
-            <AppText variant="h3" color={theme.colors.orange}>{formatNgn(todayEarnings)}</AppText>
+            <AppText variant="bodySmall" color={theme.colors.muted} numberOfLines={1}>Today</AppText>
+            <AppText
+              variant="h3"
+              color={theme.colors.orange}
+              adjustsFontSizeToFit
+              minimumFontScale={0.7}
+              numberOfLines={1}>
+              {formatNgn(todayEarnings)}
+            </AppText>
           </View>
           <View style={styles.metricDivider} />
           <View style={styles.metricItem}>
-            <AppText variant="bodySmall" color={theme.colors.muted}>Rating</AppText>
-            <AppText variant="h3">{stats ? stats.rating.toFixed(1) : '--'}</AppText>
+            <AppText variant="bodySmall" color={theme.colors.muted} numberOfLines={1}>Rating</AppText>
+            <AppText variant="h3" adjustsFontSizeToFit minimumFontScale={0.7} numberOfLines={1}>
+              {stats ? stats.rating.toFixed(1) : '--'}
+            </AppText>
           </View>
           <View style={styles.metricDivider} />
           <View style={styles.metricItem}>
-            <AppText variant="bodySmall" color={theme.colors.muted}>Rides</AppText>
-            <AppText variant="h3">{stats ? String(stats.totalRides) : '--'}</AppText>
+            <AppText variant="bodySmall" color={theme.colors.muted} numberOfLines={1}>Rides</AppText>
+            <AppText variant="h3" adjustsFontSizeToFit minimumFontScale={0.7} numberOfLines={1}>
+              {stats ? String(stats.totalRides) : '--'}
+            </AppText>
           </View>
         </View>
 
@@ -194,22 +226,23 @@ export default function DriverHomeScreen() {
           onPress={handleToggleOnline}
           style={({ pressed }) => [
             styles.toggleBtn,
+            { minHeight: responsive.scale(52) },
             isOnline ? styles.toggleBtnOffline : styles.toggleBtnOnline,
             pressed && styles.toggleBtnPressed,
           ]}
         >
-          <AppText variant="label" color={theme.colors.white}>
+          <AppText variant="label" color={theme.colors.white} numberOfLines={1}>
             {isOnline ? 'Go Offline' : 'Go Online'}
           </AppText>
         </Pressable>
 
-        {!isOnline && (
-          <AppText variant="bodySmall" color={theme.colors.muted} style={styles.hint}>
+        {!responsive.isShort && !isOnline && (
+          <AppText variant="bodySmall" color={theme.colors.muted} style={styles.hint} numberOfLines={2}>
             Go online to start accepting ride requests
           </AppText>
         )}
-        {isOnline && (
-          <AppText variant="bodySmall" color={theme.colors.green} style={styles.hint}>
+        {!responsive.isShort && isOnline && (
+          <AppText variant="bodySmall" color={theme.colors.green} style={styles.hint} numberOfLines={2}>
             Waiting for ride requests nearby...
           </AppText>
         )}
@@ -224,12 +257,9 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.mapBase,
   },
 
-  // Top overlay
+  // Top overlay — position comes from safe-area insets at render time
   topOverlay: {
     position: 'absolute',
-    top: Platform.OS === 'ios' ? 60 : 44,
-    left: 20,
-    right: 20,
     flexDirection: 'row',
     justifyContent: 'flex-start',
   },
@@ -256,19 +286,14 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
 
-  // Bottom overlay
+  // Bottom overlay — position comes from safe-area insets at render time
   bottomOverlay: {
     position: 'absolute',
-    bottom: Platform.OS === 'ios' ? 100 : 80,
-    left: 16,
-    right: 16,
-    gap: 12,
   },
   metricsCard: {
     flexDirection: 'row',
     backgroundColor: theme.colors.white,
     borderRadius: theme.radii.md,
-    paddingVertical: 16,
     paddingHorizontal: 8,
     alignItems: 'center',
     borderWidth: theme.borders.thick,
@@ -277,8 +302,10 @@ const styles = StyleSheet.create({
   },
   metricItem: {
     flex: 1,
+    minWidth: 0,
     alignItems: 'center',
     gap: 4,
+    paddingHorizontal: 2,
   },
   metricDivider: {
     width: 1,
@@ -288,7 +315,6 @@ const styles = StyleSheet.create({
 
   // Toggle button
   toggleBtn: {
-    minHeight: 52,
     borderRadius: theme.radii.sm,
     alignItems: 'center',
     justifyContent: 'center',

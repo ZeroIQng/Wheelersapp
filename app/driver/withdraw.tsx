@@ -4,18 +4,19 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
-  KeyboardAvoidingView,
   Modal,
-  Platform,
   Pressable,
   StyleSheet,
   TextInput,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Line, Path, Polyline } from 'react-native-svg';
 
 import { AppScreen } from '@/components/app-screen';
 import { AppText } from '@/components/app-text';
+import { useKeyboardHeight } from '@/hooks/use-keyboard';
+import { useResponsive } from '@/lib/responsive';
 import { getAccessTokenWithRetry } from '@/lib/access-token';
 import {
   createWalletWithdrawal,
@@ -31,6 +32,11 @@ import { theme } from '@/theme';
 function formatNgn(amount: number): string {
   return `NGN ${Math.round(amount).toLocaleString('en-NG')}`;
 }
+
+// Mirrors MIN_WITHDRAWAL_NGN on the backend — the payout provider refuses
+// anything smaller. Checked here too so the driver is told before they get to
+// the confirm step rather than after the request round-trips.
+const MIN_WITHDRAWAL_NGN = 5000;
 
 // ── Icons ─────────────────────────────────────────────
 function BackIcon({ size = 22 }: { size?: number }) {
@@ -90,6 +96,9 @@ export default function DriverWithdrawScreen() {
   const { isDark } = useAppTheme();
   const { getAccessToken } = useAuth();
   const { overview } = useWalletOverview();
+  const insets = useSafeAreaInsets();
+  const responsive = useResponsive();
+  const keyboardHeight = useKeyboardHeight();
   const balanceNgn = overview?.balanceNgn ?? 0;
 
   const [step, setStep] = useState<Step>('bank');
@@ -170,6 +179,13 @@ export default function DriverWithdrawScreen() {
       Alert.alert('Invalid', 'Please enter a valid amount');
       return;
     }
+    if (numAmount < MIN_WITHDRAWAL_NGN) {
+      Alert.alert(
+        'Amount too low',
+        `The minimum withdrawal is ${formatNgn(MIN_WITHDRAWAL_NGN)}.`,
+      );
+      return;
+    }
     if (numAmount > balanceNgn) {
       Alert.alert('Insufficient balance', `Your available balance is ${formatNgn(balanceNgn)}`);
       return;
@@ -227,23 +243,20 @@ export default function DriverWithdrawScreen() {
   }[step];
 
   return (
-    <AppScreen contentStyle={styles.container}>
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
+    <AppScreen scroll contentStyle={styles.container} keyboardOffset={theme.spacing.lg}>
+      <View style={styles.flex}>
         {/* Header */}
         <View style={styles.header}>
           <Pressable onPress={handleBack} hitSlop={12} style={[styles.backBtn, isDark && { backgroundColor: theme.colors.darkSurface }]}>
             <BackIcon />
           </Pressable>
-          <AppText variant="h1">Withdraw</AppText>
+          <AppText variant="h1" numberOfLines={1} style={styles.flex}>Withdraw</AppText>
         </View>
 
-        {/* Step indicator */}
+        {/* Step indicator — the connectors flex so four steps fit any width */}
         <View style={styles.stepRow}>
           {(['bank', 'account', 'amount', 'confirm'] as Step[]).map((s, i) => (
-            <View key={s} style={styles.stepItemWrap}>
+            <View key={s} style={[styles.stepItemWrap, i < 3 && styles.stepItemWrapGrow]}>
               <View style={[
                 styles.stepDot,
                 s === step && styles.stepDotActive,
@@ -257,7 +270,7 @@ export default function DriverWithdrawScreen() {
           ))}
         </View>
 
-        <AppText variant="h2" style={styles.stepTitle}>{stepTitle}</AppText>
+        <AppText variant="h2" style={styles.stepTitle} numberOfLines={2}>{stepTitle}</AppText>
 
         {/* ── Step: Select Bank ── */}
         {step === 'bank' && (
@@ -271,6 +284,7 @@ export default function DriverWithdrawScreen() {
                 variant="body"
                 color={selectedBank ? (isDark ? theme.colors.offWhite : theme.colors.black) : theme.colors.muted}
                 style={styles.selectText}
+                numberOfLines={2}
               >
                 {selectedBank ? selectedBank.name : 'Choose your bank'}
               </AppText>
@@ -302,7 +316,11 @@ export default function DriverWithdrawScreen() {
               </AppText>
               <TextInput
                 ref={accountRef}
-                style={[styles.input, isDark && { color: theme.colors.offWhite }]}
+                style={[
+                  styles.input,
+                  { fontSize: responsive.font(18), lineHeight: responsive.font(24) },
+                  isDark && { color: theme.colors.offWhite },
+                ]}
                 value={accountNumber}
                 onChangeText={(t) => setAccountNumber(t.replace(/\D/g, '').slice(0, 10))}
                 placeholder="0123456789"
@@ -348,7 +366,12 @@ export default function DriverWithdrawScreen() {
               </AppText>
               <TextInput
                 ref={amountRef}
-                style={[styles.input, styles.amountInput, isDark && { color: theme.colors.offWhite }]}
+                style={[
+                  styles.input,
+                  styles.amountInput,
+                  { fontSize: responsive.font(28), lineHeight: responsive.font(36) },
+                  isDark && { color: theme.colors.offWhite },
+                ]}
                 value={amount}
                 onChangeText={(t) => setAmount(t.replace(/[^0-9.]/g, ''))}
                 placeholder="0.00"
@@ -360,6 +383,9 @@ export default function DriverWithdrawScreen() {
 
             <AppText variant="bodySmall" color={theme.colors.muted}>
               Available: {formatNgn(balanceNgn)}
+            </AppText>
+            <AppText variant="bodySmall" color={theme.colors.muted}>
+              Minimum withdrawal: {formatNgn(MIN_WITHDRAWAL_NGN)}
             </AppText>
 
             {parseFloat(amount) > 0 && (
@@ -378,23 +404,37 @@ export default function DriverWithdrawScreen() {
           <View style={styles.stepContent}>
             <View style={[styles.confirmCard, isDark && { backgroundColor: theme.colors.darkSurface }]}>
               <View style={styles.confirmRow}>
-                <AppText variant="bodySmall" color={theme.colors.muted}>Bank</AppText>
-                <AppText variant="bodyMedium">{selectedBank?.name}</AppText>
+                <AppText variant="bodySmall" color={theme.colors.muted} style={styles.confirmLabel}>Bank</AppText>
+                <AppText variant="bodyMedium" style={styles.confirmValue} numberOfLines={2}>
+                  {selectedBank?.name}
+                </AppText>
               </View>
               <View style={styles.confirmDivider} />
               <View style={styles.confirmRow}>
-                <AppText variant="bodySmall" color={theme.colors.muted}>Account</AppText>
-                <AppText variant="bodyMedium">{accountNumber}</AppText>
+                <AppText variant="bodySmall" color={theme.colors.muted} style={styles.confirmLabel}>Account</AppText>
+                <AppText variant="bodyMedium" style={styles.confirmValue} numberOfLines={1}>
+                  {accountNumber}
+                </AppText>
               </View>
               <View style={styles.confirmDivider} />
               <View style={styles.confirmRow}>
-                <AppText variant="bodySmall" color={theme.colors.muted}>Name</AppText>
-                <AppText variant="bodyMedium">{accountName}</AppText>
+                <AppText variant="bodySmall" color={theme.colors.muted} style={styles.confirmLabel}>Name</AppText>
+                <AppText variant="bodyMedium" style={styles.confirmValue} numberOfLines={2}>
+                  {accountName}
+                </AppText>
               </View>
               <View style={styles.confirmDivider} />
               <View style={styles.confirmRow}>
-                <AppText variant="bodySmall" color={theme.colors.muted}>Amount</AppText>
-                <AppText variant="h2" color={theme.colors.orange}>{formatNgn(parseFloat(amount))}</AppText>
+                <AppText variant="bodySmall" color={theme.colors.muted} style={styles.confirmLabel}>Amount</AppText>
+                <AppText
+                  variant="h2"
+                  color={theme.colors.orange}
+                  style={styles.confirmValue}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.7}
+                  numberOfLines={1}>
+                  {formatNgn(parseFloat(amount))}
+                </AppText>
               </View>
             </View>
 
@@ -411,12 +451,22 @@ export default function DriverWithdrawScreen() {
             </Pressable>
           </View>
         )}
-      </KeyboardAvoidingView>
+      </View>
 
       {/* ── Bank selection modal ── */}
-      <Modal visible={showBankModal} animationType="slide" transparent>
+      <Modal visible={showBankModal} animationType="slide" transparent onRequestClose={() => setShowBankModal(false)}>
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, isDark && { backgroundColor: theme.colors.black }]}>
+          <View
+            style={[
+              styles.modalContent,
+              isDark && { backgroundColor: theme.colors.black },
+              {
+                // Leave room for the keyboard so the search results stay visible.
+                maxHeight: responsive.height - keyboardHeight - insets.top - responsive.scale(40),
+                paddingBottom: keyboardHeight > 0 ? theme.spacing.md : Math.max(insets.bottom, 20),
+                marginBottom: keyboardHeight,
+              },
+            ]}>
             <View style={styles.modalHeader}>
               <AppText variant="h2">Select bank</AppText>
               <Pressable onPress={() => setShowBankModal(false)} hitSlop={12}>
@@ -444,6 +494,8 @@ export default function DriverWithdrawScreen() {
                 data={filteredBanks}
                 keyExtractor={(item, index) => getBankId(item) || String(index)}
                 showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+                keyboardDismissMode="on-drag"
                 nestedScrollEnabled
                 ListEmptyComponent={
                   <AppText variant="body" color={theme.colors.muted} style={{ textAlign: 'center', marginTop: 30 }}>
@@ -462,7 +514,7 @@ export default function DriverWithdrawScreen() {
                     <View style={styles.bankIconWrap}>
                       <BankIcon size={18} />
                     </View>
-                    <AppText variant="body" style={styles.bankName}>{item.name}</AppText>
+                    <AppText variant="body" style={styles.bankName} numberOfLines={2}>{item.name}</AppText>
                     {selectedBank && getBankId(selectedBank) === getBankId(item) && <CheckIcon />}
                   </Pressable>
                 )}
@@ -507,11 +559,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 24,
-    paddingHorizontal: 20,
+    paddingHorizontal: 8,
   },
   stepItemWrap: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  stepItemWrapGrow: {
+    flex: 1,
   },
   stepDot: {
     width: 10,
@@ -531,7 +586,8 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.orange,
   },
   stepLine: {
-    width: 60,
+    flex: 1,
+    minWidth: 16,
     height: 2,
     backgroundColor: theme.colors.borderLight,
     marginHorizontal: 4,
@@ -639,7 +695,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    gap: theme.spacing.md,
     paddingVertical: 14,
+  },
+  confirmLabel: {
+    flexShrink: 0,
+  },
+  confirmValue: {
+    flex: 1,
+    textAlign: 'right',
   },
   confirmDivider: {
     height: 1,
@@ -666,8 +730,6 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.offWhite,
     borderTopLeftRadius: theme.radii.xl,
     borderTopRightRadius: theme.radii.xl,
-    maxHeight: '80%',
-    paddingBottom: Platform.OS === 'ios' ? 34 : 20,
     borderWidth: theme.borders.thick,
     borderBottomWidth: 0,
     borderColor: theme.colors.black,

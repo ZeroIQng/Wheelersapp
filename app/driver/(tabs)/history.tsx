@@ -12,6 +12,7 @@ import {
   type DriverHistoryRide,
   type WalletTransaction,
 } from '@/lib/api';
+import { useResponsive } from '@/lib/responsive';
 import { useAppTheme } from '@/lib/theme-context';
 import { theme } from '@/theme';
 
@@ -48,6 +49,7 @@ function statusColor(status: string): string {
 export default function DriverHistoryScreen() {
   const { getAccessToken } = useAuth();
   const { isDark } = useAppTheme();
+  const responsive = useResponsive();
   const [activeTab, setActiveTab] = useState<Tab>('rides');
   const [rides, setRides] = useState<DriverHistoryRide[]>([]);
   const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
@@ -86,29 +88,40 @@ export default function DriverHistoryScreen() {
   const loading = activeTab === 'rides' ? loadingRides : loadingTxns;
 
   return (
-    <AppScreen scroll contentStyle={styles.container} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.colors.orange} colors={[theme.colors.orange]} />}>
-      <AppText variant="h1">History</AppText>
+    <AppScreen
+      scroll
+      // The tab bar owns the bottom inset; claiming it again would leave a gap.
+      safeAreaEdges={['top', 'left', 'right']}
+      contentStyle={[styles.container, { gap: responsive.scale(16) }]}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.colors.orange} colors={[theme.colors.orange]} />}>
+      <AppText variant="h1" numberOfLines={1}>History</AppText>
 
       {/* Tab switcher */}
       <View style={[styles.tabs, isDark && { backgroundColor: theme.colors.darkSurface, borderColor: theme.colors.darkBorder }]}>
         <Pressable
           onPress={() => setActiveTab('rides')}
-          style={[styles.tab, activeTab === 'rides' && styles.tabActive]}
+          style={[styles.tab, { minHeight: responsive.scale(40) }, activeTab === 'rides' && styles.tabActive]}
         >
           <AppText
             variant="label"
             color={activeTab === 'rides' ? theme.colors.white : theme.colors.muted}
+            adjustsFontSizeToFit
+            minimumFontScale={0.8}
+            numberOfLines={1}
           >
             Rides
           </AppText>
         </Pressable>
         <Pressable
           onPress={() => setActiveTab('transactions')}
-          style={[styles.tab, activeTab === 'transactions' && styles.tabActive]}
+          style={[styles.tab, { minHeight: responsive.scale(40) }, activeTab === 'transactions' && styles.tabActive]}
         >
           <AppText
             variant="label"
             color={activeTab === 'transactions' ? theme.colors.white : theme.colors.muted}
+            adjustsFontSizeToFit
+            minimumFontScale={0.8}
+            numberOfLines={1}
           >
             Transactions
           </AppText>
@@ -116,12 +129,12 @@ export default function DriverHistoryScreen() {
       </View>
 
       {loading ? (
-        <View style={styles.loaderWrap}>
+        <View style={[styles.loaderWrap, { paddingVertical: responsive.vh(8, 32, 60) }]}>
           <ActivityIndicator size="large" color={theme.colors.orange} />
         </View>
       ) : activeTab === 'rides' ? (
         rides.length === 0 ? (
-          <View style={styles.emptyWrap}>
+          <View style={[styles.emptyWrap, { paddingVertical: responsive.vh(6, 28, 48) }]}>
             <AppText variant="body" color={theme.colors.muted} style={styles.emptyText}>
               No rides yet. Go online to start accepting ride requests.
             </AppText>
@@ -145,18 +158,20 @@ export default function DriverHistoryScreen() {
                     <AppText
                       variant="mono"
                       color={ride.status === 'COMPLETED' ? theme.colors.green : theme.colors.muted}
+                      style={styles.rowAmount}
+                      numberOfLines={1}
                     >
                       {formatNgn(fare)}
                     </AppText>
                   </View>
                   <View style={styles.rideBottom}>
-                    <AppText variant="bodySmall" color={theme.colors.muted}>
+                    <AppText variant="bodySmall" color={theme.colors.muted} numberOfLines={1}>
                       {formatDate(date)}
                     </AppText>
                     <View
                       style={[styles.dot, { backgroundColor: statusColor(ride.status) }]}
                     />
-                    <AppText variant="bodySmall" color={statusColor(ride.status)}>
+                    <AppText variant="bodySmall" color={statusColor(ride.status)} numberOfLines={1}>
                       {ride.status.replace(/_/g, ' ')}
                     </AppText>
                   </View>
@@ -166,7 +181,7 @@ export default function DriverHistoryScreen() {
           </View>
         )
       ) : transactions.length === 0 ? (
-        <View style={styles.emptyWrap}>
+        <View style={[styles.emptyWrap, { paddingVertical: responsive.vh(6, 28, 48) }]}>
           <AppText variant="body" color={theme.colors.muted} style={styles.emptyText}>
             No transactions yet.
           </AppText>
@@ -178,22 +193,29 @@ export default function DriverHistoryScreen() {
             return (
               <AppCard key={entry.id} style={styles.txnCard}>
                 <View style={styles.txnRow}>
-                  <View style={[styles.txnIcon, isCredit ? styles.txnIconCredit : styles.txnIconDebit]}>
+                  <View
+                    style={[
+                      styles.txnIcon,
+                      { width: responsive.scale(36), height: responsive.scale(36) },
+                      isCredit ? styles.txnIconCredit : styles.txnIconDebit,
+                    ]}>
                     <AppText variant="label" color={isCredit ? theme.colors.green : theme.colors.danger}>
                       {isCredit ? '+' : '-'}
                     </AppText>
                   </View>
                   <View style={styles.txnInfo}>
-                    <AppText variant="bodyMedium">
+                    <AppText variant="bodyMedium" numberOfLines={2}>
                       {entry.type.replace(/_/g, ' ')}
                     </AppText>
-                    <AppText variant="bodySmall" color={theme.colors.muted}>
+                    <AppText variant="bodySmall" color={theme.colors.muted} numberOfLines={1}>
                       {formatDate(entry.createdAt)}
                     </AppText>
                   </View>
                   <AppText
                     variant="mono"
                     color={isCredit ? theme.colors.green : theme.colors.danger}
+                    style={styles.rowAmount}
+                    numberOfLines={1}
                   >
                     {isCredit ? '+' : '-'}{formatNgn(Math.abs(entry.amountNgn))}
                   </AppText>
@@ -209,7 +231,6 @@ export default function DriverHistoryScreen() {
 
 const styles = StyleSheet.create({
   container: {
-    gap: 16,
     paddingTop: theme.spacing.lg,
   },
 
@@ -225,9 +246,11 @@ const styles = StyleSheet.create({
   },
   tab: {
     flex: 1,
+    minWidth: 0,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 10,
+    paddingVertical: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.xs,
     borderRadius: theme.radii.xs,
   },
   tabActive: {
@@ -236,16 +259,16 @@ const styles = StyleSheet.create({
 
   // Loader & empty
   loaderWrap: {
-    paddingVertical: 60,
     alignItems: 'center',
   },
   emptyWrap: {
-    paddingVertical: 48,
     alignItems: 'center',
   },
   emptyText: {
     textAlign: 'center',
-    maxWidth: 240,
+    // Percentage rather than a fixed 240pt so the copy stays a comfortable
+    // measure on a 320pt phone and on a tablet alike.
+    maxWidth: '70%',
   },
 
   // List
@@ -265,11 +288,17 @@ const styles = StyleSheet.create({
   },
   rideInfo: {
     flex: 1,
+    minWidth: 0,
     gap: 2,
+  },
+  // Amounts must never be truncated to make room for the label beside them.
+  rowAmount: {
+    flexShrink: 0,
   },
   rideBottom: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexWrap: 'wrap',
     gap: 8,
   },
   dot: {
@@ -288,8 +317,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   txnIcon: {
-    width: 36,
-    height: 36,
+    flexShrink: 0,
     borderRadius: theme.radii.xs,
     borderWidth: theme.borders.regular,
     borderColor: theme.colors.black,
@@ -304,6 +332,7 @@ const styles = StyleSheet.create({
   },
   txnInfo: {
     flex: 1,
+    minWidth: 0,
     gap: 2,
   },
 });

@@ -2,8 +2,8 @@ import { Href, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Linking, Pressable, StyleSheet, View } from 'react-native';
-import { Marker, Polyline } from 'react-native-maps';
 import type MapView from 'react-native-maps';
+import { Marker, Polyline } from 'react-native-maps';
 
 import { AppButton } from '@/components/app-button';
 import { AppCard } from '@/components/app-card';
@@ -13,6 +13,7 @@ import { GoogleMapView } from '@/components/GoogleMapView';
 import { TripProgressBar } from '@/components/TripProgressBar';
 import { useDriverSession } from '@/lib/driver-session';
 import { useAppLocation } from '@/lib/location';
+import { useResponsive } from '@/lib/responsive';
 import { theme } from '@/theme';
 
 function formatNgn(amount: number): string {
@@ -31,6 +32,7 @@ export default function DriverActiveTripScreen() {
   const router = useRouter();
   const { session, endTrip, sendGps } = useDriverSession();
   const { currentLocation } = useAppLocation();
+  const responsive = useResponsive();
   const ride = session.currentRide;
 
   const mapRef = useRef<MapView>(null);
@@ -114,10 +116,12 @@ export default function DriverActiveTripScreen() {
   };
 
   return (
-    <AppScreen backgroundColor={theme.colors.offWhite} contentStyle={styles.container}>
+    <AppScreen backgroundColor={theme.colors.offWhite} scroll contentStyle={styles.container}>
       <StatusBar style="dark" backgroundColor={theme.colors.mapBase} />
       <View style={styles.mapWrap}>
-        <View style={styles.mapContainer}>
+        {/* Height scales with the screen so the trip stats and "End ride"
+            button stay reachable on short devices. */}
+        <View style={[styles.mapContainer, { height: responsive.vh(28, 160, 300) }]}>
           <GoogleMapView
             ref={mapRef}
             initialRegion={initialRegion}
@@ -152,24 +156,24 @@ export default function DriverActiveTripScreen() {
         {/* Trip stats row */}
         <View style={styles.statsRow}>
           <View style={styles.stat}>
-            <AppText variant="monoLarge" color={theme.colors.orange}>
+            <AppText variant="monoLarge" color={theme.colors.orange} adjustsFontSizeToFit minimumFontScale={0.7} numberOfLines={1}>
               {formatDuration(elapsedSeconds)}
             </AppText>
-            <AppText variant="bodySmall" color={theme.colors.muted}>Elapsed</AppText>
+            <AppText variant="bodySmall" color={theme.colors.muted} numberOfLines={1}>Elapsed</AppText>
           </View>
           <View style={styles.statDivider} />
           <View style={styles.stat}>
-            <AppText variant="monoLarge" color={theme.colors.black}>
+            <AppText variant="monoLarge" color={theme.colors.black} adjustsFontSizeToFit minimumFontScale={0.7} numberOfLines={1}>
               {liveDistanceKm.toFixed(1)} km
             </AppText>
-            <AppText variant="bodySmall" color={theme.colors.muted}>Traveled</AppText>
+            <AppText variant="bodySmall" color={theme.colors.muted} numberOfLines={1}>Traveled</AppText>
           </View>
           <View style={styles.statDivider} />
           <View style={styles.stat}>
-            <AppText variant="monoLarge" color={theme.colors.green}>
+            <AppText variant="monoLarge" color={theme.colors.green} adjustsFontSizeToFit minimumFontScale={0.6} numberOfLines={1}>
               {formatNgn(ride.fareNgn)}
             </AppText>
-            <AppText variant="bodySmall" color={theme.colors.muted}>Fare</AppText>
+            <AppText variant="bodySmall" color={theme.colors.muted} numberOfLines={1}>Fare</AppText>
           </View>
         </View>
 
@@ -212,7 +216,7 @@ export default function DriverActiveTripScreen() {
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
+    flexGrow: 1,
     paddingHorizontal: 0,
   },
   mapWrap: {
@@ -220,7 +224,6 @@ const styles = StyleSheet.create({
     borderBottomColor: theme.colors.black,
   },
   mapContainer: {
-    height: 240,
     backgroundColor: theme.colors.mapBase,
   },
   destinationMarker: {
@@ -261,7 +264,7 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.green,
   },
   content: {
-    flex: 1,
+    flexGrow: 1,
     paddingHorizontal: theme.spacing.gutter,
     paddingTop: theme.spacing.lg,
     gap: theme.spacing.md,
@@ -277,8 +280,10 @@ const styles = StyleSheet.create({
   },
   stat: {
     flex: 1,
+    minWidth: 0,
     alignItems: 'center',
     gap: 2,
+    paddingHorizontal: 4,
   },
   statDivider: {
     width: 1.5,

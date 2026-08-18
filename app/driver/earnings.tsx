@@ -9,6 +9,7 @@ import { AppText } from '@/components/app-text';
 import { useAuth } from '@/lib/auth';
 import { getAccessTokenWithRetry } from '@/lib/access-token';
 import { getDriverEarnings, type DriverEarningsResponse } from '@/lib/api';
+import { useResponsive } from '@/lib/responsive';
 import { useAppTheme } from '@/lib/theme-context';
 import { theme } from '@/theme';
 
@@ -55,6 +56,7 @@ export default function DriverEarningsScreen() {
   const router = useRouter();
   const { getAccessToken } = useAuth();
   const { isDark } = useAppTheme();
+  const responsive = useResponsive();
   const [activePeriod, setActivePeriod] = useState<Period>('today');
   const [earnings, setEarnings] = useState<DriverEarningsResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -88,13 +90,23 @@ export default function DriverEarningsScreen() {
   const rideCount = earnings?.rideCount ?? 0;
 
   return (
-    <AppScreen scroll contentStyle={styles.container} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.colors.orange} colors={[theme.colors.orange]} />}>
+    <AppScreen
+      scroll
+      contentStyle={[styles.container, { gap: responsive.scale(16) }]}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.colors.orange} colors={[theme.colors.orange]} />}>
       {/* Header with back */}
-      <View style={styles.header}>
-        <Pressable onPress={() => router.back()} hitSlop={12} style={[styles.backBtn, isDark && { backgroundColor: theme.colors.darkSurface }]}>
-          <BackIcon />
+      <View style={[styles.header, { gap: responsive.scale(14) }]}>
+        <Pressable
+          onPress={() => router.back()}
+          hitSlop={12}
+          style={[
+            styles.backBtn,
+            { width: responsive.scale(40), height: responsive.scale(40) },
+            isDark && { backgroundColor: theme.colors.darkSurface },
+          ]}>
+          <BackIcon size={responsive.scale(22)} />
         </Pressable>
-        <AppText variant="h1">Earnings</AppText>
+        <AppText variant="h1" numberOfLines={1}>Earnings</AppText>
       </View>
 
       {/* Period tab switcher (same style as History) */}
@@ -105,11 +117,15 @@ export default function DriverEarningsScreen() {
             <Pressable
               key={p.value}
               onPress={() => setActivePeriod(p.value)}
-              style={[styles.tab, active && styles.tabActive]}
+              style={[styles.tab, { minHeight: responsive.scale(40) }, active && styles.tabActive]}
             >
+              {/* Three labels across a 320pt phone: shrink the type, don't clip it. */}
               <AppText
                 variant="label"
                 color={active ? theme.colors.white : theme.colors.muted}
+                adjustsFontSizeToFit
+                minimumFontScale={0.75}
+                numberOfLines={1}
               >
                 {p.label}
               </AppText>
@@ -119,21 +135,36 @@ export default function DriverEarningsScreen() {
       </View>
 
       {/* Summary card */}
-      <View style={[styles.summaryCard, isDark && { backgroundColor: theme.colors.darkSurface }]}>
+      <View
+        style={[
+          styles.summaryCard,
+          { paddingVertical: responsive.scale(20), paddingHorizontal: responsive.scale(16) },
+          isDark && { backgroundColor: theme.colors.darkSurface },
+        ]}>
         <View style={styles.summaryItem}>
-          <AppText variant="bodySmall" color={theme.colors.muted}>Total earned</AppText>
-          <AppText variant="h1" color={theme.colors.orange}>{formatNgn(totalEarnings)}</AppText>
+          <AppText variant="bodySmall" color={theme.colors.muted} numberOfLines={1}>Total earned</AppText>
+          {/* A month's total is far wider than "Rides" — shrink to fit its half. */}
+          <AppText
+            variant="h1"
+            color={theme.colors.orange}
+            adjustsFontSizeToFit
+            minimumFontScale={0.55}
+            numberOfLines={1}>
+            {formatNgn(totalEarnings)}
+          </AppText>
         </View>
-        <View style={styles.summaryDivider} />
+        <View style={[styles.summaryDivider, { height: responsive.scale(36) }]} />
         <View style={styles.summaryItem}>
-          <AppText variant="bodySmall" color={theme.colors.muted}>Rides</AppText>
-          <AppText variant="h1">{rideCount}</AppText>
+          <AppText variant="bodySmall" color={theme.colors.muted} numberOfLines={1}>Rides</AppText>
+          <AppText variant="h1" adjustsFontSizeToFit minimumFontScale={0.7} numberOfLines={1}>
+            {rideCount}
+          </AppText>
         </View>
       </View>
 
       {/* Earnings list */}
       {loading ? (
-        <View style={styles.loaderWrap}>
+        <View style={[styles.loaderWrap, { paddingVertical: responsive.vh(8, 32, 60) }]}>
           <ActivityIndicator size="large" color={theme.colors.orange} />
         </View>
       ) : earnings && earnings.items.length > 0 ? (
@@ -141,16 +172,20 @@ export default function DriverEarningsScreen() {
           {earnings.items.map((item) => (
             <AppCard key={item.id} style={styles.itemCard}>
               <View style={styles.itemRow}>
-                <View style={styles.itemIcon}>
-                  <EarningIcon />
+                <View
+                  style={[
+                    styles.itemIcon,
+                    { width: responsive.scale(36), height: responsive.scale(36) },
+                  ]}>
+                  <EarningIcon size={responsive.scale(18)} />
                 </View>
                 <View style={styles.itemInfo}>
-                  <AppText variant="bodyMedium">Ride payout</AppText>
-                  <AppText variant="bodySmall" color={theme.colors.muted}>
+                  <AppText variant="bodyMedium" numberOfLines={1}>Ride payout</AppText>
+                  <AppText variant="bodySmall" color={theme.colors.muted} numberOfLines={1}>
                     {formatDate(item.createdAt)}
                   </AppText>
                 </View>
-                <AppText variant="mono" color={theme.colors.orange}>
+                <AppText variant="mono" color={theme.colors.orange} style={styles.itemAmount} numberOfLines={1}>
                   +{formatNgn(item.amountNgn)}
                 </AppText>
               </View>
@@ -158,7 +193,7 @@ export default function DriverEarningsScreen() {
           ))}
         </View>
       ) : (
-        <View style={styles.emptyWrap}>
+        <View style={[styles.emptyWrap, { paddingVertical: responsive.vh(6, 28, 48) }]}>
           <AppText variant="body" color={theme.colors.muted} style={styles.emptyText}>
             No earnings for this period yet. Complete rides to start earning.
           </AppText>
@@ -170,7 +205,6 @@ export default function DriverEarningsScreen() {
 
 const styles = StyleSheet.create({
   container: {
-    gap: 16,
     paddingTop: theme.spacing.lg,
   },
 
@@ -178,11 +212,9 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
   },
   backBtn: {
-    width: 40,
-    height: 40,
+    flexShrink: 0,
     borderRadius: theme.radii.xs,
     backgroundColor: theme.colors.white,
     alignItems: 'center',
@@ -204,9 +236,11 @@ const styles = StyleSheet.create({
   },
   tab: {
     flex: 1,
+    minWidth: 0,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 10,
+    paddingVertical: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.xs,
     borderRadius: theme.radii.xs,
   },
   tabActive: {
@@ -218,8 +252,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     backgroundColor: theme.colors.white,
     borderRadius: theme.radii.md,
-    paddingVertical: 20,
-    paddingHorizontal: 16,
     alignItems: 'center',
     borderWidth: theme.borders.thick,
     borderColor: theme.colors.black,
@@ -227,12 +259,13 @@ const styles = StyleSheet.create({
   },
   summaryItem: {
     flex: 1,
+    minWidth: 0,
     alignItems: 'center',
+    paddingHorizontal: 2,
     gap: 4,
   },
   summaryDivider: {
     width: 1,
-    height: 36,
     backgroundColor: theme.colors.borderLight,
   },
 
@@ -249,8 +282,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   itemIcon: {
-    width: 36,
-    height: 36,
+    flexShrink: 0,
     borderRadius: theme.radii.xs,
     backgroundColor: theme.colors.orangeLight,
     borderWidth: theme.borders.regular,
@@ -260,20 +292,23 @@ const styles = StyleSheet.create({
   },
   itemInfo: {
     flex: 1,
+    minWidth: 0,
     gap: 2,
+  },
+  // The payout figure must never be truncated to fit the label beside it.
+  itemAmount: {
+    flexShrink: 0,
   },
 
   // Empty & loader
   loaderWrap: {
-    paddingVertical: 60,
     alignItems: 'center',
   },
   emptyWrap: {
-    paddingVertical: 48,
     alignItems: 'center',
   },
   emptyText: {
     textAlign: 'center',
-    maxWidth: 240,
+    maxWidth: '70%',
   },
 });

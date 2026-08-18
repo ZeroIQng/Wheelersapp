@@ -7,6 +7,7 @@ import Animated, { FadeInDown, ZoomIn } from "react-native-reanimated";
 import { AppScreen } from "@/components/app-screen";
 import { AppText } from "@/components/app-text";
 import { AppButton } from "@/components/app-button";
+import { useResponsive } from "@/lib/responsive";
 import { theme } from "@/theme";
 import { useAuth } from "@/lib/auth";
 import { getDriverKycStatus } from "@/lib/api";
@@ -31,6 +32,7 @@ const FIELD_LABELS: Record<string, string> = {
 export default function PendingScreen() {
   const router = useRouter();
   const { getAccessToken } = useAuth();
+  const responsive = useResponsive();
   const [kycStatus, setKycStatus] = useState<string>("SUBMITTED");
   const [rejectionReason, setRejectionReason] = useState<string | null>(null);
   const [rejectedFields, setRejectedFields] = useState<string[]>([]);
@@ -64,15 +66,21 @@ export default function PendingScreen() {
     }
   }, [kycStatus]);
 
+  // One icon box and one centre block, sized once for every branch below.
+  const iconSize = responsive.scale(96);
+  const iconStyle = { width: iconSize, height: iconSize };
+  const glyphSize = responsive.scale(48);
+  const centerStyle = { gap: responsive.isShort ? theme.spacing.lg : theme.spacing.xl };
+
   if (kycStatus === "APPROVED") {
     return (
-      <AppScreen contentStyle={styles.container}>
-        <View style={styles.center}>
-          <Animated.View entering={ZoomIn.duration(400)} style={[styles.iconWrap, styles.approvedIcon]}>
-            <Ionicons name="checkmark-circle" size={48} color={theme.colors.green} />
+      <AppScreen scroll contentStyle={styles.container}>
+        <View style={[styles.center, centerStyle]}>
+          <Animated.View entering={ZoomIn.duration(400)} style={[styles.iconWrap, iconStyle, styles.approvedIcon]}>
+            <Ionicons name="checkmark-circle" size={glyphSize} color={theme.colors.green} />
           </Animated.View>
           <Animated.View entering={FadeInDown.delay(150).duration(400)} style={styles.textWrap}>
-            <AppText variant="h1" style={styles.title}>You're Approved!</AppText>
+            <AppText variant="h1" style={styles.title} numberOfLines={2}>You're Approved!</AppText>
             <AppText variant="body" color={theme.colors.muted} style={styles.subtitle}>
               Your account is active. Taking you to the dashboard...
             </AppText>
@@ -89,27 +97,29 @@ export default function PendingScreen() {
       : "/driver/onboarding/welcome";
 
     return (
-      <AppScreen contentStyle={styles.container}>
-        <View style={styles.center}>
-          <Animated.View entering={ZoomIn.duration(400)} style={[styles.iconWrap, styles.rejectedIcon]}>
-            <Ionicons name="close-circle" size={48} color={theme.colors.danger} />
+      <AppScreen scroll contentStyle={styles.container}>
+        <View style={[styles.center, centerStyle]}>
+          <Animated.View entering={ZoomIn.duration(400)} style={[styles.iconWrap, iconStyle, styles.rejectedIcon]}>
+            <Ionicons name="close-circle" size={glyphSize} color={theme.colors.danger} />
           </Animated.View>
           <Animated.View entering={FadeInDown.delay(150).duration(400)} style={styles.textWrap}>
-            <AppText variant="h1" style={styles.title}>Application Rejected</AppText>
+            <AppText variant="h1" style={styles.title} numberOfLines={2}>Application Rejected</AppText>
             <AppText variant="body" color={theme.colors.muted} style={styles.subtitle}>
               {rejectionReason ?? "Your documents did not pass review."}
             </AppText>
           </Animated.View>
 
           {rejectedFields.length > 0 && (
-            <Animated.View entering={FadeInDown.delay(250).duration(400)} style={styles.rejectedList}>
-              <AppText variant="label" style={styles.rejectedListTitle}>
+            <Animated.View
+              entering={FadeInDown.delay(250).duration(400)}
+              style={[styles.rejectedList, { padding: responsive.scale(16) }]}>
+              <AppText variant="label" style={styles.rejectedListTitle} numberOfLines={1}>
                 Please fix the following:
               </AppText>
               {rejectedFields.map((field) => (
                 <View key={field} style={styles.rejectedItem}>
-                  <Ionicons name="alert-circle" size={16} color={theme.colors.danger} />
-                  <AppText variant="bodySmall" color={theme.colors.muted}>
+                  <Ionicons name="alert-circle" size={responsive.scale(16)} color={theme.colors.danger} />
+                  <AppText variant="bodySmall" color={theme.colors.muted} numberOfLines={2}>
                     {FIELD_LABELS[field] ?? field}
                   </AppText>
                 </View>
@@ -127,14 +137,14 @@ export default function PendingScreen() {
 
   // Default: SUBMITTED / PENDING
   return (
-    <AppScreen contentStyle={styles.container}>
-      <View style={styles.center}>
-        <Animated.View entering={ZoomIn.duration(400)} style={styles.iconWrap}>
-          <Ionicons name="time-outline" size={48} color={theme.colors.orange} />
+    <AppScreen scroll contentStyle={styles.container}>
+      <View style={[styles.center, centerStyle]}>
+        <Animated.View entering={ZoomIn.duration(400)} style={[styles.iconWrap, iconStyle]}>
+          <Ionicons name="time-outline" size={glyphSize} color={theme.colors.orange} />
         </Animated.View>
 
         <Animated.View entering={FadeInDown.delay(150).duration(400)} style={styles.textWrap}>
-          <AppText variant="h1" style={styles.title}>
+          <AppText variant="h1" style={styles.title} numberOfLines={2}>
             Under Review
           </AppText>
           <AppText variant="body" color={theme.colors.muted} style={styles.subtitle}>
@@ -143,16 +153,24 @@ export default function PendingScreen() {
         </Animated.View>
       </View>
 
-      <Animated.View entering={FadeInDown.delay(300).duration(400)} style={styles.infoCard}>
+      <Animated.View
+        entering={FadeInDown.delay(300).duration(400)}
+        style={[
+          styles.infoCard,
+          {
+            marginTop: responsive.isShort ? theme.spacing.xl : theme.spacing.xxxl,
+            padding: responsive.scale(16),
+          },
+        ]}>
         <View style={styles.infoRow}>
-          <Ionicons name="notifications-outline" size={18} color={theme.colors.orange} />
-          <AppText variant="bodySmall" color={theme.colors.muted}>
+          <Ionicons name="notifications-outline" size={responsive.scale(18)} color={theme.colors.orange} />
+          <AppText variant="bodySmall" color={theme.colors.muted} style={styles.infoText}>
             You'll receive a push notification when approved
           </AppText>
         </View>
         <View style={styles.infoRow}>
-          <Ionicons name="shield-checkmark-outline" size={18} color={theme.colors.orange} />
-          <AppText variant="bodySmall" color={theme.colors.muted}>
+          <Ionicons name="shield-checkmark-outline" size={responsive.scale(18)} color={theme.colors.orange} />
+          <AppText variant="bodySmall" color={theme.colors.muted} style={styles.infoText}>
             Your documents are stored securely
           </AppText>
         </View>
@@ -163,15 +181,16 @@ export default function PendingScreen() {
 
 const styles = StyleSheet.create({
   container: {
+    // flexGrow keeps the block centred on a tall screen while still letting
+    // the rejected-with-a-long-list case scroll on a short one.
+    flexGrow: 1,
     justifyContent: "center",
   },
   center: {
     alignItems: "center",
-    gap: theme.spacing.xl,
   },
   iconWrap: {
-    width: 96,
-    height: 96,
+    flexShrink: 0,
     borderRadius: theme.radius.pill,
     backgroundColor: theme.colors.orangeLight,
     borderWidth: theme.borders.thick,
@@ -196,15 +215,15 @@ const styles = StyleSheet.create({
   },
   subtitle: {
     textAlign: "center",
-    maxWidth: 280,
+    // Percentage rather than a fixed 280pt so the measure stays comfortable
+    // on a 320pt phone and on a tablet alike.
+    maxWidth: "88%",
     lineHeight: 20,
   },
   infoCard: {
-    marginTop: theme.spacing.xxxl,
     borderWidth: theme.borders.thick,
     borderColor: theme.colors.black,
     borderRadius: theme.radius.md,
-    padding: theme.spacing.lg,
     gap: theme.spacing.md,
     backgroundColor: theme.colors.white,
     ...theme.shadows.subtle,
@@ -214,12 +233,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: theme.spacing.md,
   },
+  infoText: {
+    flex: 1,
+    minWidth: 0,
+  },
   rejectedList: {
     width: "100%",
     borderWidth: theme.borders.thick,
     borderColor: theme.colors.danger,
     borderRadius: theme.radius.md,
-    padding: theme.spacing.lg,
     gap: theme.spacing.sm,
     backgroundColor: theme.colors.dangerLight,
     ...theme.shadows.subtle,

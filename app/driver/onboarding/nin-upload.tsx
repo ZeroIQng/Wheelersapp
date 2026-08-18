@@ -8,11 +8,13 @@ import { AppButton } from "@/components/app-button";
 import { AppScreen } from "@/components/app-screen";
 import { AppText } from "@/components/app-text";
 import { FlowHeader } from "@/components/flow-header";
+import { useResponsive } from "@/lib/responsive";
 import { theme } from "@/theme";
 import { useDriverOnboarding } from "@/lib/driver-onboarding";
 
 export default function NinUploadScreen() {
   const router = useRouter();
+  const responsive = useResponsive();
   const { setNinUri, data } = useDriverOnboarding();
   const [imageUri, setImageUri] = useState<string | null>(data.ninUri);
 
@@ -53,32 +55,52 @@ export default function NinUploadScreen() {
         progress={{ count: 6, active: 1 }}
       />
 
-      <View style={styles.uploadArea}>
+      <View
+        style={[
+          styles.uploadArea,
+          { marginTop: responsive.isShort ? theme.spacing.lg : theme.spacing.xxl },
+        ]}>
         {imageUri ? (
           <Pressable onPress={pickImage} style={styles.previewWrap}>
-            <Image source={{ uri: imageUri }} style={styles.preview} resizeMode="cover" />
+            {/* Preview scales with the viewport so the Continue button stays
+                reachable on a short phone and the card fills a tablet. */}
+            <Image
+              source={{ uri: imageUri }}
+              style={[styles.preview, { height: responsive.vh(28, 150, 320) }]}
+              resizeMode="cover"
+            />
             <View style={styles.changeOverlay}>
-              <AppText variant="label" color={theme.colors.white}>
+              <AppText variant="label" color={theme.colors.white} numberOfLines={1}>
                 Tap to change
               </AppText>
             </View>
           </Pressable>
         ) : (
-          <View style={styles.placeholderArea}>
-            <Pressable onPress={takePhoto} style={styles.captureButton}>
-              <Ionicons name="camera" size={28} color={theme.colors.orange} />
-              <AppText variant="label" color={theme.colors.orange}>
+          <View
+            style={[
+              styles.placeholderArea,
+              { paddingVertical: responsive.vh(6, 24, 44) },
+            ]}>
+            <Pressable
+              onPress={takePhoto}
+              style={[styles.captureButton, { minHeight: responsive.scale(44) }]}
+              hitSlop={8}>
+              <Ionicons name="camera" size={responsive.scale(28)} color={theme.colors.orange} />
+              <AppText variant="label" color={theme.colors.orange} numberOfLines={1}>
                 Take Photo
               </AppText>
             </Pressable>
 
-            <AppText variant="bodySmall" color={theme.colors.muted}>
+            <AppText variant="bodySmall" color={theme.colors.muted} numberOfLines={1}>
               or
             </AppText>
 
-            <Pressable onPress={pickImage} style={styles.galleryButton}>
-              <Ionicons name="images-outline" size={20} color={theme.colors.muted} />
-              <AppText variant="bodySmall" color={theme.colors.muted}>
+            <Pressable
+              onPress={pickImage}
+              style={[styles.galleryButton, { minHeight: responsive.scale(40) }]}
+              hitSlop={8}>
+              <Ionicons name="images-outline" size={responsive.scale(20)} color={theme.colors.muted} />
+              <AppText variant="bodySmall" color={theme.colors.muted} numberOfLines={1}>
                 Choose from gallery
               </AppText>
             </Pressable>
@@ -102,7 +124,6 @@ const styles = StyleSheet.create({
     paddingTop: theme.spacing.xxxl,
   },
   uploadArea: {
-    marginTop: theme.spacing.xxl,
     width: "100%",
   },
   placeholderArea: {
@@ -113,16 +134,18 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.orangeLight,
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: theme.spacing.xxxl,
+    paddingHorizontal: theme.spacing.md,
     gap: theme.spacing.md,
   },
   captureButton: {
     alignItems: "center",
+    justifyContent: "center",
     gap: theme.spacing.sm,
   },
   galleryButton: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
     gap: theme.spacing.xs,
   },
   previewWrap: {
@@ -134,7 +157,6 @@ const styles = StyleSheet.create({
   },
   preview: {
     width: "100%",
-    height: 220,
   },
   changeOverlay: {
     position: "absolute",
@@ -146,7 +168,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   spacer: {
-    flex: 1,
-    minHeight: theme.spacing.xxxl,
+    // flexGrow, not flex: inside a ScrollView's content container `flex: 1`
+    // collapses the spacer instead of pushing the button to the bottom.
+    flexGrow: 1,
+    minHeight: theme.spacing.xxl,
   },
 });
