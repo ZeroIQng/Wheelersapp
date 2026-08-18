@@ -106,7 +106,7 @@ function buildRouteStops(params: {
 
 export default function IncomingRequestScreen() {
   const router = useRouter();
-  const { session, acceptRide, rejectRide } = useDriverSession();
+  const { session, acceptRide, rejectRide, selectOffer } = useDriverSession();
   const insets = useSafeAreaInsets();
   const responsive = useResponsive();
   const keyboardHeight = useKeyboardHeight();
@@ -151,6 +151,15 @@ export default function IncomingRequestScreen() {
   const cardAnimatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: translateY.value }],
   }));
+
+  // When the rider re-bids, the driver's own last bid is stale history. Left in
+  // place it kept winning the `lastBidNgn ?? …` fallback below, so the card
+  // showed the driver's old number and the rider's new one never appeared.
+  const riderOfferNgn = offer?.riderOfferNgn ?? offer?.fareEstimateNgn;
+  useEffect(() => {
+    setLastBidNgn(null);
+    setBidSent(false);
+  }, [offer?.rideId, riderOfferNgn]);
 
   useEffect(() => {
     if (!offer?.expiresAt) return;
@@ -252,7 +261,9 @@ export default function IncomingRequestScreen() {
 
   if (!offer) return null;
 
-  const activeFare = lastBidNgn ?? offer.fareEstimateNgn;
+  // The rider's live number, not the original estimate — a counter-offer only
+  // moves riderOfferNgn, so reading fareEstimateNgn froze the price on screen.
+  const activeFare = lastBidNgn ?? offer.riderOfferNgn ?? offer.fareEstimateNgn;
   const totalCharged = activeFare;
   const vatAmount = Math.round(activeFare * VAT_RATE);
   const driverPayout = activeFare - vatAmount - STATE_LEVY_NGN;
@@ -315,6 +326,42 @@ export default function IncomingRequestScreen() {
           contentContainerStyle={[styles.cardScrollContent, { gap: responsive.scale(12) }]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}>
+          {/* Request switcher — every live request as a chip, so a second one
+              arriving is visible and reachable instead of replacing this one
+              off-screen. Bidding on one does not lose the others. */}
+          {session.offers.length > 1 ? (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={styles.switcherRow}>
+              {session.offers.map((queued, index) => {
+                const active = queued.rideId === offer.rideId;
+                return (
+                  <Pressable
+                    key={queued.rideId}
+                    onPress={() => {
+                      if (active) return;
+                      void stopRideRequestSound();
+                      selectOffer(queued.rideId);
+                    }}
+                    style={[styles.switcherChip, active && styles.switcherChipActive]}>
+                    <AppText
+                      variant="monoSmall"
+                      color={active ? theme.colors.white : theme.colors.muted}>
+                      #{index + 1}
+                    </AppText>
+                    <AppText
+                      variant="label"
+                      color={active ? theme.colors.white : theme.colors.black}>
+                      {formatNgn(queued.riderOfferNgn ?? queued.fareEstimateNgn)}
+                    </AppText>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          ) : null}
+
           {/* Header row */}
           <View style={styles.header}>
             <View style={styles.headerLeft}>
@@ -699,15 +746,41 @@ const styles = StyleSheet.create({
   },
 
   // Actions
+  switcherRow: {
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+    paddingBottom: 2,
+  },
+  switcherChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: theme.radius.pill,
+    backgroundColor: theme.colors.orangeLight,
+  },
+  switcherChipActive: {
+    backgroundColor: theme.colors.orange,
+  },
   actions: {
     flexDirection: 'row',
+    alignItems: 'stretch',
+    width: '100%',
     gap: theme.spacing.sm,
   },
+  // flex alone lets a button grow past the row on narrow screens — the label
+  // sets an implicit minimum width that flex will not shrink below. minWidth:0
+  // plus flexShrink lets them actually fit.
   acceptBtn: {
     flex: 2,
+    minWidth: 0,
+    flexShrink: 1,
   },
   bidBtn: {
     flex: 1,
+    minWidth: 0,
+    flexShrink: 1,
   },
 
   // Bid input
@@ -736,16 +809,21 @@ const styles = StyleSheet.create({
   bidActions: {
     flexDirection: 'row',
     alignItems: 'center',
+    width: '100%',
     gap: theme.spacing.sm,
   },
   bidCancelBtn: {
     flex: 1,
+    minWidth: 0,
+    flexShrink: 1,
     alignItems: 'center',
     justifyContent: 'center',
     minHeight: 52,
   },
   bidSubmitBtn: {
     flex: 2,
+    minWidth: 0,
+    flexShrink: 1,
   },
 
   // Bid sent

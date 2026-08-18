@@ -112,6 +112,7 @@
       },
       "ios": {
         "bundleIdentifier": "com.timmy133.wheelers.driver",
+        "ascAppId": "6802810113",
         "appName": "Wheelers Driver",
         "language": "en-US",
         "sku": "wheelers-driver-001",

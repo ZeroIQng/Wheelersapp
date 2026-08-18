@@ -40,7 +40,12 @@ const LAGOS_REGION = {
 export default function DriverHomeScreen() {
   const router = useRouter();
   const { getAccessToken } = useAuth();
-  const { session, goOnline, goOffline } = useDriverSession();
+  const { session, goOnline, goOffline, selectOffer } = useDriverSession();
+
+  // Everything queued except the one already open on the request screen.
+  const waitingOffers = session.offers.filter(
+    (queued) => queued.rideId !== session.currentOffer?.rideId,
+  );
   const { permissionState, requestLocationAccess, currentLocation } = useAppLocation();
   const { permissionGranted, requestNotificationAccess } = useAppNotifications();
   const { reportCompletedCount } = useQuestBadge();
@@ -86,11 +91,23 @@ export default function DriverHomeScreen() {
     })();
   }, [getAccessToken]);
 
+  // Push the request screen once per ride. This used to fire on every change
+  // to currentOffer — and a rider re-bidding replaces that object — so each
+  // counter-offer stacked another copy of the screen and backing out walked
+  // through all of them.
+  const pushedOfferRideId = useRef<string | null>(null);
   useEffect(() => {
-    if (session.status === 'offered' && session.currentOffer) {
-      router.push('/driver/incoming-request' as Href);
+    const offerRideId = session.currentOffer?.rideId ?? null;
+
+    if (session.status !== 'offered' || !offerRideId) {
+      if (!offerRideId) pushedOfferRideId.current = null;
+      return;
     }
-  }, [session.status, session.currentOffer, router]);
+
+    if (pushedOfferRideId.current === offerRideId) return;
+    pushedOfferRideId.current = offerRideId;
+    router.push('/driver/incoming-request' as Href);
+  }, [session.status, session.currentOffer?.rideId, router]);
 
   // Center map on user location when available
   useEffect(() => {
@@ -192,6 +209,38 @@ export default function DriverHomeScreen() {
             gap: responsive.scale(12),
           },
         ]}>
+        {/* Waiting requests — tap one to open it. Without this list a second
+            request that arrived while the driver was reading the first was
+            invisible; only the newest one was ever reachable. */}
+        {waitingOffers.length > 0 ? (
+          <View style={styles.queueCard}>
+            <AppText variant="label" color={theme.colors.muted} style={styles.queueHeading}>
+              {waitingOffers.length} more request{waitingOffers.length === 1 ? '' : 's'} waiting
+            </AppText>
+            {waitingOffers.map((queued) => (
+              <Pressable
+                key={queued.rideId}
+                onPress={() => {
+                  selectOffer(queued.rideId);
+                  router.push('/driver/incoming-request' as Href);
+                }}
+                style={({ pressed }) => [styles.queueRow, pressed && styles.queueRowPressed]}>
+                <View style={styles.queueRowText}>
+                  <AppText variant="body" numberOfLines={1}>
+                    {queued.pickup.address}
+                  </AppText>
+                  <AppText variant="bodySmall" color={theme.colors.muted} numberOfLines={1}>
+                    to {queued.destination.address}
+                  </AppText>
+                </View>
+                <AppText variant="label" color={theme.colors.orange}>
+                  {formatNgn(queued.riderOfferNgn ?? queued.fareEstimateNgn)}
+                </AppText>
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
+
         {/* Metrics row */}
         <View style={[styles.metricsCard, { paddingVertical: responsive.scale(14) }]}>
           <View style={styles.metricItem}>
@@ -289,6 +338,32 @@ const styles = StyleSheet.create({
   // Bottom overlay — position comes from safe-area insets at render time
   bottomOverlay: {
     position: 'absolute',
+  },
+  queueCard: {
+    backgroundColor: theme.colors.white,
+    borderRadius: theme.radius.lg,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    gap: 6,
+  },
+  queueHeading: {
+    marginBottom: 2,
+  },
+  queueRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.borderLight,
+  },
+  queueRowPressed: {
+    opacity: 0.6,
+  },
+  queueRowText: {
+    flex: 1,
+    gap: 2,
   },
   metricsCard: {
     flexDirection: 'row',

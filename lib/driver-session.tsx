@@ -38,6 +38,12 @@ type RideOffer = {
   destination: RideEstimateWaypoint;
   stops: RideEstimateWaypoint[];
   fareEstimateNgn: number;
+  /**
+   * What the rider is actually offering right now. A rider counter-offer only
+   * moves this field — fareEstimateNgn stays at the original estimate — so a
+   * screen that reads fareEstimateNgn shows a stale price forever.
+   */
+  riderOfferNgn?: number;
   plannedDistanceKm?: number;
   plannedDurationSeconds?: number;
   expiresAt: string;
@@ -80,6 +86,13 @@ export type ChatMessage = {
 
 export type DriverSessionState = {
   status: DriverStatus;
+  /**
+   * Every live request, newest first. Offers used to be a single slot, so a
+   * second request silently overwrote the first and the driver never knew it
+   * existed — they only ever saw whichever one arrived last.
+   */
+  offers: RideOffer[];
+  /** The offer currently open on screen. */
   currentOffer: RideOffer | null;
   currentRide: DriverRide | null;
 };
@@ -94,6 +107,10 @@ type DriverSessionContextValue = {
   goOffline: () => Promise<void>;
   acceptRide: (rideId: string, counterOfferNgn?: number) => Promise<void>;
   rejectRide: (rideId: string) => Promise<void>;
+  /** Open one of the queued requests. */
+  selectOffer: (rideId: string) => void;
+  /** Close the open request without rejecting it — it stays in the queue. */
+  closeOffer: () => void;
   arriveAtPickup: (rideId: string) => Promise<void>;
   startTrip: (rideId: string) => Promise<void>;
   endTrip: (rideId: string) => Promise<void>;
@@ -140,9 +157,19 @@ function parseWaypointList(value: unknown): RideEstimateWaypoint[] {
 
 const defaultSession: DriverSessionState = {
   status: 'offline',
+  offers: [],
   currentOffer: null,
   currentRide: null,
 };
+
+/** Drops requests whose bid window has already closed. */
+function pruneExpiredOffers(offers: RideOffer[]): RideOffer[] {
+  const now = Date.now();
+  return offers.filter((offer) => {
+    const expiresMs = new Date(offer.expiresAt).getTime();
+    return !Number.isFinite(expiresMs) || expiresMs > now;
+  });
+}
 
 const defaultContext: DriverSessionContextValue = {
   isConfigured: false,
@@ -153,6 +180,8 @@ const defaultContext: DriverSessionContextValue = {
   goOnline: async (_lat: number, _lng: number) => { throw new Error('Driver session unavailable.'); },
   goOffline: async () => { throw new Error('Driver session unavailable.'); },
   acceptRide: async (_rideId: string, _counterOfferNgn?: number) => { throw new Error('Driver session unavailable.'); },
+  selectOffer: (_rideId: string) => {},
+  closeOffer: () => {},
   rejectRide: async () => { throw new Error('Driver session unavailable.'); },
   arriveAtPickup: async () => { throw new Error('Driver session unavailable.'); },
   startTrip: async () => { throw new Error('Driver session unavailable.'); },
@@ -209,16 +238,15 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
         const destination = parseWaypoint(payload.destination);
         if (!pickup || !destination) return;
 
-        setSession((prev) => ({
-          ...prev,
-          status: 'offered',
-          currentOffer: {
+        setSession((prev) => {
+          const incoming: RideOffer = {
             rideId: getString(payload.rideId) ?? '',
             riderId: getString(payload.riderId) ?? '',
             pickup,
             destination,
             stops: parseWaypointList(payload.stops),
             fareEstimateNgn: getNumber(payload.fareEstimateNgn) ?? 0,
+            riderOfferNgn: getNumber(payload.riderOfferNgn),
             plannedDistanceKm: getNumber(payload.plannedDistanceKm),
             plannedDurationSeconds: getNumber(payload.plannedDurationSeconds),
             expiresAt: getString(payload.expiresAt) ?? '',
@@ -230,8 +258,28 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
                   (k): k is 'pickup' | 'dropoff' => k === 'pickup' || k === 'dropoff',
                 ))
               : undefined,
-          },
-        }));
+          };
+
+          // Same rideId means a re-priced version of a request already in the
+          // queue, so it replaces that entry rather than adding a duplicate.
+          const others = pruneExpiredOffers(prev.offers).filter(
+            (queued) => queued.rideId !== incoming.rideId,
+          );
+          const offers = [incoming, ...others];
+
+          // Don't yank the driver off a request they're reading. Only take
+          // over the screen when nothing is open, or when this update is for
+          // the very request they're looking at.
+          const keepsCurrent =
+            prev.currentOffer !== null && prev.currentOffer.rideId !== incoming.rideId;
+
+          return {
+            ...prev,
+            status: prev.currentRide ? prev.status : 'offered',
+            offers,
+            currentOffer: keepsCurrent ? prev.currentOffer : incoming,
+          };
+        });
         return;
       }
 
@@ -253,6 +301,8 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
           return {
             ...prev,
             status: 'navigating',
+            // Taking this ride drops every other request — the driver is busy.
+            offers: [],
             currentOffer: null,
             currentRide: {
               rideId: offer.rideId,
@@ -273,11 +323,21 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
       }
 
       if (type === 'driver:reject:accepted') {
-        setSession((prev) => ({
-          ...prev,
-          status: prev.currentRide ? prev.status : 'online',
-          currentOffer: null,
-        }));
+        setSession((prev) => {
+          const rejectedRideId = getString(payload.rideId) ?? prev.currentOffer?.rideId;
+          const offers = pruneExpiredOffers(prev.offers).filter(
+            (queued) => queued.rideId !== rejectedRideId,
+          );
+
+          // Rejecting one request should surface the next one waiting, not
+          // dump the driver back to an empty home screen.
+          return {
+            ...prev,
+            status: prev.currentRide ? prev.status : offers.length > 0 ? 'offered' : 'online',
+            offers,
+            currentOffer: offers[0] ?? null,
+          };
+        });
         return;
       }
 
@@ -318,12 +378,26 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
       }
 
       if (type === 'ride:cancelled') {
-        setSession((prev) => ({
-          ...prev,
-          status: 'online',
-          currentOffer: null,
-          currentRide: null,
-        }));
+        setSession((prev) => {
+          const cancelledRideId = getString(payload.rideId);
+          // Only the cancelled ride leaves the queue; other live requests stay.
+          const offers = pruneExpiredOffers(prev.offers).filter(
+            (queued) => queued.rideId !== cancelledRideId,
+          );
+          const cancelledCurrentRide =
+            !cancelledRideId || prev.currentRide?.rideId === cancelledRideId;
+
+          return {
+            ...prev,
+            status: offers.length > 0 ? 'offered' : 'online',
+            offers,
+            currentOffer:
+              prev.currentOffer && prev.currentOffer.rideId !== cancelledRideId
+                ? prev.currentOffer
+                : offers[0] ?? null,
+            currentRide: cancelledCurrentRide ? null : prev.currentRide,
+          };
+        });
         setError('Ride was cancelled.');
         return;
       }
@@ -617,10 +691,28 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
     [sendEnvelope],
   );
 
+  const selectOffer = useCallback((rideId: string) => {
+    setSession((prev) => {
+      const offers = pruneExpiredOffers(prev.offers);
+      const picked = offers.find((queued) => queued.rideId === rideId);
+      if (!picked) return { ...prev, offers };
+      return { ...prev, offers, status: 'offered', currentOffer: picked };
+    });
+  }, []);
+
+  const closeOffer = useCallback(() => {
+    setSession((prev) => ({
+      ...prev,
+      offers: pruneExpiredOffers(prev.offers),
+      currentOffer: null,
+    }));
+  }, []);
+
   const clearCompleted = useCallback(() => {
     setSession((prev) => ({
       ...prev,
       status: 'online',
+      offers: [],
       currentOffer: null,
       currentRide: null,
     }));
@@ -656,6 +748,8 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
       goOffline,
       acceptRide,
       rejectRide,
+      selectOffer,
+      closeOffer,
       arriveAtPickup,
       startTrip,
       endTrip,
@@ -672,6 +766,8 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
       goOffline,
       acceptRide,
       rejectRide,
+      selectOffer,
+      closeOffer,
       arriveAtPickup,
       startTrip,
       endTrip,
