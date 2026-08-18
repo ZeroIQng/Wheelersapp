@@ -43,6 +43,7 @@
     "plugins": [
       "./plugins/withGradlePluginPortal",
       "./plugins/withModularHeaders",
+      "./plugins/withMmkvMemsetFix",
       "expo-router",
       "expo-apple-authentication",
       [
