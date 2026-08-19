@@ -60,6 +60,10 @@ export default function DriverHomeScreen() {
   // itself, which is both what a driver expects and what stops the screen
   // flipping between home and the request card.
   const waitingOffers = session.offers;
+  // Bids sent and still unanswered — the driver's money on the table. Shown
+  // even after the offer card expires, so leaving the request screen never
+  // means losing sight of what's pending.
+  const pendingBids = Object.values(session.pendingBids ?? {});
   const { permissionState, requestLocationAccess, currentLocation } = useAppLocation();
 
   const { permissionGranted, requestNotificationAccess } = useAppNotifications();
@@ -104,7 +108,11 @@ export default function DriverHomeScreen() {
         // non-blocking
       }
     })();
-  }, [getAccessToken]);
+    // Both deps are stable by construction (useCallback with empty deps), so
+    // this runs once per mount. That matters more than it looks: this effect
+    // fires two network calls, and anything that makes either identity change
+    // per render turns it into a request flood.
+  }, [getAccessToken, reportCompletedCount]);
 
   // Requests are NOT auto-opened. Pushing the request screen automatically
   // fought with that screen's own "no offer → go home" redirect: push → replace
@@ -226,11 +234,8 @@ export default function DriverHomeScreen() {
         </View>
       </View>
 
-      {/* Incoming requests — always a list, even for one, so the driver reads
-          the same layout every time and a second request simply appears in it.
-          Sits at the top: nearest-first, distance leading, because "how far do
-          I drive to reach them" is the first thing that decides a job. */}
-      {waitingOffers.length > 0 ? (
+      {/* Bids awaiting a rider's answer — visible until resolved */}
+      {pendingBids.length > 0 ? (
         <View
           style={[
             styles.requestsOverlay,
@@ -240,10 +245,42 @@ export default function DriverHomeScreen() {
               right: responsive.gutter,
             },
           ]}>
+          <View style={styles.pendingBidCard}>
+            {pendingBids.map((bid) => (
+              <View key={bid.offer.rideId} style={styles.pendingBidRow}>
+                <AppText variant="label" color={theme.colors.green}>
+                  ⏳ Bid sent · {formatNgn(bid.amountNgn)}
+                </AppText>
+                <AppText variant="bodySmall" color={theme.colors.muted} numberOfLines={1}>
+                  {bid.offer.pickup.address} — waiting for rider
+                </AppText>
+              </View>
+            ))}
+          </View>
+        </View>
+      ) : null}
+
+      {/* Incoming requests — always a list, even for one, so the driver reads
+          the same layout every time and a second request simply appears in it.
+          Sits at the top: nearest-first, distance leading, because "how far do
+          I drive to reach them" is the first thing that decides a job. */}
+      {waitingOffers.length > 0 ? (
+        <View
+          style={[
+            styles.requestsOverlay,
+            {
+              top: insets.top + responsive.scale(pendingBids.length > 0 ? 132 : 56),
+              left: responsive.gutter,
+              right: responsive.gutter,
+            },
+          ]}>
 
           <View style={styles.queueCard}>
-            <AppText variant="label" color={theme.colors.orange} style={styles.queueHeading}>
-              {waitingOffers.length} ride request{waitingOffers.length === 1 ? '' : 's'} · tap to view
+            <AppText variant="h3" color={theme.colors.orange} style={styles.queueHeading}>
+              🚗 {waitingOffers.length} ride request{waitingOffers.length === 1 ? '' : 's'}
+            </AppText>
+            <AppText variant="bodySmall" color={theme.colors.muted} style={styles.queueSub}>
+              Tap a request to view and bid
             </AppText>
             <ScrollView style={styles.queueScroll} showsVerticalScrollIndicator={false}>
               {sortedOffers.map((queued) => {
@@ -431,24 +468,51 @@ const styles = StyleSheet.create({
   queueCard: {
     backgroundColor: theme.colors.white,
     borderRadius: theme.radius.lg,
+    borderWidth: 2,
+    borderColor: theme.colors.orange,
     paddingHorizontal: 14,
-    paddingVertical: 10,
-    gap: 6,
+    paddingVertical: 12,
+    gap: 8,
+    shadowColor: theme.colors.black,
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
   },
   queueHeading: {
-    marginBottom: 2,
+    marginBottom: 0,
+  },
+  queueSub: {
+    marginBottom: 4,
   },
   queueRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
-    paddingVertical: 8,
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.borderLight,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 8,
+    borderRadius: theme.radius.lg,
+    backgroundColor: theme.colors.offWhite,
+    borderWidth: 1,
+    borderColor: theme.colors.borderLight,
   },
   queueRowPressed: {
     opacity: 0.6,
+    backgroundColor: theme.colors.orangeLight,
+  },
+  pendingBidCard: {
+    backgroundColor: theme.colors.white,
+    borderRadius: theme.radius.lg,
+    borderWidth: 1.5,
+    borderColor: theme.colors.green,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    gap: 6,
+  },
+  pendingBidRow: {
+    gap: 2,
   },
   queueRowText: {
     flex: 1,

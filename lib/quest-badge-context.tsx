@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { createContext, PropsWithChildren, useCallback, useContext, useEffect, useState } from 'react';
+import { createContext, PropsWithChildren, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
 interface QuestBadgeContextValue {
   showBadge: boolean;
@@ -35,24 +35,52 @@ export function QuestBadgeProvider({ children }: PropsWithChildren) {
     setShowBadge(currentCompleted > lastSeen);
   }, [lastSeen, currentCompleted]);
 
+  // Read the latest values through refs so the callbacks below can have empty
+  // dependency arrays. These are called from inside effects in consumer
+  // screens; if their identity changed on every state update, adding them to
+  // a dependency array — which react-hooks/exhaustive-deps actively tells you
+  // to do — would spin that effect forever. The driver home screen fetches
+  // stats and earnings in exactly such an effect.
+  const lastSeenRef = useRef<number | null>(null);
+  const currentCompletedRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    lastSeenRef.current = lastSeen;
+  }, [lastSeen]);
+
+  useEffect(() => {
+    currentCompletedRef.current = currentCompleted;
+  }, [currentCompleted]);
+
   const reportCompletedCount = useCallback((count: number) => {
+    currentCompletedRef.current = count;
     setCurrentCompleted(count);
     // First time ever — no badge, just store it
-    if (lastSeen === null) {
+    if (lastSeenRef.current === null) {
+      lastSeenRef.current = count;
       setLastSeen(count);
       AsyncStorage.setItem(STORAGE_KEY, String(count));
     }
-  }, [lastSeen]);
+  }, []);
 
   const markSeen = useCallback(() => {
-    if (currentCompleted === null) return;
-    setLastSeen(currentCompleted);
+    const seen = currentCompletedRef.current;
+    if (seen === null) return;
+    lastSeenRef.current = seen;
+    setLastSeen(seen);
     setShowBadge(false);
-    AsyncStorage.setItem(STORAGE_KEY, String(currentCompleted));
-  }, [currentCompleted]);
+    AsyncStorage.setItem(STORAGE_KEY, String(seen));
+  }, []);
+
+  // A fresh object literal here re-renders every consumer of this context on
+  // every provider render, whether or not anything they use actually changed.
+  const value = useMemo(
+    () => ({ showBadge, reportCompletedCount, markSeen }),
+    [showBadge, reportCompletedCount, markSeen],
+  );
 
   return (
-    <QuestBadgeContext.Provider value={{ showBadge, reportCompletedCount, markSeen }}>
+    <QuestBadgeContext.Provider value={value}>
       {children}
     </QuestBadgeContext.Provider>
   );

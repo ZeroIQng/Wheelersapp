@@ -115,6 +115,10 @@ export default function IncomingRequestScreen() {
   const [bidAmount, setBidAmount] = useState('');
   const [lastBidNgn, setLastBidNgn] = useState<number | null>(null);
   const [bidSent, setBidSent] = useState(false);
+  const bidSentRef = useRef(false);
+  useEffect(() => {
+    bidSentRef.current = bidSent;
+  }, [bidSent]);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const bidInputRef = useRef<TextInput>(null);
 
@@ -170,7 +174,13 @@ export default function IncomingRequestScreen() {
       if (remaining <= 0 && timerRef.current) {
         clearInterval(timerRef.current);
         timerRef.current = null;
-        router.back();
+        // With a bid out, this screen IS the "waiting for the rider" state.
+        // Popping it here was why everything vanished the moment the 30s
+        // card expired — the driver had bid, then stared at an empty home
+        // screen with no idea anything was still happening.
+        if (!bidSentRef.current) {
+          router.back();
+        }
       }
     };
 
@@ -187,12 +197,14 @@ export default function IncomingRequestScreen() {
     void stopRideRequestSound();
   }, []);
 
-  // If the request is gone (taken, cancelled, expired), pop back to the list.
+  // If the request is gone (taken, cancelled, expired), pop back to the list —
+  // unless we are transitioning into the trip, where the navigation screen
+  // takes over and a back() here would race the replace().
   useEffect(() => {
-    if (!offer) {
+    if (!offer && session.status !== 'navigating') {
       router.back();
     }
-  }, [offer, router]);
+  }, [offer, session.status, router]);
 
   // Navigate forward when ride is accepted
   useEffect(() => {
@@ -217,7 +229,12 @@ export default function IncomingRequestScreen() {
     if (!offer) return;
     try {
       void stopRideRequestSound();
-      await rejectRide(offer.rideId);
+      // Dismissing an unanswered request rejects it. After a bid, dismissing
+      // just leaves the screen — rejecting here would cancel the driver's own
+      // bid behind their back.
+      if (!bidSentRef.current) {
+        await rejectRide(offer.rideId);
+      }
     } catch {
       // ignore
     }

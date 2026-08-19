@@ -84,6 +84,18 @@ export type ChatMessage = {
   createdAt: string;
 };
 
+/**
+ * A bid the driver has sent, waiting on the rider. Snapshotted from the offer
+ * at bid time because the offer card expires after 30s while the rider has
+ * minutes to decide — by the time ride:matched arrives, the offer is usually
+ * gone from the queue, and the match used to be silently dropped.
+ */
+export type PendingBid = {
+  offer: RideOffer;
+  amountNgn: number;
+  sentAt: string;
+};
+
 export type DriverSessionState = {
   status: DriverStatus;
   /**
@@ -95,6 +107,8 @@ export type DriverSessionState = {
   /** The offer currently open on screen. */
   currentOffer: RideOffer | null;
   currentRide: DriverRide | null;
+  /** Bids sent and not yet answered, keyed by rideId. */
+  pendingBids: Record<string, PendingBid>;
 };
 
 type DriverSessionContextValue = {
@@ -160,6 +174,7 @@ const defaultSession: DriverSessionState = {
   offers: [],
   currentOffer: null,
   currentRide: null,
+  pendingBids: {},
 };
 
 /** Drops requests whose bid window has already closed. */
@@ -295,8 +310,21 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
       if (type === 'ride:matched') {
         // Rider accepted — now navigate to pickup
         setSession((prev) => {
-          const offer = prev.currentOffer;
-          if (!offer) return prev;
+          const matchedRideId = getString(payload.rideId);
+          const offer =
+            (matchedRideId
+              ? (prev.currentOffer?.rideId === matchedRideId ? prev.currentOffer : undefined) ??
+                prev.offers.find((queued) => queued.rideId === matchedRideId) ??
+                prev.pendingBids[matchedRideId]?.offer
+              : prev.currentOffer) ?? null;
+
+          if (!offer) {
+            // Backend has assigned this ride to us but we can no longer
+            // reconstruct it (e.g. app restarted mid-bid). Say so instead of
+            // pretending nothing happened.
+            console.warn('[driver-session] ride:matched for unknown ride', matchedRideId);
+            return prev;
+          }
 
           return {
             ...prev,
@@ -304,6 +332,7 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
             // Taking this ride drops every other request — the driver is busy.
             offers: [],
             currentOffer: null,
+            pendingBids: {},
             currentRide: {
               rideId: offer.rideId,
               riderId: offer.riderId,
@@ -387,6 +416,9 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
           const cancelledCurrentRide =
             !cancelledRideId || prev.currentRide?.rideId === cancelledRideId;
 
+          const pendingBids = { ...prev.pendingBids };
+          if (cancelledRideId) delete pendingBids[cancelledRideId];
+
           return {
             ...prev,
             status: offers.length > 0 ? 'offered' : 'online',
@@ -396,6 +428,7 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
                 ? prev.currentOffer
                 : offers[0] ?? null,
             currentRide: cancelledCurrentRide ? null : prev.currentRide,
+            pendingBids,
           };
         });
         setError('Ride was cancelled.');
@@ -610,6 +643,8 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
         throw new Error('No matching ride offer to accept.');
       }
 
+      const amountNgn = counterOfferNgn ?? offer.riderOfferNgn ?? offer.fareEstimateNgn;
+
       await sendEnvelope('driver:accept', {
         rideId,
         riderId: offer.riderId,
@@ -618,8 +653,18 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
         vehiclePlate: 'N/A',
         vehicleModel: 'N/A',
         etaSeconds: 300,
-        agreedFareNgn: counterOfferNgn ?? offer.fareEstimateNgn,
+        agreedFareNgn: amountNgn,
       });
+
+      // Remember the bid past the offer card's 30s life — the rider has
+      // minutes to answer, and ride:matched must survive that gap.
+      setSession((prev) => ({
+        ...prev,
+        pendingBids: {
+          ...prev.pendingBids,
+          [rideId]: { offer, amountNgn, sentAt: new Date().toISOString() },
+        },
+      }));
     },
     [sendEnvelope],
   );
@@ -715,6 +760,7 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
       offers: [],
       currentOffer: null,
       currentRide: null,
+      pendingBids: {},
     }));
     setChatMessages([]);
     setError(null);
