@@ -1,7 +1,8 @@
 import { Href, useRouter } from 'expo-router';
+import * as Haptics from 'expo-haptics';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { Alert, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import MapView, { Circle, PROVIDER_GOOGLE } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -14,6 +15,7 @@ import { useAppLocation } from '@/lib/location';
 import { useAppNotifications } from '@/lib/notifications';
 import { useQuestBadge } from '@/lib/quest-badge-context';
 import { useResponsive } from '@/lib/responsive';
+import { playRideRequestSound, stopRideRequestSound } from '@/lib/sounds';
 import { theme } from '@/theme';
 
 function countCompletedQuests(todayRides: number, todayEarnings: number, totalRides: number, rating: number): number {
@@ -37,15 +39,27 @@ const LAGOS_REGION = {
   longitudeDelta: 0.025,
 };
 
+/** Straight-line km, same formula ride-service uses to pick nearby drivers. */
+function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const toRad = (n: number) => (n * Math.PI) / 180;
+  const r = 6371;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  return r * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+}
+
 export default function DriverHomeScreen() {
   const router = useRouter();
   const { getAccessToken } = useAuth();
   const { session, goOnline, goOffline, selectOffer } = useDriverSession();
 
-  // Everything queued except the one already open on the request screen.
-  const waitingOffers = session.offers.filter(
-    (queued) => queued.rideId !== session.currentOffer?.rideId,
-  );
+  // Every live request. The driver picks one from this list — nothing opens by
+  // itself, which is both what a driver expects and what stops the screen
+  // flipping between home and the request card.
+  const waitingOffers = session.offers;
   const { permissionState, requestLocationAccess, currentLocation } = useAppLocation();
   const { permissionGranted, requestNotificationAccess } = useAppNotifications();
   const { reportCompletedCount } = useQuestBadge();
@@ -91,23 +105,26 @@ export default function DriverHomeScreen() {
     })();
   }, [getAccessToken]);
 
-  // Push the request screen once per ride. This used to fire on every change
-  // to currentOffer — and a rider re-bidding replaces that object — so each
-  // counter-offer stacked another copy of the screen and backing out walked
-  // through all of them.
-  const pushedOfferRideId = useRef<string | null>(null);
+  // Requests are NOT auto-opened. Pushing the request screen automatically
+  // fought with that screen's own "no offer → go home" redirect: push → replace
+  // → home remounts → push again, which is the flicker you see. The driver taps
+  // a request from the list below instead.
+  //
+  // Because nothing opens on its own, the alert has to live here: ring while
+  // there is at least one live request, stop as soon as the list empties.
+  const hasOffers = session.offers.length > 0;
   useEffect(() => {
-    const offerRideId = session.currentOffer?.rideId ?? null;
-
-    if (session.status !== 'offered' || !offerRideId) {
-      if (!offerRideId) pushedOfferRideId.current = null;
+    if (!hasOffers) {
+      void stopRideRequestSound();
       return;
     }
 
-    if (pushedOfferRideId.current === offerRideId) return;
-    pushedOfferRideId.current = offerRideId;
-    router.push('/driver/incoming-request' as Href);
-  }, [session.status, session.currentOffer?.rideId, router]);
+    void playRideRequestSound();
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    return () => {
+      void stopRideRequestSound();
+    };
+  }, [hasOffers]);
 
   // Center map on user location when available
   useEffect(() => {
@@ -214,30 +231,49 @@ export default function DriverHomeScreen() {
             invisible; only the newest one was ever reachable. */}
         {waitingOffers.length > 0 ? (
           <View style={styles.queueCard}>
-            <AppText variant="label" color={theme.colors.muted} style={styles.queueHeading}>
-              {waitingOffers.length} more request{waitingOffers.length === 1 ? '' : 's'} waiting
+            <AppText variant="label" color={theme.colors.orange} style={styles.queueHeading}>
+              {waitingOffers.length} ride request{waitingOffers.length === 1 ? '' : 's'} · tap to view
             </AppText>
-            {waitingOffers.map((queued) => (
-              <Pressable
-                key={queued.rideId}
-                onPress={() => {
-                  selectOffer(queued.rideId);
-                  router.push('/driver/incoming-request' as Href);
-                }}
-                style={({ pressed }) => [styles.queueRow, pressed && styles.queueRowPressed]}>
-                <View style={styles.queueRowText}>
-                  <AppText variant="body" numberOfLines={1}>
-                    {queued.pickup.address}
-                  </AppText>
-                  <AppText variant="bodySmall" color={theme.colors.muted} numberOfLines={1}>
-                    to {queued.destination.address}
-                  </AppText>
-                </View>
-                <AppText variant="label" color={theme.colors.orange}>
-                  {formatNgn(queued.riderOfferNgn ?? queued.fareEstimateNgn)}
-                </AppText>
-              </Pressable>
-            ))}
+            <ScrollView style={styles.queueScroll} showsVerticalScrollIndicator={false}>
+              {waitingOffers.map((queued) => {
+                const pickupKm = haversineKm(
+                  driverLat,
+                  driverLng,
+                  queued.pickup.lat,
+                  queued.pickup.lng,
+                );
+                return (
+                  <Pressable
+                    key={queued.rideId}
+                    onPress={() => {
+                      void stopRideRequestSound();
+                      selectOffer(queued.rideId);
+                      router.push('/driver/incoming-request' as Href);
+                    }}
+                    style={({ pressed }) => [styles.queueRow, pressed && styles.queueRowPressed]}>
+                    <View style={styles.queueRowText}>
+                      <AppText variant="body" numberOfLines={1}>
+                        {queued.pickup.address}
+                      </AppText>
+                      <AppText variant="bodySmall" color={theme.colors.muted} numberOfLines={1}>
+                        to {queued.destination.address}
+                      </AppText>
+                      {/* How far the driver must drive just to reach the rider —
+                          the number that decides whether a job is worth taking. */}
+                      <AppText variant="monoSmall" color={theme.colors.muted}>
+                        {pickupKm.toFixed(1)} km to pickup
+                        {queued.plannedDistanceKm
+                          ? ` · ${queued.plannedDistanceKm.toFixed(1)} km trip`
+                          : ''}
+                      </AppText>
+                    </View>
+                    <AppText variant="label" color={theme.colors.orange}>
+                      {formatNgn(queued.riderOfferNgn ?? queued.fareEstimateNgn)}
+                    </AppText>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
           </View>
         ) : null}
 
@@ -338,6 +374,9 @@ const styles = StyleSheet.create({
   // Bottom overlay — position comes from safe-area insets at render time
   bottomOverlay: {
     position: 'absolute',
+  },
+  queueScroll: {
+    maxHeight: 190,
   },
   queueCard: {
     backgroundColor: theme.colors.white,

@@ -1,5 +1,4 @@
 import { Href, useRouter } from 'expo-router';
-import * as Haptics from 'expo-haptics';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -29,7 +28,7 @@ import { AppText } from '@/components/app-text';
 import { useKeyboardHeight } from '@/hooks/use-keyboard';
 import { useDriverSession } from '@/lib/driver-session';
 import { useResponsive } from '@/lib/responsive';
-import { playRideRequestSound, stopRideRequestSound } from '@/lib/sounds';
+import { stopRideRequestSound } from '@/lib/sounds';
 import { theme } from '@/theme';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -171,7 +170,7 @@ export default function IncomingRequestScreen() {
       if (remaining <= 0 && timerRef.current) {
         clearInterval(timerRef.current);
         timerRef.current = null;
-        router.replace('/driver/(tabs)/home' as Href);
+        router.back();
       }
     };
 
@@ -182,19 +181,16 @@ export default function IncomingRequestScreen() {
     };
   }, [offer?.expiresAt, router]);
 
-  // Play alert sound + haptic when offer arrives
+  // The alert rings on the home list now — the driver is looking at the
+  // request, so stop it.
   useEffect(() => {
-    void playRideRequestSound();
-    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-    return () => {
-      void stopRideRequestSound();
-    };
+    void stopRideRequestSound();
   }, []);
 
-  // If no offer, go back
+  // If the request is gone (taken, cancelled, expired), pop back to the list.
   useEffect(() => {
     if (!offer) {
-      router.replace('/driver/(tabs)/home' as Href);
+      router.back();
     }
   }, [offer, router]);
 
@@ -225,7 +221,7 @@ export default function IncomingRequestScreen() {
     } catch {
       // ignore
     }
-    router.replace('/driver/(tabs)/home' as Href);
+    router.back();
   };
 
   const handleBidPress = () => {
