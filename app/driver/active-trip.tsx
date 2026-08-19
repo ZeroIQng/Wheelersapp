@@ -85,12 +85,16 @@ export default function DriverActiveTripScreen() {
     });
   }, [ride, currentLocation]);
 
-  if (!ride) return null;
-
+  // Hooks before any early return. This memo used to sit below the null
+  // check, so the render where `ride` clears — trip completed or cancelled,
+  // while the driver is on this very screen — changed the hook count and
+  // crashed React mid-transition.
   const routeCoords = useMemo(() => {
-    if (!ride.route?.coordinates) return [];
+    if (!ride?.route?.coordinates) return [];
     return ride.route.coordinates.map((c) => ({ latitude: c.lat, longitude: c.lng }));
-  }, [ride.route]);
+  }, [ride?.route]);
+
+  if (!ride) return null;
 
   const destinationCoord = { latitude: ride.destination.lat, longitude: ride.destination.lng };
 

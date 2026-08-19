@@ -20,6 +20,23 @@ function formatNgn(amount: number): string {
   return `NGN ${Math.round(amount).toLocaleString('en-NG')}`;
 }
 
+/** Straight-line km — same formula the matcher used to pick this driver. */
+function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const toRad = (n: number) => (n * Math.PI) / 180;
+  const r = 6371;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  return r * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+}
+
+/** Rough city-driving ETA (~24 km/h average) — an estimate, never below 1 min. */
+function estimateEtaMinutes(km: number): number {
+  return Math.max(1, Math.round(km * 2.5));
+}
+
 export default function DriverNavigationScreen() {
   const router = useRouter();
   const { session, arriveAtPickup, sendGps } = useDriverSession();
@@ -67,12 +84,12 @@ export default function DriverNavigationScreen() {
     }
   }, [ride, currentLocation]);
 
-  if (!ride) return null;
-
   const routeCoords = useMemo(() => {
-    if (!ride.route?.coordinates) return [];
+    if (!ride?.route?.coordinates) return [];
     return ride.route.coordinates.map((c) => ({ latitude: c.lat, longitude: c.lng }));
-  }, [ride.route]);
+  }, [ride?.route]);
+
+  if (!ride) return null;
 
   const pickupCoord = { latitude: ride.pickup.lat, longitude: ride.pickup.lng };
 
@@ -83,12 +100,22 @@ export default function DriverNavigationScreen() {
     longitudeDelta: 0.02,
   };
 
-  const etaMinutes = ride.plannedDurationSeconds
-    ? Math.ceil(ride.plannedDurationSeconds / 60)
-    : '--';
-  const distanceKm = ride.plannedDistanceKm
-    ? ride.plannedDistanceKm.toFixed(1)
-    : '--';
+  // Live approach numbers: driver's GPS → rider's pickup. Recomputes every
+  // location update, so they count down as the driver closes in.
+  const pickupKm = currentLocation
+    ? haversineKm(currentLocation.lat, currentLocation.lng, ride.pickup.lat, ride.pickup.lng)
+    : null;
+  const etaMinutes = pickupKm === null ? '--' : estimateEtaMinutes(pickupKm);
+  const distanceKm =
+    pickupKm === null ? '--' : pickupKm < 10 ? pickupKm.toFixed(1) : String(Math.round(pickupKm));
+
+  // The trip itself, for context under the pickup address.
+  const tripSummary = [
+    ride.plannedDistanceKm ? `${ride.plannedDistanceKm.toFixed(1)} km trip` : null,
+    ride.plannedDurationSeconds ? `~${Math.ceil(ride.plannedDurationSeconds / 60)} min` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
 
   const handleArrived = async () => {
     try {
@@ -148,14 +175,14 @@ export default function DriverNavigationScreen() {
             <AppText variant="monoLarge" color={theme.colors.orange} adjustsFontSizeToFit minimumFontScale={0.7} numberOfLines={1}>
               {etaMinutes}
             </AppText>
-            <AppText variant="bodySmall" color={theme.colors.muted} numberOfLines={1}>min away</AppText>
+            <AppText variant="bodySmall" color={theme.colors.muted} numberOfLines={1}>min to rider</AppText>
           </View>
           <View style={styles.statDivider} />
           <View style={styles.stat}>
             <AppText variant="monoLarge" color={theme.colors.black} adjustsFontSizeToFit minimumFontScale={0.7} numberOfLines={1}>
               {distanceKm}
             </AppText>
-            <AppText variant="bodySmall" color={theme.colors.muted} numberOfLines={1}>km left</AppText>
+            <AppText variant="bodySmall" color={theme.colors.muted} numberOfLines={1}>km to pickup</AppText>
           </View>
           <View style={styles.statDivider} />
           <View style={styles.stat}>
@@ -175,6 +202,11 @@ export default function DriverNavigationScreen() {
             <View style={styles.pickupCopy}>
               <AppText variant="bodySmall" color={theme.colors.muted}>Pickup</AppText>
               <AppText variant="h3" numberOfLines={2}>{ride.pickup.address}</AppText>
+              {tripSummary ? (
+                <AppText variant="monoSmall" color={theme.colors.mutedLight}>
+                  Then {tripSummary} to {ride.destination.address}
+                </AppText>
+              ) : null}
             </View>
           </View>
           {ride.riderPhone ? (
