@@ -61,6 +61,7 @@ export default function DriverHomeScreen() {
   // flipping between home and the request card.
   const waitingOffers = session.offers;
   const { permissionState, requestLocationAccess, currentLocation } = useAppLocation();
+
   const { permissionGranted, requestNotificationAccess } = useAppNotifications();
   const { reportCompletedCount } = useQuestBadge();
   const insets = useSafeAreaInsets();
@@ -142,6 +143,16 @@ export default function DriverHomeScreen() {
   const driverLat = currentLocation?.lat ?? LAGOS_REGION.latitude;
   const driverLng = currentLocation?.lng ?? LAGOS_REGION.longitude;
 
+  // Nearest pickup first. Arrival order is meaningless to a driver deciding
+  // which job to take; how far they have to drive to reach the rider is not.
+  const sortedOffers = currentLocation
+    ? [...waitingOffers].sort(
+        (left, right) =>
+          haversineKm(currentLocation.lat, currentLocation.lng, left.pickup.lat, left.pickup.lng) -
+          haversineKm(currentLocation.lat, currentLocation.lng, right.pickup.lat, right.pickup.lng),
+      )
+    : waitingOffers;
+
   const handleToggleOnline = async () => {
     try {
       if (isOnline) {
@@ -215,6 +226,88 @@ export default function DriverHomeScreen() {
         </View>
       </View>
 
+      {/* Incoming requests — always a list, even for one, so the driver reads
+          the same layout every time and a second request simply appears in it.
+          Sits at the top: nearest-first, distance leading, because "how far do
+          I drive to reach them" is the first thing that decides a job. */}
+      {waitingOffers.length > 0 ? (
+        <View
+          style={[
+            styles.requestsOverlay,
+            {
+              top: insets.top + responsive.scale(56),
+              left: responsive.gutter,
+              right: responsive.gutter,
+            },
+          ]}>
+
+          <View style={styles.queueCard}>
+            <AppText variant="label" color={theme.colors.orange} style={styles.queueHeading}>
+              {waitingOffers.length} ride request{waitingOffers.length === 1 ? '' : 's'} · tap to view
+            </AppText>
+            <ScrollView style={styles.queueScroll} showsVerticalScrollIndicator={false}>
+              {sortedOffers.map((queued) => {
+                const pickupKm = currentLocation
+                  ? haversineKm(
+                      currentLocation.lat,
+                      currentLocation.lng,
+                      queued.pickup.lat,
+                      queued.pickup.lng,
+                    )
+                  : null;
+                return (
+                  <Pressable
+                    key={queued.rideId}
+                    onPress={() => {
+                      void stopRideRequestSound();
+                      selectOffer(queued.rideId);
+                      router.push('/driver/incoming-request' as Href);
+                    }}
+                    style={({ pressed }) => [styles.queueRow, pressed && styles.queueRowPressed]}>
+                    {/* Distance to the rider, leading and largest — the number
+                        a driver decides on before anything else. */}
+                    <View style={styles.distanceBadge}>
+                      <AppText variant="h3" color={theme.colors.orange}>
+                        {/* Without a GPS fix this would be measured from a
+                            hardcoded city centre — a confident, wrong number.
+                            Show nothing rather than mislead. */}
+                        {pickupKm === null
+                          ? '--'
+                          : pickupKm < 10
+                            ? pickupKm.toFixed(1)
+                            : Math.round(pickupKm)}
+                      </AppText>
+                      <AppText variant="monoSmall" color={theme.colors.muted}>
+                        {pickupKm === null ? 'no GPS' : 'km away'}
+                      </AppText>
+                    </View>
+
+                    <View style={styles.queueRowText}>
+                      <AppText variant="body" numberOfLines={1}>
+                        {queued.pickup.address}
+                      </AppText>
+                      <AppText variant="bodySmall" color={theme.colors.muted} numberOfLines={1}>
+                        to {queued.destination.address}
+                      </AppText>
+                      <AppText variant="monoSmall" color={theme.colors.mutedLight}>
+                        {queued.plannedDistanceKm
+                          ? `${queued.plannedDistanceKm.toFixed(1)} km trip`
+                          : 'trip length unknown'}
+                        {queued.isGroupRide ? ` · group · ${queued.riderCount ?? 2} riders` : ''}
+                      </AppText>
+                    </View>
+
+                    <AppText variant="label" color={theme.colors.orange}>
+                      {formatNgn(queued.riderOfferNgn ?? queued.fareEstimateNgn)}
+                    </AppText>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </View>
+      ) : null}
+
       {/* Bottom card overlay */}
       <View
         style={[
@@ -226,57 +319,6 @@ export default function DriverHomeScreen() {
             gap: responsive.scale(12),
           },
         ]}>
-        {/* Waiting requests — tap one to open it. Without this list a second
-            request that arrived while the driver was reading the first was
-            invisible; only the newest one was ever reachable. */}
-        {waitingOffers.length > 0 ? (
-          <View style={styles.queueCard}>
-            <AppText variant="label" color={theme.colors.orange} style={styles.queueHeading}>
-              {waitingOffers.length} ride request{waitingOffers.length === 1 ? '' : 's'} · tap to view
-            </AppText>
-            <ScrollView style={styles.queueScroll} showsVerticalScrollIndicator={false}>
-              {waitingOffers.map((queued) => {
-                const pickupKm = haversineKm(
-                  driverLat,
-                  driverLng,
-                  queued.pickup.lat,
-                  queued.pickup.lng,
-                );
-                return (
-                  <Pressable
-                    key={queued.rideId}
-                    onPress={() => {
-                      void stopRideRequestSound();
-                      selectOffer(queued.rideId);
-                      router.push('/driver/incoming-request' as Href);
-                    }}
-                    style={({ pressed }) => [styles.queueRow, pressed && styles.queueRowPressed]}>
-                    <View style={styles.queueRowText}>
-                      <AppText variant="body" numberOfLines={1}>
-                        {queued.pickup.address}
-                      </AppText>
-                      <AppText variant="bodySmall" color={theme.colors.muted} numberOfLines={1}>
-                        to {queued.destination.address}
-                      </AppText>
-                      {/* How far the driver must drive just to reach the rider —
-                          the number that decides whether a job is worth taking. */}
-                      <AppText variant="monoSmall" color={theme.colors.muted}>
-                        {pickupKm.toFixed(1)} km to pickup
-                        {queued.plannedDistanceKm
-                          ? ` · ${queued.plannedDistanceKm.toFixed(1)} km trip`
-                          : ''}
-                      </AppText>
-                    </View>
-                    <AppText variant="label" color={theme.colors.orange}>
-                      {formatNgn(queued.riderOfferNgn ?? queued.fareEstimateNgn)}
-                    </AppText>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-          </View>
-        ) : null}
-
         {/* Metrics row */}
         <View style={[styles.metricsCard, { paddingVertical: responsive.scale(14) }]}>
           <View style={styles.metricItem}>
@@ -375,8 +417,16 @@ const styles = StyleSheet.create({
   bottomOverlay: {
     position: 'absolute',
   },
+  requestsOverlay: {
+    position: 'absolute',
+  },
   queueScroll: {
-    maxHeight: 190,
+    maxHeight: 240,
+  },
+  distanceBadge: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 58,
   },
   queueCard: {
     backgroundColor: theme.colors.white,
