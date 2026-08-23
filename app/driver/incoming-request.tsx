@@ -241,18 +241,22 @@ export default function IncomingRequestScreen() {
     }
   };
 
+  // Swiping away is non-destructive: the request stays open in the queue.
+  // Turning down the job is the explicit Decline button — a hidden gesture
+  // must never silently reject work.
   const handleDismiss = async () => {
+    if (!offer) return;
+    void stopRideRequestSound();
+    router.back();
+  };
+
+  const handleDecline = async () => {
     if (!offer) return;
     try {
       void stopRideRequestSound();
-      // Dismissing an unanswered request rejects it. After a bid, dismissing
-      // just leaves the screen — rejecting here would cancel the driver's own
-      // bid behind their back.
-      if (!bidSentRef.current) {
-        await rejectRide(offer.rideId);
-      }
+      await rejectRide(offer.rideId);
     } catch {
-      // ignore
+      // ignore — leaving the screen is the outcome either way
     }
     router.back();
   };
@@ -726,9 +730,21 @@ export default function IncomingRequestScreen() {
             </View>
           )}
 
+          {/* Explicit exit — swiping alone is invisible UX. Declining is only
+              offered before any bid; after one, closing keeps the bid alive. */}
+          {!bidSent ? (
+            <Pressable onPress={() => void handleDecline()} style={styles.declineBtn}>
+              <AppText variant="label" color={theme.colors.danger}>Decline ride</AppText>
+            </Pressable>
+          ) : (
+            <Pressable onPress={() => router.back()} style={styles.declineBtn}>
+              <AppText variant="label" color={theme.colors.muted}>Close — keep my bid</AppText>
+            </Pressable>
+          )}
+
           {/* Hint */}
           <AppText variant="bodySmall" color={theme.colors.mutedLight} style={styles.hint}>
-            Swipe down to ignore
+            or swipe down to leave it open
           </AppText>
         </ScrollView>
       </Animated.View>
@@ -875,6 +891,12 @@ const styles = StyleSheet.create({
     borderRadius: theme.radii.sm,
     paddingHorizontal: 12,
     paddingVertical: 8,
+  },
+  declineBtn: {
+    alignSelf: 'center',
+    paddingVertical: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.lg,
+    marginTop: theme.spacing.xs,
   },
   stillOpenNotice: {
     backgroundColor: theme.colors.white,
