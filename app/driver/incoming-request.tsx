@@ -175,6 +175,13 @@ export default function IncomingRequestScreen() {
     setBidSent(false);
   }, [offer?.rideId, riderOfferNgn]);
 
+  // Seat answers belong to one request — a different ride means fresh seats.
+  useEffect(() => {
+    setSeatBids({});
+    setSeatBidMode(null);
+    setSeatBidAmount('');
+  }, [offer?.rideId]);
+
   useEffect(() => {
     if (!offer?.expiresAt) return;
     const expiresMs = new Date(offer.expiresAt).getTime();
@@ -250,11 +257,23 @@ export default function IncomingRequestScreen() {
     router.back();
   };
 
+  const handleAcceptAllSeats = async () => {
+    const seats = offer?.groupMembers ?? [];
+    for (const seat of seats) {
+      if (seatBids[seat.rideId] !== undefined) continue;
+      // Sequential on purpose — one failed seat shouldn't mark the rest sent.
+      // eslint-disable-next-line no-await-in-loop
+      await handleSeatAccept(seat);
+    }
+  };
+
   const handleSeatAccept = async (seat: GroupSeat) => {
     try {
       void stopRideRequestSound();
       await bidOnSeat(seat, undefined, currentLocation ?? undefined);
       setSeatBids((prev) => ({ ...prev, [seat.rideId]: seat.offerNgn }));
+      // A seat answer is engagement — dismissing must not reject the ride.
+      setBidSent(true);
     } catch (err) {
       Alert.alert('Error', err instanceof Error ? err.message : 'Could not accept this seat.');
     }
@@ -271,6 +290,7 @@ export default function IncomingRequestScreen() {
       Keyboard.dismiss();
       await bidOnSeat(seat, amount, currentLocation ?? undefined);
       setSeatBids((prev) => ({ ...prev, [seat.rideId]: amount }));
+      setBidSent(true);
       setSeatBidMode(null);
       setSeatBidAmount('');
     } catch (err) {
@@ -337,6 +357,10 @@ export default function IncomingRequestScreen() {
 
   const isGroupRide = offer.isGroupRide === true;
   const riderCount = offer.riderCount ?? 1;
+  const hasSeats = isGroupRide && (offer.groupMembers?.length ?? 0) > 0;
+  const answeredSeatCount = (offer.groupMembers ?? []).filter(
+    (seat) => seatBids[seat.rideId] !== undefined,
+  ).length;
   const stopCount = offer.stops.length + 2; // intermediates plus both ends
 
   // One ordered timeline: first pickup, every waypoint between, final drop-off.
@@ -638,8 +662,28 @@ export default function IncomingRequestScreen() {
             </View>
           </View>
 
-          {/* Actions */}
-          {bidSent ? (
+          {/* Actions — per-seat groups negotiate above; a lump-sum accept has
+              no rider on the other end to approve it. */}
+          {hasSeats ? (
+            <View style={styles.bidSentWrap}>
+              {answeredSeatCount > 0 ? (
+                <>
+                  <AppText variant="label" color={theme.colors.green}>
+                    {answeredSeatCount}/{offer.groupMembers!.length} seats answered
+                  </AppText>
+                  <AppText variant="bodySmall" color={theme.colors.muted}>
+                    Riders confirm their own seats — the trip starts when every seat agrees with you.
+                  </AppText>
+                </>
+              ) : (
+                <AppButton
+                  title={`Accept all seats · ${formatNgn(offer.groupMembers!.reduce((sum, s) => sum + s.offerNgn, 0))}`}
+                  onPress={handleAcceptAllSeats}
+                  style={styles.acceptBtn}
+                />
+              )}
+            </View>
+          ) : bidSent ? (
             <View style={styles.bidSentWrap}>
               <AppText variant="label" color={theme.colors.green}>
                 {lastBidNgn ? `Bid of ${formatNgn(lastBidNgn)} sent` : 'Offer accepted'}
