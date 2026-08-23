@@ -72,7 +72,7 @@
       }
     },
     "production:driver": {
-      "distribution": "internal",
+      "distribution": "store",
       "environment": "production",
       "autoIncrement": true,
       "android": {
