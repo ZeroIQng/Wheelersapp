@@ -26,7 +26,7 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { AppButton } from '@/components/app-button';
 import { AppText } from '@/components/app-text';
 import { useKeyboardHeight } from '@/hooks/use-keyboard';
-import { useDriverSession } from '@/lib/driver-session';
+import { useDriverSession, type GroupSeat } from '@/lib/driver-session';
 import { estimateEtaMinutes, haversineKm } from '@/lib/geo';
 import { useAppLocation } from '@/lib/location';
 import { useResponsive } from '@/lib/responsive';
@@ -110,7 +110,12 @@ function buildRouteStops(params: {
 
 export default function IncomingRequestScreen() {
   const router = useRouter();
-  const { session, acceptRide, rejectRide, selectOffer } = useDriverSession();
+  const { session, acceptRide, bidOnSeat, rejectRide, selectOffer } = useDriverSession();
+  // Per-seat negotiation state for group rides: which seats we've answered,
+  // and which seat's bid input is open.
+  const [seatBids, setSeatBids] = useState<Record<string, number>>({});
+  const [seatBidMode, setSeatBidMode] = useState<string | null>(null);
+  const [seatBidAmount, setSeatBidAmount] = useState('');
   const { currentLocation } = useAppLocation();
   const insets = useSafeAreaInsets();
   const responsive = useResponsive();
@@ -243,6 +248,34 @@ export default function IncomingRequestScreen() {
       // ignore
     }
     router.back();
+  };
+
+  const handleSeatAccept = async (seat: GroupSeat) => {
+    try {
+      void stopRideRequestSound();
+      await bidOnSeat(seat, undefined, currentLocation ?? undefined);
+      setSeatBids((prev) => ({ ...prev, [seat.rideId]: seat.offerNgn }));
+    } catch (err) {
+      Alert.alert('Error', err instanceof Error ? err.message : 'Could not accept this seat.');
+    }
+  };
+
+  const handleSeatBid = async (seat: GroupSeat) => {
+    const amount = parseInt(seatBidAmount, 10);
+    if (!amount || amount < 100) {
+      Alert.alert('Invalid amount', 'Enter a valid bid for this seat.');
+      return;
+    }
+    try {
+      void stopRideRequestSound();
+      Keyboard.dismiss();
+      await bidOnSeat(seat, amount, currentLocation ?? undefined);
+      setSeatBids((prev) => ({ ...prev, [seat.rideId]: amount }));
+      setSeatBidMode(null);
+      setSeatBidAmount('');
+    } catch (err) {
+      Alert.alert('Error', err instanceof Error ? err.message : 'Could not bid on this seat.');
+    }
   };
 
   const handleBidPress = () => {
@@ -430,6 +463,76 @@ export default function IncomingRequestScreen() {
               <AppText variant="bodySmall" color={theme.colors.muted}>
                 Timer&apos;s up but the ride is still open — you can bid until a driver is accepted.
               </AppText>
+            </View>
+          )}
+
+          {/* Per-seat negotiation: each rider set their own price — answer each. */}
+          {isGroupRide && offer.groupMembers && offer.groupMembers.length > 0 && (
+            <View style={styles.seatsCard}>
+              <AppText variant="monoSmall" color={theme.colors.muted}>
+                {offer.groupMembers.length} RIDERS · NEGOTIATE EACH SEAT
+              </AppText>
+              {offer.groupMembers.map((seat, index) => {
+                const sentAmount = seatBids[seat.rideId];
+                return (
+                  <View key={seat.rideId} style={styles.seatRow}>
+                    <View style={styles.seatInfo}>
+                      <AppText variant="label">
+                        Rider {index + 1} · offers ₦{seat.offerNgn.toLocaleString()}
+                      </AppText>
+                      <AppText variant="bodySmall" color={theme.colors.muted} numberOfLines={1}>
+                        {seat.pickup.address} → {seat.dropoff.address}
+                      </AppText>
+                      {sentAmount !== undefined && (
+                        <AppText variant="bodySmall" color={theme.colors.orange}>
+                          Your offer: ₦{sentAmount.toLocaleString()} — waiting on rider
+                        </AppText>
+                      )}
+                    </View>
+                    {sentAmount === undefined && (
+                      seatBidMode === seat.rideId ? (
+                        <View style={styles.seatBidRow}>
+                          <TextInput
+                            autoFocus
+                            keyboardType="number-pad"
+                            onChangeText={setSeatBidAmount}
+                            placeholder={`${seat.offerNgn}`}
+                            placeholderTextColor={theme.colors.mutedLight}
+                            style={styles.seatBidInput}
+                            value={seatBidAmount}
+                          />
+                          <Pressable
+                            onPress={() => void handleSeatBid(seat)}
+                            style={styles.seatBtn}
+                          >
+                            <AppText variant="bodySmall" color={theme.colors.white}>Send</AppText>
+                          </Pressable>
+                        </View>
+                      ) : (
+                        <View style={styles.seatActions}>
+                          <Pressable
+                            onPress={() => void handleSeatAccept(seat)}
+                            style={styles.seatBtn}
+                          >
+                            <AppText variant="bodySmall" color={theme.colors.white}>
+                              Accept ₦{seat.offerNgn.toLocaleString()}
+                            </AppText>
+                          </Pressable>
+                          <Pressable
+                            onPress={() => {
+                              setSeatBidMode(seat.rideId);
+                              setSeatBidAmount('');
+                            }}
+                            style={styles.seatBtnOutline}
+                          >
+                            <AppText variant="bodySmall" color={theme.colors.black}>Bid</AppText>
+                          </Pressable>
+                        </View>
+                      )
+                    )}
+                  </View>
+                );
+              })}
             </View>
           )}
 
@@ -673,6 +776,61 @@ const styles = StyleSheet.create({
   },
   groupBadgeDotOverlap: {
     marginLeft: -3,
+  },
+  seatsCard: {
+    backgroundColor: theme.colors.white,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    borderRadius: theme.radii.sm,
+    padding: theme.spacing.md,
+    gap: theme.spacing.sm,
+    ...theme.shadows.subtle,
+  },
+  seatRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.borderLight,
+    paddingTop: theme.spacing.sm,
+  },
+  seatInfo: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  seatActions: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  seatBidRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  seatBidInput: {
+    width: 82,
+    fontFamily: 'ClashDisplay_700Bold',
+    fontSize: 16,
+    color: theme.colors.black,
+    borderWidth: theme.borders.regular,
+    borderColor: theme.colors.black,
+    borderRadius: theme.radii.sm,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+  },
+  seatBtn: {
+    backgroundColor: theme.colors.black,
+    borderRadius: theme.radii.sm,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  seatBtnOutline: {
+    borderWidth: theme.borders.regular,
+    borderColor: theme.colors.black,
+    borderRadius: theme.radii.sm,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
   },
   stillOpenNotice: {
     backgroundColor: theme.colors.white,

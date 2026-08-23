@@ -61,6 +61,19 @@ type RideOffer = {
   riderCount?: number;
   /** Parallel to `stops` — which waypoints are pickups vs drop-offs. */
   stopKinds?: Array<'pickup' | 'dropoff'>;
+  /**
+   * Group rides: each rider's own leg and seat offer. The driver negotiates
+   * per seat — accept one rider's price, bid another — not on a lump sum.
+   */
+  groupMembers?: GroupSeat[];
+};
+
+export type GroupSeat = {
+  rideId: string;
+  riderId: string;
+  pickup: RideEstimateWaypoint;
+  dropoff: RideEstimateWaypoint;
+  offerNgn: number;
 };
 
 type DriverRide = {
@@ -130,6 +143,11 @@ type DriverSessionContextValue = {
   acceptRide: (
     rideId: string,
     counterOfferNgn?: number,
+    origin?: { lat: number; lng: number },
+  ) => Promise<void>;
+  bidOnSeat: (
+    seat: GroupSeat,
+    amountNgn?: number,
     origin?: { lat: number; lng: number },
   ) => Promise<void>;
   rejectRide: (rideId: string) => Promise<void>;
@@ -207,6 +225,7 @@ const defaultContext: DriverSessionContextValue = {
   goOnline: async (_lat: number, _lng: number) => { throw new Error('Driver session unavailable.'); },
   goOffline: async () => { throw new Error('Driver session unavailable.'); },
   acceptRide: async (_rideId: string, _counterOfferNgn?: number) => { throw new Error('Driver session unavailable.'); },
+  bidOnSeat: async () => { throw new Error('Driver session unavailable.'); },
   selectOffer: (_rideId: string) => {},
   closeOffer: () => {},
   rejectRide: async () => { throw new Error('Driver session unavailable.'); },
@@ -287,6 +306,9 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
               ? (payload.stopKinds.filter(
                   (k): k is 'pickup' | 'dropoff' => k === 'pickup' || k === 'dropoff',
                 ))
+              : undefined,
+            groupMembers: Array.isArray(payload.groupMembers) && payload.groupMembers.length > 0
+              ? (payload.groupMembers as GroupSeat[])
               : undefined,
           };
 
@@ -703,6 +725,32 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
     [sendEnvelope],
   );
 
+  /**
+   * Bid on ONE seat of a group ride. Reuses the driver:accept envelope with
+   * the member's own ride id — the backend routes it to that rider alone.
+   */
+  const bidOnSeat = useCallback(
+    async (seat: GroupSeat, amountNgn?: number, origin?: { lat: number; lng: number }) => {
+      const finalAmount = amountNgn ?? seat.offerNgn;
+      const pickupKm = origin
+        ? haversineKm(origin.lat, origin.lng, seat.pickup.lat, seat.pickup.lng)
+        : undefined;
+      const etaSeconds = pickupKm !== undefined ? estimateEtaSeconds(pickupKm) : 300;
+
+      await sendEnvelope('driver:accept', {
+        rideId: seat.rideId,
+        riderId: seat.riderId,
+        driverName: 'Driver',
+        driverRating: 5.0,
+        vehiclePlate: 'N/A',
+        vehicleModel: 'N/A',
+        etaSeconds,
+        agreedFareNgn: finalAmount,
+      });
+    },
+    [sendEnvelope],
+  );
+
   const rejectRide = useCallback(
     async (rideId: string) => {
       await sendEnvelope('driver:reject', {
@@ -833,6 +881,7 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
       goOnline,
       goOffline,
       acceptRide,
+      bidOnSeat,
       rejectRide,
       selectOffer,
       closeOffer,
@@ -851,6 +900,7 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
       goOnline,
       goOffline,
       acceptRide,
+      bidOnSeat,
       rejectRide,
       selectOffer,
       closeOffer,
