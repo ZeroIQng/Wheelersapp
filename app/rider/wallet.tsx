@@ -23,6 +23,7 @@ import { AppScreen } from "@/components/app-screen";
 import { AppText } from "@/components/app-text";
 import { SectionHeader } from "@/components/SectionHeader";
 import { WalletBalanceCard } from "@/components/WalletBalanceCard";
+import { KeyboardShiftView } from "@/components/keyboard-shift-view";
 import { getAccessTokenWithRetry } from "@/lib/access-token";
 import { createIdempotencyKey } from "@/lib/idempotency";
 import {
@@ -845,7 +846,7 @@ export default function WalletScreen() {
         transparent
         visible={isWithdrawModalVisible}
       >
-        <View style={styles.modalBackdrop}>
+        <KeyboardShiftView style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
               <View>
@@ -936,7 +937,7 @@ export default function WalletScreen() {
               </View>
             </View>
           </View>
-        </View>
+        </KeyboardShiftView>
       </Modal>
 
       <Modal
@@ -945,7 +946,7 @@ export default function WalletScreen() {
         transparent
         visible={isBankPickerVisible}
       >
-        <View style={styles.paymentWidgetBackdrop}>
+        <KeyboardShiftView style={styles.paymentWidgetBackdrop}>
           <View style={styles.bankPickerSheet}>
             <View style={styles.paymentWidgetHeader}>
               <View style={styles.pageCopy}>
@@ -1013,7 +1014,7 @@ export default function WalletScreen() {
               ) : null}
             </ScrollView>
           </View>
-        </View>
+        </KeyboardShiftView>
       </Modal>
 
       <Modal
