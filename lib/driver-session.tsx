@@ -236,6 +236,7 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
   const connectPromiseRef = useRef<Promise<WebSocket> | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const shouldMaintainConnectionRef = useRef(false);
+  const lastOnlineCoordsRef = useRef<{ lat: number; lng: number } | null>(null);
   const userRef = useRef(user);
   const sessionRef = useRef(session);
 
@@ -568,6 +569,14 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
           connectPromiseRef.current = null;
           setConnectionState('connected');
           setError(null);
+          // A reconnect while the driver believes they're online must
+          // re-announce — the backend re-sends any ride requests that opened
+          // (or were missed) during the connection gap. Without this, a
+          // network blip silently cost the driver every request in flight.
+          const lastOnline = lastOnlineCoordsRef.current;
+          if (shouldMaintainConnectionRef.current && lastOnline && sessionRef.current.status !== 'offline') {
+            socket.send(JSON.stringify({ type: 'driver:online', payload: lastOnline }));
+          }
           resolve(socket);
         };
 
@@ -622,6 +631,7 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
   const goOnline = useCallback(async (lat: number, lng: number) => {
     console.log('[driver-session] goOnline called with', { lat, lng });
     shouldMaintainConnectionRef.current = true;
+    lastOnlineCoordsRef.current = { lat, lng };
     try {
       await connect();
       console.log('[driver-session] connected, sending driver:online');
@@ -641,6 +651,7 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
       socket.send(JSON.stringify({ type: 'driver:offline', payload: { reason: 'manual' } }));
     }
     shouldMaintainConnectionRef.current = false;
+    lastOnlineCoordsRef.current = null;
     clearReconnectTimer();
     socketRef.current = null;
     if (socket) socket.close();
@@ -745,6 +756,7 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
       // doesn't stay frozen at wherever they went online — matching and the
       // pickup distances riders see depend on it.
       const ride = sessionRef.current.currentRide;
+      lastOnlineCoordsRef.current = { lat, lng };
       socket.send(
         JSON.stringify({
           type: 'driver:gps',
