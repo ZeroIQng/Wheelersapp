@@ -18,6 +18,7 @@ import {
   type RideRouteGeometry,
 } from '@/lib/api';
 import { getAccessTokenWithRetry } from '@/lib/access-token';
+import { estimateEtaSeconds, haversineKm } from '@/lib/geo';
 import { invalidateWalletCache } from '@/lib/wallet-overview';
 
 type DriverConnectionState = 'disconnected' | 'connecting' | 'connected';
@@ -46,6 +47,13 @@ type RideOffer = {
   riderOfferNgn?: number;
   plannedDistanceKm?: number;
   plannedDurationSeconds?: number;
+  /**
+   * Driver→pickup at match time, from the backend. A seed for the live
+   * "to pickup" card — screens recompute from the phone's own GPS when a fix
+   * is available.
+   */
+  pickupDistanceKm?: number;
+  pickupEtaSeconds?: number;
   expiresAt: string;
   route?: RideRouteGeometry;
   /** Shared ride: several riders picked up and dropped along one route. */
@@ -119,7 +127,11 @@ type DriverSessionContextValue = {
   error: string | null;
   goOnline: (lat: number, lng: number) => Promise<void>;
   goOffline: () => Promise<void>;
-  acceptRide: (rideId: string, counterOfferNgn?: number) => Promise<void>;
+  acceptRide: (
+    rideId: string,
+    counterOfferNgn?: number,
+    origin?: { lat: number; lng: number },
+  ) => Promise<void>;
   rejectRide: (rideId: string) => Promise<void>;
   /** Open one of the queued requests. */
   selectOffer: (rideId: string) => void;
@@ -264,6 +276,8 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
             riderOfferNgn: getNumber(payload.riderOfferNgn),
             plannedDistanceKm: getNumber(payload.plannedDistanceKm),
             plannedDurationSeconds: getNumber(payload.plannedDurationSeconds),
+            pickupDistanceKm: getNumber(payload.pickupDistanceKm),
+            pickupEtaSeconds: getNumber(payload.pickupEtaSeconds),
             expiresAt: getString(payload.expiresAt) ?? '',
             route: payload.route as RideRouteGeometry | undefined,
             isGroupRide: payload.isGroupRide === true,
@@ -637,13 +651,22 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
   }, [clearReconnectTimer]);
 
   const acceptRide = useCallback(
-    async (rideId: string, counterOfferNgn?: number) => {
+    async (rideId: string, counterOfferNgn?: number, origin?: { lat: number; lng: number }) => {
       const offer = sessionRef.current.currentOffer;
       if (!offer || offer.rideId !== rideId) {
         throw new Error('No matching ride offer to accept.');
       }
 
       const amountNgn = counterOfferNgn ?? offer.riderOfferNgn ?? offer.fareEstimateNgn;
+
+      // Real ETA from live GPS (or the backend's match-time seed) — the
+      // server recomputes from its own copy too, but never send the old
+      // hardcoded 300 that told every rider "5 min away".
+      const pickupKm = origin
+        ? haversineKm(origin.lat, origin.lng, offer.pickup.lat, offer.pickup.lng)
+        : offer.pickupDistanceKm;
+      const etaSeconds =
+        pickupKm !== undefined ? estimateEtaSeconds(pickupKm) : offer.pickupEtaSeconds ?? 300;
 
       await sendEnvelope('driver:accept', {
         rideId,
@@ -652,7 +675,7 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
         driverRating: 5.0,
         vehiclePlate: 'N/A',
         vehicleModel: 'N/A',
-        etaSeconds: 300,
+        etaSeconds,
         agreedFareNgn: amountNgn,
       });
 
@@ -717,12 +740,17 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
     (lat: number, lng: number) => {
       const socket = socketRef.current;
       if (!socket || socket.readyState !== WebSocket.OPEN) return;
+      // With a ride: full trip telemetry keyed by rideId. Without one: an
+      // idle position ping so the backend's copy of where this driver is
+      // doesn't stay frozen at wherever they went online — matching and the
+      // pickup distances riders see depend on it.
       const ride = sessionRef.current.currentRide;
-      if (!ride) return;
       socket.send(
         JSON.stringify({
           type: 'driver:gps',
-          payload: { rideId: ride.rideId, lat, lng, timestamp: new Date().toISOString() },
+          payload: ride
+            ? { rideId: ride.rideId, lat, lng, timestamp: new Date().toISOString() }
+            : { lat, lng, timestamp: new Date().toISOString() },
         }),
       );
     },

@@ -14,6 +14,7 @@ import { RideChat } from "@/components/RideChat";
 import { RideMovementBar } from "@/components/RideMovementBar";
 import { StatusPill } from "@/components/StatusPill";
 import { TripProgressBar } from "@/components/TripProgressBar";
+import { estimateEtaMinutes } from "@/lib/geo";
 import { useAppLocation } from "@/lib/location";
 import {
   getAdditionalStopCount,
@@ -79,12 +80,18 @@ export default function RiderActiveTripScreen() {
     {
       id: "eta",
       label: currentRide?.status === "completed" ? "MIN TRIP" : "MIN LEFT",
+      // Live first: distanceToNextStopKm arrives with every driver GPS update,
+      // so the ETA ticks down as the driver moves — the static etaSeconds from
+      // matching is only the opening value.
       value: String(
-        currentRide?.driver?.etaSeconds
-          ? Math.max(1, Math.ceil(currentRide.driver.etaSeconds / 60))
-          : currentRide?.plannedDurationSeconds
-            ? Math.max(1, Math.ceil(currentRide.plannedDurationSeconds / 60))
-            : "--",
+        typeof currentRide?.driverLocation?.distanceToNextStopKm === "number" &&
+          currentRide?.status !== "completed"
+          ? estimateEtaMinutes(currentRide.driverLocation.distanceToNextStopKm)
+          : currentRide?.driver?.etaSeconds
+            ? Math.max(1, Math.ceil(currentRide.driver.etaSeconds / 60))
+            : currentRide?.plannedDurationSeconds
+              ? Math.max(1, Math.ceil(currentRide.plannedDurationSeconds / 60))
+              : "--",
       ),
       accent: "orange" as const,
     },

@@ -20,8 +20,10 @@ import { useResponsive } from '@/lib/responsive';
 import { getAccessTokenWithRetry } from '@/lib/access-token';
 import {
   createWalletWithdrawal,
+  FAILED_WITHDRAWAL_STATUSES,
   getWithdrawalBankNetworks,
   verifyWithdrawalBankAccount,
+  waitForWithdrawalOutcome,
   type WithdrawalBankNetwork,
 } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -37,6 +39,7 @@ function formatNgn(amount: number): string {
 // anything smaller. Checked here too so the driver is told before they get to
 // the confirm step rather than after the request round-trips.
 const MIN_WITHDRAWAL_NGN = 5000;
+
 
 // ── Icons ─────────────────────────────────────────────
 function BackIcon({ size = 22 }: { size?: number }) {
@@ -160,7 +163,14 @@ export default function DriverWithdrawScreen() {
         accountNumber,
         networkId: getBankId(selectedBank),
       });
-      setAccountName(res.bankAccount.accountName || 'Account holder');
+      if (!res.bankAccount.accountName) {
+        Alert.alert(
+          'Account not found',
+          'We could not find that account. Check the account number and bank, then try again.',
+        );
+        return;
+      }
+      setAccountName(res.bankAccount.accountName);
       setStep('amount');
       setTimeout(() => amountRef.current?.focus(), 300);
     } catch (err) {
@@ -199,7 +209,7 @@ export default function DriverWithdrawScreen() {
     try {
       const accessToken = await getAccessTokenWithRetry(getAccessToken);
       if (!accessToken) throw new Error('Not authenticated');
-      await createWalletWithdrawal({
+      const response = await createWalletWithdrawal({
         accessToken,
         amountNgn: parseFloat(amount),
         bankAccount: {
@@ -208,9 +218,41 @@ export default function DriverWithdrawScreen() {
           networkId: getBankId(selectedBank),
         },
       });
+
+      const created = response.withdrawal;
+      if (created && FAILED_WITHDRAWAL_STATUSES.includes(created.status)) {
+        throw new Error(
+          created.failureReason ??
+            'The withdrawal was rejected. Your balance has not been deducted.',
+        );
+      }
+
+      // Wait for the bank's answer before declaring an outcome.
+      const outcome = created
+        ? await waitForWithdrawalOutcome({ accessToken, withdrawalId: created.id })
+        : null;
+
+      if (outcome && FAILED_WITHDRAWAL_STATUSES.includes(outcome.status)) {
+        Alert.alert(
+          'Withdrawal failed',
+          outcome.failureReason ??
+            'The bank transfer did not go through. Your balance has been refunded.',
+        );
+        return;
+      }
+
+      if (outcome?.status === 'SETTLED') {
+        Alert.alert(
+          'Withdrawal sent',
+          `${formatNgn(parseFloat(amount))} has been sent to ${accountName} at ${selectedBank.name}`,
+          [{ text: 'Done', onPress: () => router.back() }],
+        );
+        return;
+      }
+
       Alert.alert(
-        'Withdrawal submitted',
-        `${formatNgn(parseFloat(amount))} will be sent to ${accountName} at ${selectedBank.name}`,
+        'Withdrawal processing',
+        `${formatNgn(parseFloat(amount))} is on its way to ${accountName} at ${selectedBank.name}. We'll update your wallet once the bank confirms.`,
         [{ text: 'Done', onPress: () => router.back() }],
       );
     } catch (err) {

@@ -344,17 +344,14 @@ export interface WalletTransactionsResponse {
 export interface WalletWithdrawal {
   id: string;
   status: string;
-  requestedAmountNgn: number;
-  quotedAmountNgn: number | null;
-  payoutCurrency: string;
+  amountNgn: number;
   bankAccount: {
     accountNumber: string;
-    accountName: string;
+    accountName: string | null;
     networkId: string;
   };
   providerReference: string | null;
   failureReason: string | null;
-  expiresAt: string | null;
   createdAt: string;
   updatedAt: string;
   settledAt: string | null;
@@ -591,12 +588,36 @@ async function requestJson<TResponse>(
 
   const payload = (await response.json().catch(() => null)) as unknown;
   if (!response.ok) {
-    throw new Error(
+    const code =
+      payload && typeof payload === "object" && "code" in payload && typeof payload.code === "string"
+        ? payload.code
+        : undefined;
+    throw new ApiError(
       getErrorMessage(payload, options.fallbackError ?? "Request failed."),
+      response.status,
+      code,
     );
   }
 
   return (payload ?? {}) as TResponse;
+}
+
+/**
+ * Error thrown for non-2xx API responses. Carries the HTTP status and the
+ * backend's machine-readable `code` so callers can branch on the failure
+ * (e.g. 404 VIRTUAL_ACCOUNT_NOT_FOUND → offer to provision) instead of
+ * string-matching the message.
+ */
+export class ApiError extends Error {
+  status: number;
+  code?: string;
+
+  constructor(message: string, status: number, code?: string) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.code = code;
+  }
 }
 
 async function postJson<TResponse>(
@@ -856,6 +877,56 @@ export async function createWalletWithdrawal(input: {
       fallbackError: "Could not create wallet withdrawal.",
     },
   );
+}
+
+export async function getWalletWithdrawal(input: {
+  accessToken: string;
+  id: string;
+}): Promise<{ withdrawal: WalletWithdrawal | null }> {
+  return getJson<{ withdrawal: WalletWithdrawal | null }>(
+    `/wallet/withdrawals/${encodeURIComponent(input.id)}`,
+    {
+      accessToken: input.accessToken,
+      fallbackError: "Could not load withdrawal status.",
+    },
+  );
+}
+
+export const FAILED_WITHDRAWAL_STATUSES = ["FAILED", "EXPIRED", "CANCELLED"];
+
+/**
+ * Poll a withdrawal until the provider reports a terminal state, so screens
+ * show the real outcome — not a success message fired on the create request
+ * alone. Resolves null while still in flight after ~30s.
+ */
+export async function waitForWithdrawalOutcome(input: {
+  accessToken: string;
+  withdrawalId: string;
+  attempts?: number;
+  intervalMs?: number;
+}): Promise<WalletWithdrawal | null> {
+  const attempts = input.attempts ?? 6;
+  const intervalMs = input.intervalMs ?? 5000;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    try {
+      const res = await getWalletWithdrawal({
+        accessToken: input.accessToken,
+        id: input.withdrawalId,
+      });
+      const withdrawal = res.withdrawal;
+      if (!withdrawal) return null;
+      if (
+        withdrawal.status === "SETTLED" ||
+        FAILED_WITHDRAWAL_STATUSES.includes(withdrawal.status)
+      ) {
+        return withdrawal;
+      }
+    } catch {
+      // transient — keep polling
+    }
+  }
+  return null;
 }
 
 export async function getWithdrawalBankNetworks(input: {

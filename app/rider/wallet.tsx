@@ -27,6 +27,7 @@ import { getAccessTokenWithRetry } from "@/lib/access-token";
 import { createIdempotencyKey } from "@/lib/idempotency";
 import {
   createWalletWithdrawal,
+  FAILED_WITHDRAWAL_STATUSES,
   getWalletDepositInfo,
   getWithdrawalBankNetworks,
   isBackendConfigured,
@@ -34,6 +35,7 @@ import {
   type WalletDepositInfoResponse,
   type WithdrawalBankNetwork,
   verifyWithdrawalBankAccount,
+  waitForWithdrawalOutcome,
 } from "@/lib/api";
 import { useWalletOverview } from "@/lib/wallet-overview";
 import { theme } from "@/theme";
@@ -594,17 +596,40 @@ export default function WalletScreen() {
         },
       });
 
+      const created = response.withdrawal;
+      if (created && FAILED_WITHDRAWAL_STATUSES.includes(created.status)) {
+        throw new Error(
+          created.failureReason ??
+            "The withdrawal was rejected. Your balance has not been deducted.",
+        );
+      }
+
+      setBlockingLoader({
+        title: "Confirming with your bank",
+        message: "Waiting for the bank to confirm the transfer.",
+      });
+
+      const outcome = created
+        ? await waitForWithdrawalOutcome({ accessToken, withdrawalId: created.id })
+        : null;
+
+      if (outcome && FAILED_WITHDRAWAL_STATUSES.includes(outcome.status)) {
+        await refreshWalletOverview();
+        throw new Error(
+          outcome.failureReason ??
+            "The bank transfer did not go through. Your balance has been refunded.",
+        );
+      }
+
       await refreshWalletOverview();
       resetWithdrawalFlow();
       withdrawalIdempotencyKeyRef.current = null;
 
-      const payoutAmount =
-        response.withdrawal?.quotedAmountNgn ?? response.withdrawal?.requestedAmountNgn;
-
+      const amountLabel = `NGN ${amountNgn.toLocaleString("en-NG")}`;
       showToast(
-        payoutAmount
-          ? `Withdrawal request created for NGN ${payoutAmount.toLocaleString("en-NG")}.`
-          : "Withdrawal request created and is now processing.",
+        outcome?.status === "SETTLED"
+          ? `Withdrawal of ${amountLabel} sent to your bank.`
+          : `Withdrawal of ${amountLabel} is processing — we'll update your wallet once the bank confirms.`,
       );
     } catch (error) {
       setWithdrawConfirmVisible(true);

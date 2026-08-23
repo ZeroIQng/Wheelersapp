@@ -75,6 +75,7 @@ export default function DriverWalletTabScreen() {
   const [earnings, setEarnings] = useState<DriverEarningsResponse | null>(null);
   const [loadingEarnings, setLoadingEarnings] = useState(true);
   const [account, setAccount] = useState<ProvisionVirtualAccountResponse | null>(null);
+  const [accountError, setAccountError] = useState<string | null>(null);
   const [loadingAccount, setLoadingAccount] = useState(true);
   const [copied, setCopied] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -87,7 +88,16 @@ export default function DriverWalletTabScreen() {
       provisionVirtualAccount({ accessToken }),
     ]);
     if (earningsRes.status === 'fulfilled') setEarnings(earningsRes.value);
-    if (accountRes.status === 'fulfilled') setAccount(accountRes.value);
+    if (accountRes.status === 'fulfilled') {
+      setAccount(accountRes.value);
+      setAccountError(null);
+    } else {
+      setAccountError(
+        accountRes.reason instanceof Error
+          ? accountRes.reason.message
+          : 'Account not found. Pull to refresh to try again.',
+      );
+    }
     setLoadingEarnings(false);
     setLoadingAccount(false);
   }, [getAccessToken]);
@@ -195,7 +205,7 @@ export default function DriverWalletTabScreen() {
           </>
         ) : (
           <AppText variant="bodySmall" color={theme.colors.muted} style={{ paddingVertical: 8 }}>
-            Could not load account details
+            {accountError ?? 'Could not load account details — pull to refresh to try again.'}
           </AppText>
         )}
       </View>

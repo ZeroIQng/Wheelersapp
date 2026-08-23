@@ -27,6 +27,8 @@ import { AppButton } from '@/components/app-button';
 import { AppText } from '@/components/app-text';
 import { useKeyboardHeight } from '@/hooks/use-keyboard';
 import { useDriverSession } from '@/lib/driver-session';
+import { estimateEtaMinutes, haversineKm } from '@/lib/geo';
+import { useAppLocation } from '@/lib/location';
 import { useResponsive } from '@/lib/responsive';
 import { stopRideRequestSound } from '@/lib/sounds';
 import { theme } from '@/theme';
@@ -106,6 +108,7 @@ function buildRouteStops(params: {
 export default function IncomingRequestScreen() {
   const router = useRouter();
   const { session, acceptRide, rejectRide, selectOffer } = useDriverSession();
+  const { currentLocation } = useAppLocation();
   const insets = useSafeAreaInsets();
   const responsive = useResponsive();
   const keyboardHeight = useKeyboardHeight();
@@ -218,7 +221,7 @@ export default function IncomingRequestScreen() {
     if (!offer || bidSent) return;
     try {
       void stopRideRequestSound();
-      await acceptRide(offer.rideId);
+      await acceptRide(offer.rideId, undefined, currentLocation ?? undefined);
       setBidSent(true);
     } catch (err) {
       Alert.alert('Error', err instanceof Error ? err.message : 'Could not accept ride.');
@@ -259,7 +262,7 @@ export default function IncomingRequestScreen() {
       Keyboard.dismiss();
       setBidMode(false);
       setLastBidNgn(amount);
-      await acceptRide(offer.rideId, amount);
+      await acceptRide(offer.rideId, amount, currentLocation ?? undefined);
       setBidSent(true);
     } catch (err) {
       Alert.alert('Error', err instanceof Error ? err.message : 'Could not submit bid.');
@@ -286,6 +289,17 @@ export default function IncomingRequestScreen() {
   const durationMin = offer.plannedDurationSeconds
     ? `${Math.ceil(offer.plannedDurationSeconds / 60)} min`
     : '--';
+
+  // Live driver→pickup: recomputed from the phone's GPS on every location
+  // update (LocationProvider emits every 25 m / 15 s), falling back to the
+  // backend's match-time seed when there's no fix yet.
+  const pickupKm = currentLocation
+    ? haversineKm(currentLocation.lat, currentLocation.lng, offer.pickup.lat, offer.pickup.lng)
+    : offer.pickupDistanceKm;
+  const toPickupLabel =
+    pickupKm !== undefined
+      ? `${pickupKm.toFixed(1)} km · ~${estimateEtaMinutes(pickupKm)} min`
+      : null;
 
   const isGroupRide = offer.isGroupRide === true;
   const riderCount = offer.riderCount ?? 1;
@@ -447,6 +461,18 @@ export default function IncomingRequestScreen() {
               );
             })}
           </View>
+
+          {/* Driver→pickup, live */}
+          {toPickupLabel ? (
+            <View style={styles.toPickupCard}>
+              <AppText variant="bodySmall" color={theme.colors.muted} numberOfLines={1}>
+                To pickup
+              </AppText>
+              <AppText variant="h3" adjustsFontSizeToFit minimumFontScale={0.7} numberOfLines={1}>
+                {toPickupLabel}
+              </AppText>
+            </View>
+          ) : null}
 
           {/* Metrics row */}
           <View style={styles.metricsRow}>
@@ -721,6 +747,18 @@ const styles = StyleSheet.create({
   },
 
   // Metrics
+  toPickupCard: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: theme.colors.white,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    borderRadius: theme.radii.sm,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.sm,
+    ...theme.shadows.subtle,
+  },
   metricsRow: {
     flexDirection: 'row',
     gap: theme.spacing.sm,

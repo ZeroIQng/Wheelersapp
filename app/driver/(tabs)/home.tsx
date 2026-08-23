@@ -11,6 +11,7 @@ import { useAuth } from '@/lib/auth';
 import { getAccessTokenWithRetry } from '@/lib/access-token';
 import { getDriverStats, getDriverEarnings, type DriverStatsResponse } from '@/lib/api';
 import { useDriverSession } from '@/lib/driver-session';
+import { haversineKm } from '@/lib/geo';
 import { useAppLocation } from '@/lib/location';
 import { useAppNotifications } from '@/lib/notifications';
 import { useQuestBadge } from '@/lib/quest-badge-context';
@@ -39,22 +40,11 @@ const LAGOS_REGION = {
   longitudeDelta: 0.025,
 };
 
-/** Straight-line km, same formula ride-service uses to pick nearby drivers. */
-function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const toRad = (n: number) => (n * Math.PI) / 180;
-  const r = 6371;
-  const dLat = toRad(lat2 - lat1);
-  const dLon = toRad(lon2 - lon1);
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
-  return r * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
-}
 
 export default function DriverHomeScreen() {
   const router = useRouter();
   const { getAccessToken } = useAuth();
-  const { session, goOnline, goOffline, selectOffer } = useDriverSession();
+  const { session, goOnline, goOffline, selectOffer, sendGps } = useDriverSession();
 
   // Every live request. The driver picks one from this list — nothing opens by
   // itself, which is both what a driver expects and what stops the screen
@@ -148,6 +138,18 @@ export default function DriverHomeScreen() {
   }, [currentLocation]);
 
   const isOnline = session.status !== 'offline';
+
+  // Idle position pings (~30s) while online with no active trip, so the
+  // backend's copy of this driver's position — which drives matching and the
+  // pickup distance riders see — doesn't stay frozen at the go-online spot.
+  const lastIdleGpsAtRef = useRef(0);
+  useEffect(() => {
+    if (!isOnline || session.currentRide || !currentLocation) return;
+    const now = Date.now();
+    if (now - lastIdleGpsAtRef.current < 30_000) return;
+    lastIdleGpsAtRef.current = now;
+    sendGps(currentLocation.lat, currentLocation.lng);
+  }, [isOnline, session.currentRide, currentLocation, sendGps]);
   const driverLat = currentLocation?.lat ?? LAGOS_REGION.latitude;
   const driverLng = currentLocation?.lng ?? LAGOS_REGION.longitude;
 
