@@ -37,6 +37,9 @@ const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const DISMISS_THRESHOLD = 120;
 
 const VAT_RATE = 0.075;
+
+/** Urgency countdown shown on a fresh request — advisory, not a deadline. */
+const URGENCY_WINDOW_S = 15;
 const STATE_LEVY_NGN = 30;
 
 function formatNgn(amount: number): string {
@@ -170,20 +173,18 @@ export default function IncomingRequestScreen() {
   useEffect(() => {
     if (!offer?.expiresAt) return;
     const expiresMs = new Date(offer.expiresAt).getTime();
+    // A short urgency window, not a deadline: the countdown nudges the driver
+    // to answer fast, but when it hits zero the ride stays on screen and the
+    // buttons keep working — the request is open until a driver is actually
+    // accepted (the `!offer` effect below removes it when that happens).
+    const urgencyEndMs = Math.min(Date.now() + URGENCY_WINDOW_S * 1000, expiresMs);
 
     const tick = () => {
-      const remaining = Math.max(0, Math.round((expiresMs - Date.now()) / 1000));
+      const remaining = Math.max(0, Math.round((urgencyEndMs - Date.now()) / 1000));
       setCountdown(remaining);
       if (remaining <= 0 && timerRef.current) {
         clearInterval(timerRef.current);
         timerRef.current = null;
-        // With a bid out, this screen IS the "waiting for the rider" state.
-        // Popping it here was why everything vanished the moment the 30s
-        // card expired — the driver had bid, then stared at an empty home
-        // screen with no idea anything was still happening.
-        if (!bidSentRef.current) {
-          router.back();
-        }
       }
     };
 
@@ -192,7 +193,7 @@ export default function IncomingRequestScreen() {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [offer?.expiresAt, router]);
+  }, [offer?.expiresAt, offer?.rideId]);
 
   // The alert rings on the home list now — the driver is looking at the
   // request, so stop it.
@@ -411,11 +412,26 @@ export default function IncomingRequestScreen() {
               <AppText variant="h2">{isGroupRide ? 'Shared ride' : 'Ride request'}</AppText>
             </View>
             <View style={styles.timerBadge}>
-              <AppText variant="monoLarge" color={countdown <= 10 ? theme.colors.danger : theme.colors.black}>
-                {countdown}s
-              </AppText>
+              {countdown > 0 ? (
+                <AppText variant="monoLarge" color={countdown <= 5 ? theme.colors.danger : theme.colors.black}>
+                  {countdown}s
+                </AppText>
+              ) : (
+                <AppText variant="monoSmall" color={theme.colors.muted}>
+                  STILL OPEN
+                </AppText>
+              )}
             </View>
           </View>
+
+          {/* Timer done ≠ ride gone — make that explicit so drivers still bid. */}
+          {countdown <= 0 && !bidSent && (
+            <View style={styles.stillOpenNotice}>
+              <AppText variant="bodySmall" color={theme.colors.muted}>
+                Timer&apos;s up but the ride is still open — you can bid until a driver is accepted.
+              </AppText>
+            </View>
+          )}
 
           {/* Group rides are a different job at the same distance — say so up front. */}
           {isGroupRide && (
@@ -657,6 +673,14 @@ const styles = StyleSheet.create({
   },
   groupBadgeDotOverlap: {
     marginLeft: -3,
+  },
+  stillOpenNotice: {
+    backgroundColor: theme.colors.white,
+    borderWidth: theme.borders.regular,
+    borderColor: theme.colors.borderLight,
+    borderRadius: theme.radii.sm,
+    paddingVertical: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.md,
   },
   groupNotice: {
     backgroundColor: theme.colors.orangeLight,
