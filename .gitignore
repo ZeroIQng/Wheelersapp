@@ -42,3 +42,8 @@ app-example
 # generated native folders
 /ios
 /android
+
+# parked per-variant native projects (see scripts/ios-variant.sh)
+/ios-rider
+/ios-driver
+/ios-unknown

@@ -21,6 +21,9 @@ export function BackArrow({ style, onPress, light }: BackArrowProps) {
         styles.button,
         {
           backgroundColor: light ? 'rgba(255,255,255,0.18)' : theme.colors.white,
+          // A translucent background would let the hard shadow stamp an offset
+          // copy of the icon, so the shadow is dropped in the light variant.
+          ...(light ? { shadowOpacity: 0, elevation: 0 } : null),
           borderColor: light ? theme.colors.white : theme.colors.black,
         },
         style,

@@ -7,6 +7,7 @@ import { AppButton } from "@/components/app-button";
 import { AppCard } from "@/components/app-card";
 import { AppScreen } from "@/components/app-screen";
 import { AppText } from "@/components/app-text";
+import { EmergencyButton } from "@/components/emergency-button";
 import { BackArrow } from "@/components/back-arrow";
 import { LiveMap } from "@/components/live-map";
 import { MetricCard } from "@/components/MetricCard";
@@ -246,15 +247,13 @@ export default function RiderActiveTripScreen() {
           ))}
         </AppCard>
 
+        {/* The emergency button only means anything while the trip is live —
+            and while it is, it reaches our safety team rather than a mock
+            screen, which is all the old SOS button did. */}
         <View style={styles.actions}>
-          <Pressable
-            onPress={() => router.push("/safety/emergency")}
-            style={styles.sosButton}
-          >
-            <AppText variant="label" color={theme.colors.offWhite}>
-              SOS
-            </AppText>
-          </Pressable>
+          <View style={styles.sosSlot}>
+            <EmergencyButton role="RIDER" rideId={currentRide?.rideId ?? null} />
+          </View>
           <AppButton
             title="Share trip ↗"
             variant="ghost"
@@ -328,6 +327,7 @@ function StopRow({
 }
 
 const styles = StyleSheet.create({
+  sosSlot: { flex: 1 },
   container: {
     flex: 1,
     paddingHorizontal: 0,
@@ -420,17 +420,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing.sm,
-  },
-  sosButton: {
-    width: 78,
-    minHeight: 52,
-    borderRadius: theme.radius.sm,
-    borderWidth: theme.borders.thick,
-    borderColor: theme.colors.danger,
-    backgroundColor: theme.colors.danger,
-    alignItems: "center",
-    justifyContent: "center",
-    ...theme.shadows.card,
   },
   shareButton: {
     flex: 1,

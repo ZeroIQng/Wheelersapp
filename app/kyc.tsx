@@ -47,7 +47,7 @@ export default function KycScreen() {
       contentStyle={styles.container}
     >
       <StatusBar style="dark" backgroundColor={theme.colors.offWhite} />
-      <GearOutline color="rgba(255,92,0,0.1)" style={styles.gear} />
+      <GearOutline color="rgba(240,145,63,0.1)" style={styles.gear} />
       <Animated.View entering={FadeInDown.duration(420)} style={styles.content}>
         <FlowHeader
           showBack

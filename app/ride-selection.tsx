@@ -1,4 +1,5 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
+import * as Haptics from "expo-haptics";
 import { useAuth } from "@/lib/auth";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -194,6 +195,12 @@ export default function RideSelectionScreen() {
   );
   const [isExpanded, setIsExpanded] = useState(true);
   const [selectedRideTier, setSelectedRideTier] = useState<RideTier>("basic");
+  /**
+   * What the rider is willing to pay. Wheelers is a bidding market: the fare
+   * shown is an estimate, and the number that actually goes to drivers is this
+   * one. It follows the estimate until the rider touches it, then it is theirs.
+   */
+  const [offerNgn, setOfferNgn] = useState<number | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const scheduledRideIdempotencyKeyRef = useRef<string | null>(null);
   const sheetOffset = useSharedValue(0);
@@ -366,6 +373,13 @@ export default function RideSelectionScreen() {
   const selectedRideOption =
     rideOptions.find((option) => option.id === selectedRideTier) ??
     rideOptions[0];
+
+  // Switching tier re-anchors the offer to that tier's estimate; carrying a
+  // Basic price over to Premium would silently under-bid the trip.
+  useEffect(() => {
+    setOfferNgn(null);
+  }, [selectedRideTier]);
+
   const hasLiveFare = Boolean(resolvedEstimate && liveEstimateFareNgn !== null);
   const isFareResolving = isEstimateLoading && !hasLiveFare;
   const displayEtaLabel = `${selectedRideOption.etaMinutes} min trip`;
@@ -384,6 +398,18 @@ export default function RideSelectionScreen() {
     liveEstimate?.destination,
     itinerary.stops[itinerary.stops.length - 1] ?? "",
   );
+  const effectiveOfferNgn = offerNgn ?? selectedRideOption.fareNgn;
+  // Drivers stop looking at trips priced far under the estimate, so the floor
+  // keeps the request inside the range that still gets bids.
+  const minOfferNgn = Math.max(500, Math.round(selectedRideOption.fareNgn * 0.7));
+
+  const adjustOffer = (delta: number) => {
+    void Haptics.selectionAsync();
+    setOfferNgn((current) =>
+      Math.max(minOfferNgn, (current ?? selectedRideOption.fareNgn) + delta),
+    );
+  };
+
   const canBookRide = !isSubmitting;
 
   const routeRows = useMemo(() => {
@@ -489,6 +515,7 @@ export default function RideSelectionScreen() {
       params: {
         itinerary: serializedItinerary,
         estimate: serializeRideEstimate(liveEstimate ?? fallbackEstimate),
+        offer: String(effectiveOfferNgn),
       },
     });
   };
@@ -614,6 +641,16 @@ export default function RideSelectionScreen() {
               ))}
             </View>
 
+            {scheduledAt ? null : (
+              <FareOfferRow
+                amountNgn={effectiveOfferNgn}
+                estimateNgn={selectedRideOption.fareNgn}
+                minNgn={minOfferNgn}
+                isResolving={isFareResolving}
+                onAdjust={adjustOffer}
+              />
+            )}
+
             <AppButton
               title={
                 scheduledAt
@@ -636,6 +673,16 @@ export default function RideSelectionScreen() {
               isFareResolving={isFareResolving}
             />
 
+            {scheduledAt ? null : (
+              <FareOfferRow
+                amountNgn={effectiveOfferNgn}
+                estimateNgn={selectedRideOption.fareNgn}
+                minNgn={minOfferNgn}
+                isResolving={isFareResolving}
+                onAdjust={adjustOffer}
+              />
+            )}
+
             <AppButton
               title={
                 scheduledAt
@@ -651,6 +698,68 @@ export default function RideSelectionScreen() {
         )}
       </Animated.View>
     </AppScreen>
+  );
+}
+
+/**
+ * The rider's price, and the two taps that change it.
+ *
+ * Naming your own fare is the whole premise of the marketplace, so it sits on
+ * the booking screen at full size rather than hiding behind the estimate.
+ */
+function FareOfferRow({
+  amountNgn,
+  estimateNgn,
+  minNgn,
+  isResolving,
+  onAdjust,
+}: {
+  amountNgn: number;
+  estimateNgn: number;
+  minNgn: number;
+  isResolving: boolean;
+  onAdjust: (delta: number) => void;
+}) {
+  const delta = amountNgn - estimateNgn;
+  const atFloor = amountNgn <= minNgn;
+
+  return (
+    <View style={styles.offerRow}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Lower your offer"
+        disabled={atFloor}
+        onPress={() => onAdjust(-200)}
+        style={[styles.offerStep, atFloor ? styles.offerStepDisabled : null]}
+      >
+        <MaterialIcons name="remove" size={20} color={theme.colors.black} />
+      </Pressable>
+
+      <View style={styles.offerCentre}>
+        <AppText variant="monoSmall" color={theme.colors.orange}>
+          YOUR OFFER
+        </AppText>
+        <AppText variant="metric">
+          {isResolving ? "…" : formatNgn(amountNgn)}
+        </AppText>
+        <AppText variant="bodySmall" color={theme.colors.muted}>
+          {delta === 0
+            ? `Estimate ${formatNgn(estimateNgn)}`
+            : delta > 0
+              ? `${formatNgn(delta)} above the estimate`
+              : `${formatNgn(Math.abs(delta))} below the estimate`}
+        </AppText>
+      </View>
+
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Raise your offer"
+        onPress={() => onAdjust(200)}
+        style={[styles.offerStep, styles.offerStepUp]}
+      >
+        <MaterialIcons name="add" size={20} color={theme.colors.black} />
+      </Pressable>
+    </View>
   );
 }
 
@@ -839,6 +948,39 @@ function MapRouteSummary({
 }
 
 const styles = StyleSheet.create({
+  offerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing.md,
+    padding: theme.spacing.md,
+    marginBottom: theme.spacing.md,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    borderRadius: theme.radius.md,
+    backgroundColor: theme.colors.white,
+    ...theme.shadows.card,
+  },
+  offerCentre: {
+    flex: 1,
+    alignItems: "center",
+    gap: 1,
+  },
+  offerStep: {
+    width: 52,
+    height: 52,
+    borderRadius: theme.radius.sm,
+    borderWidth: theme.borders.regular,
+    borderColor: theme.colors.black,
+    backgroundColor: theme.colors.offWhite,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  offerStepUp: {
+    backgroundColor: theme.colors.orangeLight,
+  },
+  offerStepDisabled: {
+    opacity: 0.4,
+  },
   container: {
     flex: 1,
     paddingHorizontal: 0,
@@ -879,7 +1021,7 @@ const styles = StyleSheet.create({
     borderWidth: theme.borders.thick,
     borderColor: theme.colors.black,
     borderRadius: theme.radius.md,
-    backgroundColor: "rgba(255,255,255,0.96)",
+    backgroundColor: "#FFFFFF",
     paddingHorizontal: theme.spacing.sm,
     paddingVertical: theme.spacing.sm,
     ...theme.shadows.card,

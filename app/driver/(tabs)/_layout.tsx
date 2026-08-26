@@ -1,7 +1,8 @@
 import { Tabs } from 'expo-router';
-import { View, StyleSheet } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Line, Path, Polyline, Rect } from 'react-native-svg';
+import { useInterstateRequests } from '@/lib/interstate-requests-context';
 import { useQuestBadge } from '@/lib/quest-badge-context';
 import { useResponsive } from '@/lib/responsive';
 import { useAppTheme } from '@/lib/theme-context';
@@ -21,6 +22,20 @@ function HistoryIcon({ color, size }: { color: string; size: number }) {
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
       <Circle cx="12" cy="12" r="10" />
       <Polyline points="12 6 12 12 16 14" />
+    </Svg>
+  );
+}
+
+function InterstateIcon({ color, size }: { color: string; size: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <Rect x="4" y="3" width="16" height="13" rx="2" />
+      <Line x1="4" y1="11" x2="20" y2="11" />
+      <Line x1="12" y1="3" x2="12" y2="11" />
+      <Circle cx="7.5" cy="19" r="1.6" />
+      <Circle cx="16.5" cy="19" r="1.6" />
+      <Line x1="4" y1="16" x2="4" y2="18" />
+      <Line x1="20" y1="16" x2="20" y2="18" />
     </Svg>
   );
 }
@@ -56,6 +71,34 @@ function QuestsIconWithBadge({ color, size, showBadge }: { color: string; size: 
   );
 }
 
+/**
+ * The Interstate icon with a live count of passenger requests.
+ *
+ * A number rather than the plain dot the Quests tab uses: one waiting request
+ * and nine waiting requests are different decisions, and the driver should be
+ * able to tell them apart without opening the tab.
+ */
+function InterstateIconWithBadge({
+  color,
+  size,
+  count,
+}: {
+  color: string;
+  size: number;
+  count: number;
+}) {
+  return (
+    <View>
+      <InterstateIcon color={count > 0 ? theme.colors.orange : color} size={size} />
+      {count > 0 ? (
+        <View style={tabStyles.countBadge}>
+          <Text style={tabStyles.countBadgeText}>{count > 9 ? '9+' : count}</Text>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 function SettingsIcon({ color, size }: { color: string; size: number }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
@@ -66,6 +109,26 @@ function SettingsIcon({ color, size }: { color: string; size: number }) {
 }
 
 const tabStyles = StyleSheet.create({
+  countBadge: {
+    position: 'absolute',
+    top: -6,
+    right: -10,
+    minWidth: 17,
+    height: 17,
+    paddingHorizontal: 4,
+    borderRadius: 9,
+    backgroundColor: theme.colors.red,
+    borderWidth: 1.5,
+    borderColor: theme.colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  countBadgeText: {
+    fontFamily: 'ClashDisplay_700Bold',
+    fontSize: 9,
+    lineHeight: 12,
+    color: theme.colors.white,
+  },
   badge: {
     position: 'absolute',
     top: -2,
@@ -82,6 +145,7 @@ const tabStyles = StyleSheet.create({
 export default function DriverTabsLayout() {
   const { isDark } = useAppTheme();
   const { showBadge } = useQuestBadge();
+  const { pendingCount } = useInterstateRequests();
   const insets = useSafeAreaInsets();
   const responsive = useResponsive();
 
@@ -97,10 +161,15 @@ export default function DriverTabsLayout() {
         headerShown: false,
         tabBarActiveTintColor: theme.colors.orange,
         tabBarInactiveTintColor: isDark ? theme.colors.darkMuted : theme.colors.mutedLight,
+        // Six tabs share the width where five used to, so the label drops a
+        // point and gives up its letter-spacing rather than truncating.
         tabBarLabelStyle: {
           fontFamily: 'ClashDisplay_600Semibold',
-          fontSize: responsive.font(11),
-          letterSpacing: 0.2,
+          fontSize: responsive.font(10),
+          letterSpacing: 0,
+        },
+        tabBarItemStyle: {
+          paddingHorizontal: 0,
         },
         tabBarIconStyle: {
           marginTop: responsive.isShort ? 0 : 2,
@@ -122,6 +191,15 @@ export default function DriverTabsLayout() {
         options={{
           title: 'Home',
           tabBarIcon: ({ color, size }) => <HomeIcon color={color} size={size} />,
+        }}
+      />
+      <Tabs.Screen
+        name="interstate"
+        options={{
+          title: 'Interstate',
+          tabBarIcon: ({ color, size }) => (
+            <InterstateIconWithBadge color={color} size={size} count={pendingCount} />
+          ),
         }}
       />
       <Tabs.Screen

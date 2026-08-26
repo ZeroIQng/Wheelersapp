@@ -9,9 +9,11 @@ import { AppButton } from '@/components/app-button';
 import { AppCard } from '@/components/app-card';
 import { AppScreen } from '@/components/app-screen';
 import { AppText } from '@/components/app-text';
+import { EmergencyButton } from '@/components/emergency-button';
 import { GoogleMapView } from '@/components/GoogleMapView';
 import { TripProgressBar } from '@/components/TripProgressBar';
 import { useDriverSession } from '@/lib/driver-session';
+import { toUserMessage } from '@/lib/error-messages';
 import { useAppLocation } from '@/lib/location';
 import { useResponsive } from '@/lib/responsive';
 import { theme } from '@/theme';
@@ -115,7 +117,7 @@ export default function DriverActiveTripScreen() {
     try {
       await endTrip(ride.rideId);
     } catch (err) {
-      Alert.alert('Error', err instanceof Error ? err.message : 'Could not end ride. Please try again.');
+      Alert.alert('Could not end this ride', toUserMessage(err, 'Please try again in a moment.'));
     }
   };
 
@@ -123,6 +125,11 @@ export default function DriverActiveTripScreen() {
     <AppScreen backgroundColor={theme.colors.offWhite} scroll contentStyle={styles.container}>
       <StatusBar style="dark" backgroundColor={theme.colors.mapBase} />
       <View style={styles.mapWrap}>
+        {/* Over the map, where a driver's thumb already is. Compact because a
+            labelled button would cover the road they are looking at. */}
+        <View style={styles.sosOverlay} pointerEvents="box-none">
+          <EmergencyButton role="DRIVER" rideId={ride.rideId} compact />
+        </View>
         {/* Height scales with the screen so the trip stats and "End ride"
             button stay reachable on short devices. */}
         <View style={[styles.mapContainer, { height: responsive.vh(28, 160, 300) }]}>
@@ -219,6 +226,12 @@ export default function DriverActiveTripScreen() {
 }
 
 const styles = StyleSheet.create({
+  sosOverlay: {
+    position: 'absolute',
+    top: theme.spacing.md,
+    right: theme.spacing.md,
+    zIndex: 10,
+  },
   container: {
     flexGrow: 1,
     paddingHorizontal: 0,

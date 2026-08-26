@@ -23,6 +23,7 @@ import { AppLockOverlay, AppLockProvider } from "@/lib/app-lock";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import { LocationProvider } from "@/lib/location";
 import { AppNotificationsProvider } from "@/lib/notifications";
+import { InterstateRequestsProvider } from "@/lib/interstate-requests-context";
 import { QuestBadgeProvider } from "@/lib/quest-badge-context";
 import { RideSessionProvider } from "@/lib/ride-session";
 import { ThemeProvider, useAppTheme } from "@/lib/theme-context";
@@ -51,10 +52,12 @@ export default function RootLayout() {
             <RideSessionProvider>
               <AppNotificationsProvider>
                 <QuestBadgeProvider>
+                  <InterstateRequestsProvider>
                   <AppLockProvider>
                     <ThemedLayout />
                     <AuthAppLockOverlay />
                   </AppLockProvider>
+                  </InterstateRequestsProvider>
                 </QuestBadgeProvider>
               </AppNotificationsProvider>
             </RideSessionProvider>

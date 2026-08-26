@@ -108,6 +108,17 @@ export default function RiderLayout() {
         }}
       />
       <Tabs.Screen
+        name="interstate"
+        options={{
+          title: "Travel",
+          tabBarIcon: ({ color, size, focused }) => (
+            <TabIconFrame focused={focused} tilt={-3}>
+              <MaterialIcons name="directions-bus" color={color} size={size} />
+            </TabIconFrame>
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="wallet"
         options={{
           title: "Wallet",

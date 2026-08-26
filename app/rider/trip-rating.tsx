@@ -1,23 +1,66 @@
 import { Href, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useState } from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { Alert, Pressable, StyleSheet, View } from "react-native";
 
 import { AppButton } from "@/components/app-button";
 import { AppScreen } from "@/components/app-screen";
 import { AppText } from "@/components/app-text";
 import { FloatingView, PulseView } from "@/components/motion";
 import { StatusPill } from "@/components/StatusPill";
-import { driverDetails } from "@/data/mock";
+import { toUserMessage } from "@/lib/error-messages";
+import { useRideSession } from "@/lib/ride-session";
 import { theme } from "@/theme";
-
-const tips = ["NGN 100", "NGN 200", "NGN 500", "Skip"];
 
 export default function TripRatingScreen() {
   const router = useRouter();
   const walletRoute = "/rider/wallet" as Href;
+  const { currentRide, submitRating } = useRideSession();
   const [rating, setRating] = useState(4);
-  const [tip, setTip] = useState("NGN 200");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // The real driver from the trip that just ended. This screen used to show a
+  // hardcoded person from the mock file, so a rider was asked to rate somebody
+  // who had never driven them anywhere.
+  const driver = currentRide?.driver;
+  const driverName = driver?.driverName?.trim() || "Your driver";
+  const driverInitials =
+    driverName
+      .split(/\s+/)
+      .slice(0, 2)
+      .map((part) => part[0] ?? "")
+      .join("")
+      .toUpperCase() || "D";
+  const vehicleLine = [driver?.vehicleModel, driver?.vehiclePlate]
+    .filter((part) => Boolean(part && part.trim()))
+    .join(" · ");
+  const canRate = Boolean(driver?.driverUserId);
+
+  async function handleSubmit() {
+    if (!canRate) {
+      // Nothing to attach the rating to, so say so rather than pretending it
+      // was sent.
+      Alert.alert(
+        "We could not find that trip",
+        "Your rating could not be matched to a driver. You can rate from your ride history instead.",
+        [{ text: "OK", onPress: () => router.replace(walletRoute) }],
+      );
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      await submitRating({ rating });
+      router.replace(walletRoute);
+    } catch (error) {
+      Alert.alert(
+        "Could not send your rating",
+        toUserMessage(error, "Please try again in a moment."),
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
 
   return (
     <AppScreen
@@ -48,16 +91,18 @@ export default function TripRatingScreen() {
       <PulseView>
         <View style={styles.avatar}>
           <AppText variant="h2" color={theme.colors.offWhite}>
-            {driverDetails.initials}
+            {driverInitials}
           </AppText>
         </View>
       </PulseView>
 
       <View style={styles.driverMeta}>
-        <AppText variant="h3">{driverDetails.name}</AppText>
-        <AppText variant="bodySmall" color={theme.colors.muted}>
-          {driverDetails.vehicle} · {driverDetails.plate}
-        </AppText>
+        <AppText variant="h3">{driverName}</AppText>
+        {vehicleLine ? (
+          <AppText variant="bodySmall" color={theme.colors.muted}>
+            {vehicleLine}
+          </AppText>
+        ) : null}
       </View>
 
       <View style={styles.stars}>
@@ -75,39 +120,15 @@ export default function TripRatingScreen() {
         })}
       </View>
 
-      <View style={styles.tipBlock}>
-        <AppText
-          variant="bodySmall"
-          color={theme.colors.muted}
-          style={styles.center}
-        >
-          Add a tip?
-        </AppText>
-        <View style={styles.tipRow}>
-          {tips.map((entry) => {
-            const active = entry === tip;
-
-            return (
-              <Pressable
-                key={entry}
-                onPress={() => setTip(entry)}
-                style={[styles.tipChip, active ? styles.tipChipActive : null]}
-              >
-                <AppText
-                  variant={entry === "Skip" ? "bodySmall" : "mono"}
-                  color={active ? theme.colors.offWhite : theme.colors.black}
-                >
-                  {entry}
-                </AppText>
-              </Pressable>
-            );
-          })}
-        </View>
-      </View>
+      {/* The tip selector that used to sit here moved no money: it set local
+          state, was never sent anywhere, and left a rider believing they had
+          tipped ₦200. It comes back when there is a tipping endpoint behind
+          it. */}
 
       <AppButton
-        title="Submit rating ↗"
-        onPress={() => router.push(walletRoute)}
+        title={isSubmitting ? "Sending…" : "Submit rating ↗"}
+        disabled={isSubmitting}
+        onPress={() => void handleSubmit()}
       />
     </AppScreen>
   );
@@ -162,30 +183,6 @@ const styles = StyleSheet.create({
   },
   starInactive: {
     opacity: 0.28,
-  },
-  tipBlock: {
-    width: "100%",
-    gap: theme.spacing.sm,
-  },
-  tipRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "center",
-    gap: theme.spacing.sm,
-  },
-  tipChip: {
-    minWidth: 74,
-    minHeight: 40,
-    borderRadius: theme.radii.sm,
-    borderWidth: theme.borders.thick,
-    borderColor: theme.colors.black,
-    backgroundColor: theme.colors.white,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  tipChipActive: {
-    backgroundColor: theme.colors.orange,
-    ...theme.shadows.card,
   },
   confetti: {
     width: 10,

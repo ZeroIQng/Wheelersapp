@@ -1,4 +1,5 @@
 import Constants from "expo-constants";
+import { targetAuthRole } from "@/lib/app-variant";
 
 function getExpoDevServerHost(): string | null {
   const hostUri = Constants.expoConfig?.hostUri;
@@ -45,24 +46,25 @@ function resolveApiBaseUrl(rawValue: string | undefined): string | null {
 
 const apiBaseUrl = resolveApiBaseUrl(process.env.EXPO_PUBLIC_API_BASE_URL);
 
+/**
+ * What a rider sees when the app cannot reach the backend.
+ *
+ * This used to recite the configured base URL and advise using a LAN IP rather
+ * than 127.0.0.1 — genuinely useful to whoever is running the dev server, and
+ * meaningless to everyone else. The diagnostics now go to the console, where
+ * the person who needs them is actually looking.
+ */
 function buildConnectivityErrorMessage(): string {
-  const configuredUrl = process.env.EXPO_PUBLIC_API_BASE_URL?.trim();
-  const resolvedUrl = apiBaseUrl;
-
-  if (!configuredUrl) {
-    return "EXPO_PUBLIC_API_BASE_URL is not configured.";
+  if (__DEV__) {
+    const configuredUrl = process.env.EXPO_PUBLIC_API_BASE_URL?.trim();
+    console.warn("[api] could not reach the backend", {
+      configuredUrl: configuredUrl ?? "(unset)",
+      resolvedUrl: apiBaseUrl ?? "(unresolved)",
+      hint: "On a physical device use your LAN IP or Expo dev host, not 127.0.0.1/localhost.",
+    });
   }
 
-  return [
-    "Could not reach the Wheelers backend.",
-    `Configured API base URL: ${configuredUrl}.`,
-    resolvedUrl && resolvedUrl !== configuredUrl
-      ? `Resolved API base URL: ${resolvedUrl}.`
-      : null,
-    "If you are testing on a physical device, use your computer LAN IP or Expo dev host instead of 127.0.0.1/localhost.",
-  ]
-    .filter((line): line is string => Boolean(line))
-    .join(" ");
+  return "You appear to be offline. Check your connection and try again.";
 }
 
 export type BackendRole = "RIDER" | "DRIVER" | "BOTH";
@@ -114,27 +116,9 @@ export interface ApplyReferralCodeResponse {
   } | null;
 }
 
-interface SendPhoneOtpInput {
-  accessToken: string;
-  phone: string;
-}
 
-interface SendPhoneOtpResponse {
-  sent: boolean;
-  channel?: "whatsapp" | "sms";
-  phone: string;
-  expiresInSeconds: number;
-}
 
-interface VerifyPhoneOtpInput {
-  accessToken: string;
-  code: string;
-}
 
-interface VerifyPhoneOtpResponse {
-  verified: boolean;
-  user: BackendUser;
-}
 
 export interface RideEstimateWaypoint {
   lat: number;
@@ -546,6 +530,26 @@ function getErrorMessage(payload: unknown, fallback: string): string {
   return fallback;
 }
 
+/**
+ * The generic request, for feature modules that live outside this file.
+ *
+ * `lib/api.ts` is already long enough; interstate travel and safety alerts keep
+ * their own bindings and reach the network through here, so there is still one
+ * place that knows about base URLs, auth headers, and error shapes.
+ */
+export async function apiRequest<TResponse>(
+  method: "GET" | "POST" | "PUT",
+  path: string,
+  options: {
+    accessToken?: string;
+    body?: unknown;
+    idempotencyKey?: string;
+    fallbackError: string;
+  },
+): Promise<TResponse> {
+  return requestJson<TResponse>(method, path, options);
+}
+
 async function requestJson<TResponse>(
   method: "GET" | "POST" | "PUT",
   path: string,
@@ -557,7 +561,10 @@ async function requestJson<TResponse>(
   },
 ): Promise<TResponse> {
   if (!apiBaseUrl) {
-    throw new Error("EXPO_PUBLIC_API_BASE_URL is not configured.");
+    if (__DEV__) {
+      console.warn("[api] EXPO_PUBLIC_API_BASE_URL is not set — every request will fail.");
+    }
+    throw new Error("Wheelers is not available right now. Please try again later.");
   }
 
   const headers: Record<string, string> = {};
@@ -688,49 +695,34 @@ interface SocialAuthResponse {
 export async function signInWithApple(input: {
   idToken: string;
   name?: string;
+  role?: BackendRole;
 }): Promise<SocialAuthResponse> {
   return postJson<SocialAuthResponse>(
     "/auth/apple",
-    { idToken: input.idToken, name: input.name },
+    { idToken: input.idToken, name: input.name, role: input.role ?? targetAuthRole },
     { fallbackError: "Apple sign-in failed." },
   );
 }
 
+/**
+ * `role` is not optional in practice: the backend defaults social sign-in to
+ * RIDER, so the driver app must say so explicitly or a driver signing in with
+ * Google would be created as a rider.
+ */
 export async function signInWithGoogle(input: {
   idToken: string;
+  role?: BackendRole;
 }): Promise<SocialAuthResponse> {
   return postJson<SocialAuthResponse>(
     "/auth/google",
-    { idToken: input.idToken },
+    { idToken: input.idToken, role: input.role ?? targetAuthRole },
     { fallbackError: "Google sign-in failed." },
   );
 }
 
-export async function sendPhoneOtp(
-  input: SendPhoneOtpInput,
-): Promise<SendPhoneOtpResponse> {
-  return postJson<SendPhoneOtpResponse>(
-    "/auth/phone/send-otp",
-    { phone: input.phone },
-    {
-      accessToken: input.accessToken,
-      fallbackError: "Could not send the WhatsApp verification code.",
-    },
-  );
-}
 
-export async function verifyPhoneOtp(
-  input: VerifyPhoneOtpInput,
-): Promise<VerifyPhoneOtpResponse> {
-  return postJson<VerifyPhoneOtpResponse>(
-    "/auth/phone/verify-otp",
-    { code: input.code },
-    {
-      accessToken: input.accessToken,
-      fallbackError: "Could not verify the WhatsApp code.",
-    },
-  );
-}
+
+
 
 export async function getCurrentProfile(input: {
   accessToken: string;
@@ -1188,6 +1180,61 @@ export async function getGroupRideMatchRequest(input: {
     accessToken: input.accessToken,
     fallbackError: "Could not load the group ride request.",
   });
+}
+
+/**
+ * Ask the vision service whether a photo is a usable verification selfie,
+ * before it is stored against anything.
+ *
+ * This exists so the rider hears "that's not a face" while the camera is still
+ * open. It is advisory — `completeGroupRideFaceUpload` runs the same check on
+ * the stored object, and that one is the gate.
+ */
+export async function checkGroupRideFace(input: {
+  accessToken: string;
+  imageBase64: string;
+  mimeType: string;
+}): Promise<{ accepted: boolean; reason: string }> {
+  return postJson(
+    "/group-rides/face-check",
+    {
+      imageBase64: input.imageBase64,
+      mimeType: input.mimeType,
+    },
+    {
+      accessToken: input.accessToken,
+      fallbackError: "Could not check that photo.",
+    },
+  );
+}
+
+/**
+ * PUT the selfie straight to object storage using the presigned URL. The
+ * Content-Type has to match the one the URL was signed with or the store
+ * rejects the signature.
+ */
+export async function uploadGroupRideFaceImage(input: {
+  uploadUrl: string;
+  uri: string;
+  mimeType: string;
+}): Promise<void> {
+  const fileResponse = await fetch(input.uri);
+  if (!fileResponse.ok) {
+    throw new Error("Could not read the captured photo.");
+  }
+
+  const blob = await fileResponse.blob();
+  const uploadResponse = await fetch(input.uploadUrl, {
+    method: "PUT",
+    headers: { "Content-Type": input.mimeType },
+    body: blob,
+  });
+
+  if (!uploadResponse.ok) {
+    throw new Error(
+      `Could not upload your verification photo (${uploadResponse.status}).`,
+    );
+  }
 }
 
 export async function createGroupRideFaceUploadUrl(input: {

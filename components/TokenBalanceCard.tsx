@@ -22,7 +22,7 @@ export function TokenBalanceCard({
       <Svg height={84} style={styles.blob} viewBox="0 0 80 80" width={84}>
         <Path
           d="M40 5C54 3,70 14,73 30C78 50,66 68,48 74C30 80,10 68,5 50C-1 30,12 8,40 5Z"
-          fill="rgba(255,92,0,0.22)"
+          fill="rgba(240,145,63,0.22)"
         />
       </Svg>
       <AppText variant="bodySmall" color={theme.colors.darkMuted}>

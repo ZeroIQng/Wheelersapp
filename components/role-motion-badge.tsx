@@ -184,7 +184,7 @@ function DriveBadge({ selected, motionKey }: BadgeProps) {
 function RideVehicle({ selected }: { selected: boolean }) {
   const carBody = selected ? theme.colors.white : theme.colors.orange;
   const trim = theme.colors.black;
-  const windowFill = selected ? 'rgba(255,92,0,0.18)' : '#FFF6F0';
+  const windowFill = selected ? 'rgba(240,145,63,0.18)' : '#FFF6F0';
   const riderSkin = '#F3C9A6';
   const riderShirt = selected ? '#FFB37E' : '#FFD6B8';
   const seatColor = selected ? '#FFD8BF' : '#FFE7D6';
@@ -235,7 +235,7 @@ function RideVehicle({ selected }: { selected: boolean }) {
 function DriveVehicle({ selected }: { selected: boolean }) {
   const carBody = selected ? theme.colors.white : theme.colors.orange;
   const trim = theme.colors.black;
-  const windowFill = selected ? 'rgba(255,92,0,0.18)' : '#FFF6F0';
+  const windowFill = selected ? 'rgba(240,145,63,0.18)' : '#FFF6F0';
   const driverSkin = '#F3C9A6';
   const driverShirt = selected ? '#FFC48A' : '#FFE1C6';
   const wheelFill = selected ? '#FFB37E' : '#FFD2AE';

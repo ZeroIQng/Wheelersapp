@@ -25,7 +25,7 @@ export function WalletBalanceCard({
   return (
     <View style={styles.card}>
       <Svg width={72} height={72} viewBox="0 0 84 84" style={styles.blob}>
-        <Circle cx="42" cy="42" r="34" fill="rgba(255,92,0,0.32)" />
+        <Circle cx="42" cy="42" r="34" fill="rgba(240,145,63,0.32)" />
       </Svg>
       <Svg width={34} height={34} viewBox="0 0 42 42" style={styles.star}>
         <Path

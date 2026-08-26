@@ -41,12 +41,14 @@ import {
 import {
   DEFAULT_DESTINATION_LABEL,
   DEFAULT_PICKUP_LABEL,
+  isCurrentLocationLabel,
   MAX_ADDITIONAL_STOPS,
   parseRideItineraryParam,
   serializeRideItinerary,
   type RideItinerary,
 } from "@/lib/ride-route";
 import { useRideSession } from "@/lib/ride-session";
+import { useAppLocation } from "@/lib/location";
 import { theme } from "@/theme";
 
 // "pickup" targets the from field; a number targets routeStops[index]
@@ -144,6 +146,15 @@ export default function DestinationSearchScreen() {
     flowMode === "trip-edit" ? "form" : "launcher",
   );
   const [pickupValue, setPickupValue] = useState(seededItinerary.pickup);
+  const { currentLocation } = useAppLocation();
+
+  // Show the rider where they will actually be collected. The pickup field
+  // used to sit on a hardcoded neighbourhood, so a rider anywhere else was
+  // quietly booked from the wrong side of the city.
+  useEffect(() => {
+    if (!currentLocation?.address) return;
+    setPickupValue((existing) => (isCurrentLocationLabel(existing) ? currentLocation.address : existing));
+  }, [currentLocation?.address]);
   const [routeStops, setRouteStops] = useState(seededItinerary.stops);
   // Single shared search query — drives the inline results for whichever field is active.
   const [searchQuery, setSearchQuery] = useState("");

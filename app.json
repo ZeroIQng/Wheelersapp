@@ -9,7 +9,7 @@
     "scheme": "wheelersapp",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
-    "backgroundColor": "#FF5C00",
+    "backgroundColor": "#FEFAEF",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.timmy133.wheelers",
@@ -25,7 +25,7 @@
       }
     },
     "android": {
-      "backgroundColor": "#FF5C00",
+      "backgroundColor": "#FEFAEF",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -63,12 +63,12 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/splash-icon.png",
-          "imageWidth": 200,
-          "backgroundColor": "#FF5C00",
+          "image": "./assets/images/splash-wordmark-light.png",
+          "imageWidth": 260,
+          "backgroundColor": "#FEFAEF",
           "dark": {
-            "image": "./assets/images/splash-icon.png",
-            "backgroundColor": "#FF5C00"
+            "image": "./assets/images/splash-wordmark-dark.png",
+            "backgroundColor": "#202020"
           }
         }
       ],
@@ -76,7 +76,7 @@
         "expo-notifications",
         {
           "icon": "./assets/images/android-icon-monochrome.png",
-          "color": "#FF8A3D",
+          "color": "#F0913F",
           "sounds": []
         }
       ],

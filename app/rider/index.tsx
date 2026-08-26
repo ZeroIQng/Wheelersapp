@@ -527,7 +527,7 @@ export default function RiderHomeScreen() {
           initialDelta={{ latitudeDelta: 0.038, longitudeDelta: 0.03 }}
         >
           <FloatingView style={styles.triangle} distance={12} rotate={8}>
-            <TriangleShape color="rgba(255,92,0,0.15)" />
+            <TriangleShape color="rgba(240,145,63,0.15)" />
           </FloatingView>
           <FloatingView
             style={styles.star}

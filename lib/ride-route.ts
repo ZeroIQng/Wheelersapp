@@ -1,4 +1,24 @@
-export const DEFAULT_PICKUP_LABEL = "Current location • Lekki Phase 1";
+/**
+ * The pickup label that means "wherever this device actually is".
+ *
+ * This used to read "Current location • Lekki Phase 1", which was not a label
+ * but a lie: the booking path geocodes the pickup *string*, so every rider who
+ * did not manually change it was collected in Lekki Phase 1 no matter where
+ * they stood. The sentinel is resolved from the device's GPS fix instead of
+ * being sent to a geocoder.
+ */
+export const CURRENT_LOCATION_LABEL = "Current location";
+export const DEFAULT_PICKUP_LABEL = CURRENT_LOCATION_LABEL;
+
+/** True when a pickup should come from the device rather than a geocoder. */
+export function isCurrentLocationLabel(value: string | null | undefined): boolean {
+  const normalized = value?.trim().toLowerCase() ?? "";
+  return (
+    normalized.length === 0 ||
+    normalized === CURRENT_LOCATION_LABEL.toLowerCase() ||
+    normalized.startsWith(`${CURRENT_LOCATION_LABEL.toLowerCase()} •`)
+  );
+}
 export const DEFAULT_DESTINATION_LABEL = "Civic Centre, Victoria Island";
 export const MAX_ADDITIONAL_STOPS = 5;
 export const MAX_ROUTE_STOPS = MAX_ADDITIONAL_STOPS + 1;

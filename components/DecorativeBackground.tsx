@@ -22,7 +22,7 @@ type DecorativeBackgroundProps = {
 
 export function DecorativeBackground({ motif, dark }: DecorativeBackgroundProps) {
   const stroke = dark ? 'rgba(255,255,255,0.16)' : 'rgba(13,13,13,0.08)';
-  const accent = dark ? 'rgba(255,92,0,0.24)' : 'rgba(255,92,0,0.12)';
+  const accent = dark ? 'rgba(240,145,63,0.24)' : 'rgba(240,145,63,0.12)';
 
   return (
     <View pointerEvents="none" style={StyleSheet.absoluteFill}>

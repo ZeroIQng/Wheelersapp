@@ -20,13 +20,20 @@ import { AppScreen } from "@/components/app-screen";
 import { AppText } from "@/components/app-text";
 import {
   cancelGroupRideMatchRequest,
+  completeGroupRideFaceUpload,
+  createGroupRideFaceUploadUrl,
   createGroupRideMatchRequest,
   getGroupRideMatchRequest,
+  uploadGroupRideFaceImage,
   type GroupRideGenderPreference,
   type GroupRideMatchRequest,
 } from "@/lib/api";
 import { getAccessTokenWithRetry } from "@/lib/access-token";
 import { useAuth } from "@/lib/auth";
+import { getGroupRideFaceCapture } from "@/lib/group-ride-draft";
+import { resolvePlaceQuery } from "@/lib/google-places";
+import { useAppLocation } from "@/lib/location";
+import { isCurrentLocationLabel } from "@/lib/ride-route";
 import { theme } from "@/theme";
 
 function getStageForStatus(status: GroupRideMatchRequest["status"] | null): number {
@@ -56,6 +63,7 @@ const matchStages = [
 export default function GroupRideMatchingScreen() {
   const router = useRouter();
   const { getAccessToken } = useAuth();
+  const { currentLocation } = useAppLocation();
   const params = useLocalSearchParams<{
     pickup?: string;
     destination?: string;
@@ -67,6 +75,7 @@ export default function GroupRideMatchingScreen() {
   const [requestId, setRequestId] = useState<string | null>(
     typeof params.requestId === "string" ? params.requestId : null,
   );
+  const [failure, setFailure] = useState<string | null>(null);
   const autoNavigatedRef = useRef(false);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const creatingRef = useRef(false);
@@ -145,7 +154,7 @@ export default function GroupRideMatchingScreen() {
     );
   }, [centerScale, dot1Y, dot2Y, dot3Y, ring1, ring2, ring3, rotation]);
 
-  // Create match request on mount
+  // Create match request on mount, then hand over the verification selfie.
   useEffect(() => {
     if (requestId || creatingRef.current) return;
     creatingRef.current = true;
@@ -153,31 +162,94 @@ export default function GroupRideMatchingScreen() {
     void (async () => {
       try {
         const accessToken = await getAccessTokenWithRetry(getAccessToken);
-        if (!accessToken) return;
+        if (!accessToken) {
+          setFailure("You need to be signed in to book a group ride.");
+          return;
+        }
+
+        const pickupLabel = params.pickup ?? "";
+        const destinationLabel = params.destination ?? "";
+
+        // These used to be sent as lat 0, lng 0 — a point in the Atlantic off
+        // Ghana. Matching is distance-based, so every request landed in the
+        // same imaginary place and nobody could ever be "nearby".
+        const pickup =
+          isCurrentLocationLabel(pickupLabel) && currentLocation
+            ? currentLocation
+            : await resolvePlaceQuery(pickupLabel);
+        const destination = await resolvePlaceQuery(destinationLabel);
 
         const result = await createGroupRideMatchRequest({
           accessToken,
-          pickup: {
-            lat: 0,
-            lng: 0,
-            address: params.pickup ?? "",
-          },
-          destination: {
-            lat: 0,
-            lng: 0,
-            address: params.destination ?? "",
-          },
+          pickup,
+          destination,
           genderPreference,
           paymentMethod: "wallet_balance",
         });
 
         setRequestId(result.item.id);
         setStageIndex(getStageForStatus(result.item.status));
-      } catch {
-        // If creation fails, stay on the screen — user can cancel
+
+        await uploadFaceVerification(accessToken, result.item.id);
+      } catch (error) {
+        setFailure(
+          error instanceof Error
+            ? error.message
+            : "Could not start matching for this group ride.",
+        );
       }
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [requestId, getAccessToken, params.pickup, params.destination, genderPreference]);
+
+  /**
+   * Send the selfie taken on the face-verify screen, then ask the backend to
+   * complete it. The completion call is what runs the vision check and moves
+   * the request to READY_FOR_MATCH — without it the rider sits at
+   * PENDING_FACE_UPLOAD forever, which is exactly what used to happen.
+   */
+  const uploadFaceVerification = useCallback(
+    async (accessToken: string, matchRequestId: string) => {
+      const capture = getGroupRideFaceCapture();
+      if (!capture) {
+        setFailure("Take your verification photo before matching starts.");
+        return;
+      }
+
+      try {
+        const { upload } = await createGroupRideFaceUploadUrl({
+          accessToken,
+          requestId: matchRequestId,
+          mimeType: capture.mimeType,
+          capturedAt: capture.capturedAt,
+        });
+
+        await uploadGroupRideFaceImage({
+          uploadUrl: upload.uploadUrl,
+          uri: capture.uri,
+          mimeType: capture.mimeType,
+        });
+
+        const completed = await completeGroupRideFaceUpload({
+          accessToken,
+          requestId: matchRequestId,
+          capturedAt: capture.capturedAt,
+        });
+
+        setStageIndex(getStageForStatus(completed.item.status));
+      } catch (error) {
+        // A rejected selfie comes back from the vision check here. Send the
+        // rider back to the camera rather than leaving them on a spinner that
+        // will never resolve.
+        setFailure(
+          error instanceof Error
+            ? error.message
+            : "Your verification photo could not be accepted.",
+        );
+      }
+    },
+    [],
+  );
 
   // Poll for status updates
   const pollStatus = useCallback(async () => {
@@ -360,6 +432,25 @@ export default function GroupRideMatchingScreen() {
         </View>
       </Animated.View>
 
+      {/* Something stopped this request before matching could start */}
+      {failure ? (
+        <Animated.View entering={FadeIn.duration(300)} style={styles.failureCard}>
+          <MaterialIcons name="error-outline" size={20} color={theme.colors.danger} />
+          <AppText variant="bodySmall" color={theme.colors.offWhite} style={styles.failureText}>
+            {failure}
+          </AppText>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => router.replace("/group-ride/face-verify")}
+            style={styles.failureAction}
+          >
+            <AppText variant="bodySmall" color={theme.colors.black}>
+              Retake photo
+            </AppText>
+          </Pressable>
+        </Animated.View>
+      ) : null}
+
       {/* Cancel */}
       <Pressable
         accessibilityRole="button"
@@ -388,6 +479,25 @@ function normalizeGenderPreference(
 const RADAR_SIZE = 220;
 
 const styles = StyleSheet.create({
+  failureCard: {
+    alignItems: "center",
+    gap: theme.spacing.sm,
+    padding: theme.spacing.lg,
+    borderRadius: theme.radius.md,
+    borderWidth: theme.borders.regular,
+    borderColor: theme.colors.danger,
+    backgroundColor: "rgba(204,51,51,0.12)",
+    maxWidth: 340,
+  },
+  failureText: {
+    textAlign: "center",
+  },
+  failureAction: {
+    paddingHorizontal: theme.spacing.lg,
+    paddingVertical: theme.spacing.sm,
+    borderRadius: theme.radius.sm,
+    backgroundColor: theme.colors.offWhite,
+  },
   container: {
     flexGrow: 1,
     alignItems: "center",

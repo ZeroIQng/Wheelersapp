@@ -14,7 +14,10 @@
     "ios:rider": "APP_VARIANT=rider EXPO_PUBLIC_APP_VARIANT=rider expo run:ios",
     "ios:driver": "APP_VARIANT=driver EXPO_PUBLIC_APP_VARIANT=driver expo run:ios",
     "web": "expo start --web",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "ios:use:rider": "bash scripts/ios-variant.sh rider",
+    "ios:use:driver": "bash scripts/ios-variant.sh driver",
+    "test": "node --test __tests__/*.test.mjs"
   },
   "dependencies": {
     "@coinbase/wallet-mobile-sdk": "^1.1.2",

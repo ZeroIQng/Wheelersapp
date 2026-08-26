@@ -3,37 +3,29 @@ import * as SecureStore from "expo-secure-store";
 import { clearCachedAccessToken, clearStoredLocalAccessToken } from "@/lib/access-token";
 
 export type AppAuthRole = "RIDER" | "DRIVER";
-export type RiderOnboardingRoute = "/phone-auth" | "/otp-verify" | "/rider";
+export type RiderOnboardingRoute = "/rider";
 export type AuthenticatedRoute = "/driver/(tabs)/home" | RiderOnboardingRoute;
 
+/**
+ * Signing in IS onboarding for a rider — there is no phone-verification step
+ * between the account and the app, so there is no half-finished state to
+ * remember either.
+ */
 export type StoredAuthState = {
   role: AppAuthRole;
   onboardingComplete: boolean;
   onboardingRoute: AuthenticatedRoute;
-  pendingPhone: string | null;
 };
 
 const AUTH_STATE_KEY = "wheelers.auth.state";
 const LOGOUT_PENDING_KEY = "wheelers.auth.logout.pending";
 
-export function getPostLoginRoute(role: AppAuthRole): "/driver/(tabs)/home" | "/phone-auth" {
-  return role === "DRIVER" ? "/driver/(tabs)/home" : "/phone-auth";
+export function getPostLoginRoute(role: AppAuthRole): AuthenticatedRoute {
+  return role === "DRIVER" ? "/driver/(tabs)/home" : "/rider";
 }
 
 export function getAuthenticatedRoute(state: StoredAuthState): AuthenticatedRoute {
-  if (state.role === "DRIVER") {
-    return "/driver/(tabs)/home";
-  }
-
-  if (state.onboardingComplete) {
-    return "/rider";
-  }
-
-  if (state.onboardingRoute === "/otp-verify" && state.pendingPhone) {
-    return "/otp-verify";
-  }
-
-  return "/phone-auth";
+  return state.role === "DRIVER" ? "/driver/(tabs)/home" : "/rider";
 }
 
 export async function readStoredAuthState(): Promise<StoredAuthState | null> {
@@ -48,21 +40,15 @@ export async function readStoredAuthState(): Promise<StoredAuthState | null> {
       return null;
     }
 
-    const onboardingRoute =
-      parsed.onboardingRoute === "/driver/(tabs)/home" ||
-      parsed.onboardingRoute === "/phone-auth" ||
-      parsed.onboardingRoute === "/otp-verify" ||
-      parsed.onboardingRoute === "/rider"
-        ? parsed.onboardingRoute
-        : parsed.role === "DRIVER"
-          ? "/driver/(tabs)/home"
-          : "/phone-auth";
+    // Anyone stored mid-way through the old phone-verification flow is simply
+    // signed in now — that step no longer exists, so it must not strand them.
+    const onboardingRoute: AuthenticatedRoute =
+      parsed.role === "DRIVER" ? "/driver/(tabs)/home" : "/rider";
 
     return {
       role: parsed.role,
-      onboardingComplete: Boolean(parsed.onboardingComplete),
+      onboardingComplete: true,
       onboardingRoute,
-      pendingPhone: typeof parsed.pendingPhone === "string" ? parsed.pendingPhone : null,
     };
   } catch {
     return null;
@@ -75,57 +61,15 @@ export async function writeStoredAuthState(state: StoredAuthState): Promise<void
 
 export async function persistAuthenticatedRole(
   role: AppAuthRole,
-  options?: { phoneVerified?: boolean },
 ): Promise<StoredAuthState> {
-  const phoneVerified = options?.phoneVerified === true;
   const nextState: StoredAuthState = {
     role,
-    onboardingComplete: role === "DRIVER" || phoneVerified,
-    onboardingRoute:
-      role === "DRIVER"
-        ? "/driver/(tabs)/home"
-        : phoneVerified
-          ? "/rider"
-          : "/phone-auth",
-    pendingPhone: null,
+    onboardingComplete: true,
+    onboardingRoute: role === "DRIVER" ? "/driver/(tabs)/home" : "/rider",
   };
 
   await writeStoredAuthState(nextState);
   await clearLogoutPending();
-  return nextState;
-}
-
-export async function storePendingPhoneVerification(phone: string): Promise<StoredAuthState | null> {
-  const currentState = await readStoredAuthState();
-  if (!currentState || currentState.role !== "RIDER") {
-    return null;
-  }
-
-  const nextState: StoredAuthState = {
-    ...currentState,
-    onboardingComplete: false,
-    onboardingRoute: "/otp-verify",
-    pendingPhone: phone,
-  };
-
-  await writeStoredAuthState(nextState);
-  return nextState;
-}
-
-export async function storePhoneEntryStep(): Promise<StoredAuthState | null> {
-  const currentState = await readStoredAuthState();
-  if (!currentState || currentState.role !== "RIDER") {
-    return null;
-  }
-
-  const nextState: StoredAuthState = {
-    ...currentState,
-    onboardingComplete: false,
-    onboardingRoute: "/phone-auth",
-    pendingPhone: null,
-  };
-
-  await writeStoredAuthState(nextState);
   return nextState;
 }
 
@@ -135,20 +79,11 @@ export async function markStoredOnboardingComplete(): Promise<StoredAuthState | 
     return null;
   }
 
-  if (currentState.role !== "RIDER") {
-    return currentState;
-  }
-
-  const nextState: StoredAuthState = {
-    ...currentState,
-    onboardingComplete: true,
-    onboardingRoute: "/rider",
-    pendingPhone: null,
-  };
-
+  const nextState: StoredAuthState = { ...currentState, onboardingComplete: true };
   await writeStoredAuthState(nextState);
   return nextState;
 }
+
 
 export async function clearStoredAuthState(): Promise<void> {
   clearCachedAccessToken();

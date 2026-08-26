@@ -3,6 +3,7 @@ import { Platform, StyleSheet, View } from "react-native";
 import { Marker, Polyline, type EdgePadding, type LatLng } from "react-native-maps";
 
 import { GoogleMapView } from "@/components/GoogleMapView";
+import { useAppLocation } from "@/lib/location";
 import type {
   RideEstimateWaypoint,
   RideMapCoordinate,
@@ -47,6 +48,8 @@ export function LiveMap({
   const mapRef = useRef<import("react-native-maps").default | null>(null);
   const [mapReady, setMapReady] = useState(false);
   const lastFitSignatureRef = useRef<string | null>(null);
+  const hasFittedOnceRef = useRef(false);
+  const { currentLocation } = useAppLocation();
 
   const routePolyline = useMemo(
     () => (route?.coordinates ?? []).map(toLatLng),
@@ -91,15 +94,33 @@ export function LiveMap({
       };
     }
 
-    const center = initialCenter ?? pickup ?? destination ?? driverLocation ?? stops[0];
+    // Where to look before a route exists. The device's own position comes
+    // before any fallback: this used to open on hardcoded Lagos coordinates, so
+    // a rider anywhere else watched the map sit over Lagos and then jump to
+    // their route the moment it resolved.
+    const center =
+      initialCenter ?? pickup ?? destination ?? driverLocation ?? stops[0] ?? currentLocation;
+
+    if (!center) {
+      return undefined;
+    }
 
     return {
-      latitude: center?.lat ?? 6.4365,
-      longitude: center?.lng ?? 3.4553,
+      latitude: center.lat,
+      longitude: center.lng,
       latitudeDelta: initialDelta.latitudeDelta,
       longitudeDelta: initialDelta.longitudeDelta,
     };
-  }, [destination, driverLocation, initialCenter, initialDelta, pickup, route?.bounds, stops]);
+  }, [
+    currentLocation,
+    destination,
+    driverLocation,
+    initialCenter,
+    initialDelta,
+    pickup,
+    route?.bounds,
+    stops,
+  ]);
   const fitSignature = useMemo(
     () =>
       fitCoordinates
@@ -117,12 +138,44 @@ export function LiveMap({
       return;
     }
 
+    const isFirstFit = !hasFittedOnceRef.current;
     lastFitSignatureRef.current = fitSignature;
+    hasFittedOnceRef.current = true;
+
     mapRef.current.fitToCoordinates(fitCoordinates, {
       edgePadding: resolvedPadding,
-      animated: false,
+      // The first frame lands instantly — there is nothing to animate from.
+      // Every later re-frame glides, because a route that resolves in stages
+      // (pickup, then destination, then geometry) snapped the camera three
+      // times and read as the map jumping around on its own.
+      animated: !isFirstFit,
     });
   }, [fitCoordinates, fitSignature, mapReady, resolvedPadding]);
+
+  /**
+   * Catch the case where the device fix arrives after the map has mounted.
+   *
+   * `initialRegion` is only read on the first render, so a rider who opened the
+   * screen before their GPS settled would otherwise be left looking at a world
+   * view forever. There is no route to fit yet, so this is the only thing that
+   * moves the camera to them.
+   */
+  useEffect(() => {
+    if (!mapReady || !mapRef.current) return;
+    if (hasFittedOnceRef.current || fitCoordinates.length >= 2) return;
+    if (!currentLocation) return;
+
+    hasFittedOnceRef.current = true;
+    mapRef.current.animateToRegion(
+      {
+        latitude: currentLocation.lat,
+        longitude: currentLocation.lng,
+        latitudeDelta: initialDelta.latitudeDelta,
+        longitudeDelta: initialDelta.longitudeDelta,
+      },
+      450,
+    );
+  }, [currentLocation, fitCoordinates.length, initialDelta, mapReady]);
 
   return (
     <View
@@ -145,6 +198,10 @@ export function LiveMap({
         showsBuildings
         showsCompass={false}
         showsIndoors={false}
+        // Same as the driver's map: a rider following a trip needs to see
+        // where they are, not just where the route is.
+        showsUserLocation
+        showsMyLocationButton={false}
         showsTraffic
         style={StyleSheet.absoluteFill}
         toolbarEnabled={false}

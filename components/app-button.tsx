@@ -51,6 +51,10 @@ export function AppButton({
 }: AppButtonProps) {
   const current = variantStyles[variant];
   const isDisabled = disabled || loading;
+  // A transparent view casts its hard shadow from the content's alpha on iOS,
+  // which stamps an offset copy of the label and border. Outline buttons get
+  // no shadow instead.
+  const isTransparent = current.backgroundColor === 'transparent';
 
   return (
     <Pressable
@@ -64,6 +68,7 @@ export function AppButton({
           borderColor: current.borderColor,
           shadowColor: current.shadowColor,
         },
+        isTransparent && styles.flat,
         pressed && !isDisabled && styles.pressed,
         isDisabled && styles.disabled,
         style,
@@ -96,6 +101,10 @@ const styles = StyleSheet.create({
   },
   label: {
     textAlign: 'center',
+  },
+  flat: {
+    shadowOpacity: 0,
+    elevation: 0,
   },
   pressed: {
     transform: [{ translateX: 2 }, { translateY: 2 }],

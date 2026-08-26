@@ -564,7 +564,7 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
 
     const wsBaseUrl = getBackendWebSocketUrl();
     if (!wsBaseUrl) {
-      throw new Error('EXPO_PUBLIC_API_BASE_URL is not configured.');
+      throw new Error('Wheelers is not available right now. Please try again later.');
     }
 
     setConnectionState('connecting');

@@ -62,7 +62,7 @@ export function MapMock({
         {showPulse && scene.pulseMarker ? (
           <Circle
             center={scene.pulseMarker}
-            fillColor="rgba(255,92,0,0.18)"
+            fillColor="rgba(240,145,63,0.18)"
             radius={120}
             strokeColor={theme.colors.orange}
             strokeWidth={2}

@@ -270,11 +270,11 @@ export default function GroupRideScreen() {
       {/* Floating decorative shapes */}
       <FloatingView style={styles.shapeStar} distance={8} delay={0} rotate={6}>
         <Animated.View style={spinStyle}>
-          <StarBurst color="rgba(255,92,0,0.13)" width={44} height={44} />
+          <StarBurst color="rgba(240,145,63,0.13)" width={44} height={44} />
         </Animated.View>
       </FloatingView>
       <FloatingView style={styles.shapeTri} distance={6} delay={400} rotate={-8}>
-        <TriangleShape color="rgba(255,92,0,0.10)" width={28} height={28} />
+        <TriangleShape color="rgba(240,145,63,0.10)" width={28} height={28} />
       </FloatingView>
       <FloatingView style={styles.shapeDiamond} distance={7} delay={200} rotate={4}>
         <DiamondPair color="rgba(13,13,13,0.07)" width={30} height={30} />

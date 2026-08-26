@@ -1,3 +1,4 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Location from "expo-location";
 import {
   useCallback,
@@ -10,6 +11,16 @@ import {
   type ReactNode,
 } from "react";
 
+import { BackgroundLocationDisclosure } from "@/components/BackgroundLocationDisclosure";
+
+/**
+ * Persisted marker that the user explicitly tapped "Not now" on the Play
+ * prominent-disclosure screen. Automatic (non user-initiated) requests skip the
+ * disclosure while this is set so we don't nag on every trip; a user-initiated
+ * request can pass `{ force: true }` to show it again.
+ */
+const BACKGROUND_DISCLOSURE_DECLINED_KEY = "wheelers.backgroundLocation.disclosureDeclined";
+
 type AppLocation = {
   lat: number;
   lng: number;
@@ -18,13 +29,22 @@ type AppLocation = {
 
 type LocationPermissionState = "idle" | "granted" | "denied";
 
+type RequestBackgroundOptions = {
+  /**
+   * Show the prominent disclosure even if the user previously declined it.
+   * Use for explicit user actions (e.g. a settings toggle), never for
+   * automatic prompts.
+   */
+  force?: boolean;
+};
+
 type LocationContextValue = {
   permissionState: LocationPermissionState;
   backgroundGranted: boolean;
   currentLocation: AppLocation | null;
   error: string | null;
   requestLocationAccess: () => Promise<void>;
-  requestBackgroundLocationAccess: () => Promise<void>;
+  requestBackgroundLocationAccess: (options?: RequestBackgroundOptions) => Promise<void>;
   refreshLocation: () => Promise<void>;
 };
 
@@ -72,7 +92,33 @@ export function LocationProvider({ children }: { children: ReactNode }) {
   const [backgroundGranted, setBackgroundGranted] = useState(false);
   const [currentLocation, setCurrentLocation] = useState<AppLocation | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [disclosureVisible, setDisclosureVisible] = useState(false);
   const subscriptionRef = useRef<Location.LocationSubscription | null>(null);
+  const disclosureResolverRef = useRef<((accepted: boolean) => void) | null>(null);
+
+  /**
+   * Google Play "Prominent Disclosure and Consent" requirement: before the
+   * ACCESS_BACKGROUND_LOCATION runtime prompt we must show an in-app screen
+   * that explains what is collected, why, and that it happens even when the
+   * app is closed, and the user must affirmatively accept it. This resolves
+   * `true` only when the user taps "Allow" on that screen.
+   */
+  const showBackgroundDisclosure = useCallback((): Promise<boolean> => {
+    // If a disclosure is already open, resolve the previous waiter as declined
+    // so it never hangs, then hand the modal to the new caller.
+    disclosureResolverRef.current?.(false);
+    return new Promise<boolean>((resolve) => {
+      disclosureResolverRef.current = resolve;
+      setDisclosureVisible(true);
+    });
+  }, []);
+
+  const settleDisclosure = useCallback((accepted: boolean) => {
+    setDisclosureVisible(false);
+    const resolve = disclosureResolverRef.current;
+    disclosureResolverRef.current = null;
+    resolve?.(accepted);
+  }, []);
 
   const updateCurrentLocation = useCallback(
     async (
@@ -153,34 +199,63 @@ export function LocationProvider({ children }: { children: ReactNode }) {
     }
   }, [refreshLocation, startWatchingLocation]);
 
-  const requestBackgroundLocationAccess = useCallback(async (): Promise<void> => {
-    try {
-      const foreground = await Location.getForegroundPermissionsAsync();
-      if (!foreground.granted) {
-        await requestLocationAccess();
-      }
+  const requestBackgroundLocationAccess = useCallback(
+    async (options?: RequestBackgroundOptions): Promise<void> => {
+      try {
+        const foreground = await Location.getForegroundPermissionsAsync();
+        if (!foreground.granted) {
+          await requestLocationAccess();
+        }
 
-      const refreshedForeground = await Location.getForegroundPermissionsAsync();
-      if (!refreshedForeground.granted) {
+        const refreshedForeground = await Location.getForegroundPermissionsAsync();
+        if (!refreshedForeground.granted) {
+          setBackgroundGranted(false);
+          return;
+        }
+
+        const background = await Location.getBackgroundPermissionsAsync();
+        if (background.granted) {
+          setBackgroundGranted(true);
+          return;
+        }
+
+        // Nothing more we can do if the OS won't ask again; avoid showing a
+        // disclosure that leads nowhere.
+        if (!background.canAskAgain) {
+          setBackgroundGranted(false);
+          return;
+        }
+
+        if (!options?.force) {
+          const declined = await AsyncStorage.getItem(BACKGROUND_DISCLOSURE_DECLINED_KEY);
+          if (declined) {
+            setBackgroundGranted(false);
+            return;
+          }
+        }
+
+        // Prominent disclosure MUST precede the runtime permission prompt.
+        const accepted = await showBackgroundDisclosure();
+        if (!accepted) {
+          await AsyncStorage.setItem(BACKGROUND_DISCLOSURE_DECLINED_KEY, "1");
+          setBackgroundGranted(false);
+          return;
+        }
+
+        await AsyncStorage.removeItem(BACKGROUND_DISCLOSURE_DECLINED_KEY);
+        const backgroundResult = await Location.requestBackgroundPermissionsAsync();
+        setBackgroundGranted(backgroundResult.granted);
+      } catch (locationError) {
         setBackgroundGranted(false);
-        return;
+        setError(
+          locationError instanceof Error
+            ? locationError.message
+            : "Could not enable background location.",
+        );
       }
-
-      const background = await Location.getBackgroundPermissionsAsync();
-      const backgroundResult = background.granted
-        ? background
-        : await Location.requestBackgroundPermissionsAsync();
-
-      setBackgroundGranted(backgroundResult.granted);
-    } catch (locationError) {
-      setBackgroundGranted(false);
-      setError(
-        locationError instanceof Error
-          ? locationError.message
-          : "Could not enable background location.",
-      );
-    }
-  }, [requestLocationAccess]);
+    },
+    [requestLocationAccess, showBackgroundDisclosure],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -225,6 +300,8 @@ export function LocationProvider({ children }: { children: ReactNode }) {
       cancelled = true;
       subscriptionRef.current?.remove();
       subscriptionRef.current = null;
+      disclosureResolverRef.current?.(false);
+      disclosureResolverRef.current = null;
     };
   }, [refreshLocation, startWatchingLocation]);
 
@@ -249,7 +326,16 @@ export function LocationProvider({ children }: { children: ReactNode }) {
     ],
   );
 
-  return <LocationContext.Provider value={value}>{children}</LocationContext.Provider>;
+  return (
+    <LocationContext.Provider value={value}>
+      {children}
+      <BackgroundLocationDisclosure
+        visible={disclosureVisible}
+        onAccept={() => settleDisclosure(true)}
+        onDecline={() => settleDisclosure(false)}
+      />
+    </LocationContext.Provider>
+  );
 }
 
 export function useAppLocation(): LocationContextValue {

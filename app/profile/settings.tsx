@@ -185,7 +185,7 @@ export default function SettingsScreen() {
       await markLogoutPending();
       await clearStoredAuthState();
       router.replace({
-        pathname: "/role-selection",
+        pathname: "/rider-auth",
         params: { logout: "1" },
       });
       void logout().finally(() => {

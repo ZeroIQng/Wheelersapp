@@ -1,6 +1,7 @@
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
 import { ActivityIndicator, Alert, Pressable, StyleSheet, TextInput, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 
 import { AppButton } from "@/components/app-button";
 import { AppCard } from "@/components/app-card";
@@ -29,33 +30,53 @@ import { theme } from "@/theme";
 
 type AuthMode = "signup" | "signin";
 
-function normalizeUsername(input: string): string {
-  return input
-    .trim()
-    .toLowerCase()
-    .replace(/^@+/, "")
-    .replace(/\s+/g, "_");
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+function normalizeIdentifier(input: string): string {
+  const trimmed = input.trim().toLowerCase();
+  // An email is sent through untouched — stripping "@" or turning "." into "_"
+  // is what made every email address fail validation.
+  if (EMAIL_PATTERN.test(trimmed)) {
+    return trimmed;
+  }
+
+  return trimmed.replace(/^@+/, "").replace(/\s+/g, "_");
 }
 
 export default function AccountAuthScreen() {
   const router = useRouter();
   const { refreshAuthState } = useAuth();
-  const [mode, setMode] = useState<AuthMode>("signup");
+  // Entry screens link here with ?mode=signin so "Sign in" opens on the right
+  // tab instead of dropping returning users into the signup form.
+  const { mode: modeParam } = useLocalSearchParams<{ mode?: string }>();
+  const [mode, setMode] = useState<AuthMode>(modeParam === "signin" ? "signin" : "signup");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   function validateCredentials() {
-    const normalizedUsername = normalizeUsername(username);
-    if (!/^[a-z0-9_]{3,24}$/.test(normalizedUsername)) {
-      throw new Error("Enter 3-24 letters or numbers. Spaces are okay.");
+    const identifier = normalizeIdentifier(username);
+
+    if (!identifier) {
+      throw new Error("Enter your email address to continue.");
     }
 
-    if (password.length < 8 || password.length > 128) {
-      throw new Error("Password must be between 8 and 128 characters.");
+    if (!EMAIL_PATTERN.test(identifier) && !/^[a-z0-9_]{3,24}$/.test(identifier)) {
+      throw new Error(
+        "That does not look like an email address. Enter your email (name@example.com), or a username of 3-24 letters, numbers or underscores.",
+      );
     }
 
-    return { username: normalizedUsername, password };
+    if (password.length < 8) {
+      throw new Error("Your password must be at least 8 characters.");
+    }
+
+    if (password.length > 128) {
+      throw new Error("Your password must be 128 characters or fewer.");
+    }
+
+    return { username: identifier, password };
   }
 
   async function handleSubmit() {
@@ -73,8 +94,8 @@ export default function AccountAuthScreen() {
       credentials = validateCredentials();
     } catch (error) {
       Alert.alert(
-        "Check your details",
-        error instanceof Error ? error.message : "Enter your username and password.",
+        mode === "signup" ? "Check your sign-up details" : "Check your sign-in details",
+        error instanceof Error ? error.message : "Enter your email and password.",
       );
       return;
     }
@@ -104,12 +125,8 @@ export default function AccountAuthScreen() {
       await storeLocalAccessToken(response.accessToken);
       await refreshAuthState();
 
-      const nextState = await persistAuthenticatedRole(authenticatedRole, {
-        phoneVerified:
-          authenticatedRole === "RIDER" &&
-          typeof response.user.phone === "string" &&
-          response.user.phone.length > 0,
-      });
+      // Signing in is the whole of onboarding now — no phone step to gate on.
+      const nextState = await persistAuthenticatedRole(authenticatedRole);
 
       router.replace(getAuthenticatedRoute(nextState));
     } catch (error) {
@@ -130,7 +147,7 @@ export default function AccountAuthScreen() {
         contentStyle={styles.loadingContainer}
       >
         <FloatingView style={styles.loadingRings} distance={10} rotate={8}>
-          <RingStack color="rgba(255,92,0,0.12)" />
+          <RingStack color="rgba(240,145,63,0.12)" />
         </FloatingView>
         <RevealView delay={40} style={styles.loadingCard}>
           <View style={styles.spinnerWrap}>
@@ -156,7 +173,7 @@ export default function AccountAuthScreen() {
       contentStyle={styles.container}
     >
       <FloatingView style={styles.rings} distance={10} rotate={8}>
-        <RingStack color="rgba(255,92,0,0.12)" />
+        <RingStack color="rgba(240,145,63,0.12)" />
       </FloatingView>
       <FloatingView style={styles.star} delay={200} distance={12} rotate={-12}>
         <StarBurst color="rgba(13,13,13,0.08)" width={46} height={46} />
@@ -165,7 +182,7 @@ export default function AccountAuthScreen() {
       <RevealView delay={40} from="down" style={styles.headerWrap}>
         <FlowHeader
           showBack
-          backHref={publicEntryRoute === "/role-selection" ? "/role-selection" : undefined}
+          backHref={publicEntryRoute === "/rider-auth" ? "/rider-auth" : undefined}
           overline={isDriverApp ? "WHEELERS DRIVER" : "WHEELERS ACCOUNT"}
           title={
             isDriverApp
@@ -179,7 +196,7 @@ export default function AccountAuthScreen() {
           subtitle={
             isDriverApp
               ? `Use your ${appDisplayName} username and password.`
-              : "Use a username and password, then verify your WhatsApp number."
+              : "Use your email and a password, then verify your phone number."
           }
           progress={{ count: 5, active: 2 }}
         />
@@ -214,16 +231,20 @@ export default function AccountAuthScreen() {
 
           <View style={styles.fieldGroup}>
             <AppText variant="monoSmall" color={theme.colors.muted}>
-              {isDriverApp ? "DRIVER USERNAME" : "NAME OR USERNAME"}
+              EMAIL OR USERNAME
             </AppText>
             <TextInput
               autoCapitalize="none"
+              autoComplete="email"
               autoCorrect={false}
+              inputMode="email"
+              keyboardType="email-address"
               onChangeText={setUsername}
-              placeholder={isDriverApp ? "driver_username" : "Timilehin Olowu"}
+              placeholder="you@example.com"
               placeholderTextColor={theme.colors.mutedLight}
               selectionColor={theme.colors.orange}
               style={styles.textInput}
+              textContentType="emailAddress"
               value={username}
             />
           </View>
@@ -232,17 +253,34 @@ export default function AccountAuthScreen() {
             <AppText variant="monoSmall" color={theme.colors.muted}>
               PASSWORD
             </AppText>
-            <TextInput
-              autoCapitalize="none"
-              autoCorrect={false}
-              onChangeText={setPassword}
-              placeholder="Minimum 8 characters"
-              placeholderTextColor={theme.colors.mutedLight}
-              secureTextEntry
-              selectionColor={theme.colors.orange}
-              style={styles.textInput}
-              value={password}
-            />
+            <View style={styles.passwordWrap}>
+              <TextInput
+                autoCapitalize="none"
+                autoComplete={mode === "signup" ? "new-password" : "current-password"}
+                autoCorrect={false}
+                onChangeText={setPassword}
+                placeholder="Minimum 8 characters"
+                placeholderTextColor={theme.colors.mutedLight}
+                secureTextEntry={!isPasswordVisible}
+                selectionColor={theme.colors.orange}
+                style={[styles.textInput, styles.passwordInput]}
+                textContentType={mode === "signup" ? "newPassword" : "password"}
+                value={password}
+              />
+              <Pressable
+                accessibilityLabel={isPasswordVisible ? "Hide password" : "Show password"}
+                accessibilityRole="button"
+                hitSlop={10}
+                onPress={() => setIsPasswordVisible((visible) => !visible)}
+                style={styles.eyeButton}
+              >
+                <Ionicons
+                  color={theme.colors.muted}
+                  name={isPasswordVisible ? "eye-off-outline" : "eye-outline"}
+                  size={20}
+                />
+              </Pressable>
+            </View>
           </View>
 
           <AppButton
@@ -291,6 +329,21 @@ const styles = StyleSheet.create({
   },
   fieldGroup: {
     gap: theme.spacing.xs,
+  },
+  passwordWrap: {
+    justifyContent: "center",
+  },
+  passwordInput: {
+    // room so the typed password never runs under the eye button
+    paddingRight: 52,
+  },
+  eyeButton: {
+    position: "absolute",
+    right: theme.spacing.sm,
+    height: 44,
+    width: 40,
+    alignItems: "center",
+    justifyContent: "center",
   },
   textInput: {
     minHeight: 52,

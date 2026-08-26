@@ -108,7 +108,7 @@ export default function SecurityPinScreen() {
       await clearPin();
       await logout();
       await clearStoredAuthState();
-      router.replace("/role-selection");
+      router.replace("/rider-auth");
     } finally {
       setIsResetting(false);
     }

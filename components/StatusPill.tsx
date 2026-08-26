@@ -54,6 +54,10 @@ export function StatusPill({
         styles.pill,
         {
           backgroundColor: colors.backgroundColor,
+          // Transparent pills would cast a hard shadow of their own text.
+          ...(colors.backgroundColor === 'transparent'
+            ? { shadowOpacity: 0, elevation: 0 }
+            : null),
           borderColor: colors.borderColor,
         },
         style,

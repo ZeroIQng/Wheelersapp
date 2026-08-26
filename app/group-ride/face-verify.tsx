@@ -26,6 +26,9 @@ import Svg, {
 import { AppButton } from "@/components/app-button";
 import { AppText } from "@/components/app-text";
 import { BackArrow } from "@/components/back-arrow";
+import { getAccessTokenWithRetry } from "@/lib/access-token";
+import { checkGroupRideFace } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 import {
   type GroupRideFaceCapture,
   setGroupRideFaceCapture,
@@ -44,6 +47,8 @@ type VerifyState =
   | "detected"      // frame is usable, capture is queued
   | "processing"    // capturing final image
   | "review"        // user can accept or retake the captured image
+  | "verifying"     // the vision service is looking at the photo
+  | "rejected"      // the photo is not a usable picture of a face
   | "verified"      // done
   | "failed";       // too many failures
 
@@ -69,6 +74,8 @@ const PROMPTS: Partial<Record<VerifyState, string>> = {
   detected:    "Face framed. Capturing now",
   processing:  "Almost done. Verifying your face",
   review:      "Review your photo before continuing",
+  verifying:   "Checking your photo",
+  rejected:    "That photo doesn't show a clear face. Please retake it",
   verified:    "Verification complete. Welcome.",
   failed:      "Verification failed. Please try again.",
 };
@@ -285,7 +292,10 @@ function getStepStatuses(state: VerifyState): StepStatus[] {
     case "processing":
       return ["done", "done", "active", "pending"];
     case "review":
+    case "verifying":
       return ["done", "done", "done", "active"];
+    case "rejected":
+      return ["done", "done", "done", "pending"];
     case "verified":
       return ["done", "done", "done", "done"];
     case "failed":
@@ -433,6 +443,8 @@ const BADGE: Record<VerifyState, BadgeCfg> = {
   detected:    { label: "Frame ready",                bg: "rgba(0,196,140,0.18)",    color: theme.colors.green },
   processing:  { label: "Capturing\u2026",                bg: "rgba(0,196,140,0.18)",    color: theme.colors.green },
   review:      { label: "Review photo",               bg: "rgba(0,196,140,0.18)",    color: theme.colors.green },
+  verifying:   { label: "Checking your photo\u2026",      bg: "rgba(13,13,13,0.55)",     color: theme.colors.white },
+  rejected:    { label: "Not a usable selfie",        bg: theme.colors.dangerLight,  color: theme.colors.danger },
   verified:    { label: "Verified  \u2713",               bg: theme.colors.successLight, color: theme.colors.green },
   failed:      { label: "Verification failed",        bg: theme.colors.dangerLight,  color: theme.colors.danger },
 };
@@ -463,6 +475,8 @@ const HINT: Record<VerifyState, string> = {
   detected:    "Frame is clear. Capturing now.",
   processing:  "Capturing your face. Please wait.",
   review:      "Check the photo. Retake it if it is blurry, dark, or not centered.",
+  verifying:   "Checking that this is a clear photo of your face\u2026",
+  rejected:    "That photo can\u2019t be used for verification. Retake it with your face fully in frame.",
   verified:    "Identity confirmed. Taking you to the next step.",
   failed:      "Could not capture a usable photo. Please try again.",
 };
@@ -471,6 +485,7 @@ const HINT: Record<VerifyState, string> = {
 
 export default function FaceVerifyScreen() {
   const router = useRouter();
+  const { getAccessToken } = useAuth();
   const [permission, requestPermission] = useCameraPermissions();
   const [state, setState] = useState<VerifyState>("requesting");
   const [capturedPhoto, setCapturedPhoto] = useState<GroupRideFaceCapture | null>(null);
@@ -481,6 +496,9 @@ export default function FaceVerifyScreen() {
 
   const captureInFlightRef = useRef(false);
   const failureCount = useRef(0);
+  /** Raw bytes of the photo under review, kept for the vision check. */
+  const capturedBase64Ref = useRef<string | null>(null);
+  const [rejectionReason, setRejectionReason] = useState<string | null>(null);
 
   // Keep stateRef in sync so callbacks always see latest state
   useEffect(() => {
@@ -572,6 +590,7 @@ export default function FaceVerifyScreen() {
         return;
       }
 
+      capturedBase64Ref.current = pic.base64 ?? null;
       setCapturedPhoto({
         uri: pic.uri,
         mimeType: "image/jpeg",
@@ -603,19 +622,51 @@ export default function FaceVerifyScreen() {
   const handleRetakePress = useCallback(() => {
     if (captureTimeoutRef.current) clearTimeout(captureTimeoutRef.current);
     captureInFlightRef.current = false;
+    capturedBase64Ref.current = null;
+    setRejectionReason(null);
     setCapturedPhoto(null);
     setState("scanning");
   }, []);
 
-  const handleUsePhotoPress = useCallback(() => {
+  const handleUsePhotoPress = useCallback(async () => {
     if (!capturedPhoto) return;
 
-    setGroupRideFaceCapture(capturedPhoto);
+    const imageBase64 = capturedBase64Ref.current;
+    setState("verifying");
+
+    // Ask the vision service whether this is actually a face. A cat, a meme, or
+    // a photo of a screen gets turned away here, while the camera is still one
+    // tap away — rather than silently sailing through to matching.
+    if (imageBase64) {
+      try {
+        const accessToken = await getAccessTokenWithRetry(getAccessToken);
+        if (accessToken) {
+          const verdict = await checkGroupRideFace({
+            accessToken,
+            imageBase64,
+            mimeType: capturedPhoto.mimeType,
+          });
+
+          if (!verdict.accepted) {
+            setRejectionReason(verdict.reason || null);
+            setState("rejected");
+            return;
+          }
+        }
+      } catch {
+        // Fail open, exactly as the service does: a vision outage must not
+        // strand every group ride. The upload-complete route re-runs this check
+        // server-side, and that one is the gate that actually holds.
+      }
+    }
+
+    setGroupRideFaceCapture({ ...capturedPhoto, base64: imageBase64 ?? undefined });
+    setRejectionReason(null);
     setState("verified");
     // Group rides are no longer gender-specific — the gender step is gone, so
     // go straight to picking the destination.
     router.replace("/group-ride/destination");
-  }, [capturedPhoto, router]);
+  }, [capturedPhoto, getAccessToken, router]);
 
   // ── Cleanup ───────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -629,6 +680,8 @@ export default function FaceVerifyScreen() {
     state !== "requesting" &&
     state !== "denied" &&
     state !== "review" &&
+    state !== "verifying" &&
+    state !== "rejected" &&
     state !== "verified" &&
     state !== "failed";
   const cameraPermissionPermanentlyDenied =
@@ -641,7 +694,9 @@ export default function FaceVerifyScreen() {
   const hintText =
     cameraPermissionPermanentlyDenied && state === "denied"
       ? "Camera access is blocked for Wheelers. Open Settings and allow camera access before continuing."
-      : HINT[state];
+      : state === "rejected" && rejectionReason
+        ? `${HINT.rejected} (${rejectionReason})`
+        : HINT[state];
 
   return (
     <View style={styles.root}>
@@ -661,13 +716,14 @@ export default function FaceVerifyScreen() {
         />
       )}
 
-      {state === "review" && capturedPhoto && (
-        <Image
-          source={{ uri: capturedPhoto.uri }}
-          resizeMode="cover"
-          style={StyleSheet.absoluteFill}
-        />
-      )}
+      {(state === "review" || state === "verifying" || state === "rejected") &&
+        capturedPhoto && (
+          <Image
+            source={{ uri: capturedPhoto.uri }}
+            resizeMode="cover"
+            style={StyleSheet.absoluteFill}
+          />
+        )}
 
       {/* Dark overlay with oval cutout */}
       <OvalOverlay />
@@ -714,18 +770,26 @@ export default function FaceVerifyScreen() {
           </Animated.View>
         )}
 
-        {state === "review" && capturedPhoto && (
+        {(state === "review" || state === "verifying") && capturedPhoto && (
           <Animated.View entering={FadeInDown.duration(280)} style={styles.reviewActions}>
             <AppButton
               title="Retake"
               variant="inverse"
+              disabled={state === "verifying"}
               onPress={handleRetakePress}
             />
             <AppButton
-              title="Use photo"
+              title={state === "verifying" ? "Checking\u2026" : "Use photo"}
               variant="primary"
-              onPress={handleUsePhotoPress}
+              disabled={state === "verifying"}
+              onPress={() => void handleUsePhotoPress()}
             />
+          </Animated.View>
+        )}
+
+        {state === "rejected" && (
+          <Animated.View entering={FadeInDown.duration(280)} style={styles.actionBtn}>
+            <AppButton title="Retake photo" variant="inverse" onPress={handleRetakePress} />
           </Animated.View>
         )}
 

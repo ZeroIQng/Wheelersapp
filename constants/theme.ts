@@ -1,22 +1,25 @@
 import { Platform, TextStyle, ViewStyle } from 'react-native';
 
+// Palette sampled from the Wheelers splash artwork, so every screen reads as a
+// continuation of what the app opened on. The harsh #FF5C00 orange is retired;
+// the accent is now the softer orange of the dark splash wordmark.
 const colors = {
-  orange: '#FF5C00',
-  orangeLight: '#FFF0E8',
+  orange: '#F0913F',
+  orangeLight: '#FBEBDA',
   black: '#0D0D0D',
-  offWhite: '#FFFAF5',
+  offWhite: '#FEFAEF',
   green: '#00C48C',
   red: '#FF3333',
   white: '#FFFFFF',
   muted: '#786F68',
   mutedLight: '#B5ACA4',
-  borderLight: '#E8DDD3',
+  borderLight: '#E6DFD2',
   danger: '#CC3333',
   dangerLight: '#FFF0F0',
   warning: '#F59E0B',
   successLight: '#E8FFF7',
-  darkSurface: '#111111',
-  darkSurfaceSoft: '#1A1A1A',
+  darkSurface: '#202020',
+  darkSurfaceSoft: '#2A2A2A',
   darkBorder: '#333333',
   darkMuted: '#8E8882',
   mapBase: '#D4E6D4',

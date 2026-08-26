@@ -54,7 +54,8 @@ export default function DriverHomeScreen() {
   // even after the offer card expires, so leaving the request screen never
   // means losing sight of what's pending.
   const pendingBids = Object.values(session.pendingBids ?? {});
-  const { permissionState, requestLocationAccess, currentLocation } = useAppLocation();
+  const { permissionState, requestLocationAccess, requestBackgroundLocationAccess, currentLocation } =
+    useAppLocation();
 
   const { permissionGranted, requestNotificationAccess } = useAppNotifications();
   const { reportCompletedCount } = useQuestBadge();
@@ -172,6 +173,10 @@ export default function DriverHomeScreen() {
           Alert.alert('Location unavailable', 'We need your location to go online. Please enable location services.');
           return;
         }
+        // Play prominent-disclosure flow: explain background location and ask
+        // for "Allow all the time" before the driver starts receiving requests.
+        // Going online still works in the foreground if they decline.
+        await requestBackgroundLocationAccess();
         await goOnline(currentLocation.lat, currentLocation.lng);
       }
     } catch (err) {
@@ -211,8 +216,8 @@ export default function DriverHomeScreen() {
           <Circle
             center={{ latitude: driverLat, longitude: driverLng }}
             radius={400}
-            fillColor="rgba(255,92,0,0.08)"
-            strokeColor="rgba(255,92,0,0.25)"
+            fillColor="rgba(240,145,63,0.08)"
+            strokeColor="rgba(240,145,63,0.25)"
             strokeWidth={1.5}
           />
         )}

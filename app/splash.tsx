@@ -1,23 +1,10 @@
 import { useRouter } from "expo-router";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { StatusBar } from "expo-status-bar";
 import * as NativeSplash from "expo-splash-screen";
-import { Pressable, StyleSheet, View } from "react-native";
-import Animated, {
-  Easing,
-  FadeIn,
-  FadeInDown,
-  useAnimatedStyle,
-  useSharedValue,
-  withRepeat,
-  withTiming,
-  ZoomIn,
-} from "react-native-reanimated";
+import { Image, Pressable, StyleSheet, View } from "react-native";
+import Animated, { FadeIn } from "react-native-reanimated";
 
-import { AppScreen } from "@/components/app-screen";
-import { AppText } from "@/components/app-text";
-import { BlobShape, DiamondPair, StarBurst } from "@/components/decorative-shapes";
-import { getAccessTokenWithRetry } from "@/lib/access-token";
 import { publicEntryRoute, type VariantPublicRoute } from "@/lib/app-variant";
 import { useAuth } from "@/lib/auth";
 import {
@@ -29,9 +16,15 @@ import {
 } from "@/lib/auth-state";
 import { prefetchRiderHistory } from "@/lib/rider-history";
 import { prefetchWalletOverview } from "@/lib/wallet-overview";
-import { theme } from "@/theme";
 
 type SplashRoute = VariantPublicRoute | AuthenticatedRoute;
+
+/**
+ * Keep the brand splash on screen for at least this long. Auth state usually
+ * resolves in a few hundred ms, which would flash the artwork and leave — the
+ * splash is meant to be seen, so navigation waits out the remainder.
+ */
+const MIN_SPLASH_MS = 1600;
 
 function prefetchHomeData(getAccessToken: () => Promise<string | null | undefined>) {
   void prefetchRiderHistory(getAccessToken);
@@ -42,12 +35,27 @@ export default function SplashScreen() {
   const router = useRouter();
   const { getAccessToken, isReady } = useAuth();
   const hasNavigated = useRef(false);
+  const mountedAtRef = useRef(Date.now());
+  const navTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function navigate(href: SplashRoute) {
     if (hasNavigated.current) return;
     hasNavigated.current = true;
-    router.replace(href);
+
+    const remaining = MIN_SPLASH_MS - (Date.now() - mountedAtRef.current);
+    if (remaining <= 0) {
+      router.replace(href);
+      return;
+    }
+
+    navTimerRef.current = setTimeout(() => router.replace(href), remaining);
   }
+
+  useEffect(() => {
+    return () => {
+      if (navTimerRef.current) clearTimeout(navTimerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     if (!isReady || hasNavigated.current) return;
@@ -99,7 +107,7 @@ export default function SplashScreen() {
       if (!hasNavigated.current) {
         navigate(publicEntryRoute);
       }
-    }, 2000);
+    }, MIN_SPLASH_MS + 900);
 
     return () => clearTimeout(timer);
   }, []);
@@ -107,182 +115,80 @@ export default function SplashScreen() {
   return <SplashShell onContinue={() => navigate(publicEntryRoute)} />;
 }
 
+/**
+ * The two brand splash artworks. One is chosen at random on every cold start,
+ * so the app opens on either the cream or the dark treatment.
+ *
+ * Each entry carries the artwork's own background colour so the screen behind
+ * it matches exactly — the image is drawn with resizeMode="contain", and the
+ * matching backdrop makes the letterboxing invisible on any aspect ratio.
+ */
+const SPLASH_VARIANTS = [
+  {
+    key: "light",
+    source: require("../assets/images/splash-light.png"),
+    background: "#FEFAEF",
+    statusBar: "dark" as const,
+  },
+  {
+    key: "dark",
+    source: require("../assets/images/splash-dark.png"),
+    background: "#202020",
+    statusBar: "light" as const,
+  },
+];
+
+function pickSplashVariant() {
+  return SPLASH_VARIANTS[Math.floor(Math.random() * SPLASH_VARIANTS.length)];
+}
+
 function SplashShell({ onContinue }: { onContinue: () => void }) {
-  const floatY = useSharedValue(0);
-  const spin = useSharedValue(0);
+  // Chosen once per mount via the lazy initialiser — re-renders must not
+  // reshuffle the artwork mid-splash.
+  const [variant] = useState(pickSplashVariant);
 
   useEffect(() => {
     // Hide the native splash now that the custom splash is visible
     NativeSplash.hideAsync();
   }, []);
 
-  useEffect(() => {
-    floatY.value = withRepeat(
-      withTiming(-10, {
-        duration: 1500,
-        easing: Easing.inOut(Easing.ease),
-      }),
-      -1,
-      true
-    );
-    spin.value = withRepeat(
-      withTiming(1, {
-        duration: 9000,
-        easing: Easing.linear,
-      }),
-      -1,
-      false
-    );
-  }, [floatY, spin]);
-
-  const logoStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: floatY.value }],
-  }));
-
-  const starStyle = useAnimatedStyle(() => ({
-    transform: [{ rotate: `${spin.value * 360}deg` }],
-  }));
-
   return (
-    <AppScreen backgroundColor={theme.colors.orange} contentStyle={styles.container}>
-      <StatusBar style="light" backgroundColor={theme.colors.orange} />
-      <Pressable onPress={onContinue} style={styles.pressable}>
-        <BlobShape color="rgba(255,255,255,0.18)" style={styles.blobTop} />
-        <Animated.View style={[styles.starRight, starStyle]}>
-          <StarBurst color="rgba(255,255,255,0.22)" width={54} height={54} />
-        </Animated.View>
-        <DiamondPair color="rgba(255,255,255,0.18)" style={styles.diamondLeft} />
-        <View style={styles.center}>
-          <Animated.View entering={ZoomIn.duration(500)} style={[styles.logoWrap, logoStyle]}>
-            <View style={styles.logoOuter}>
-              <View style={styles.logoInner}>
-                <AppText variant="h2" color={theme.colors.white} style={styles.markText}>
-                  W
-                </AppText>
-              </View>
-            </View>
-          </Animated.View>
-          <Animated.View entering={FadeInDown.delay(100).duration(500)} style={styles.titleBlock}>
-            <View style={styles.wordmark}>
-              <AppText variant="h1" color={theme.colors.white} style={styles.titleLine}>
-                WHEEL
-              </AppText>
-              <AppText variant="h1" color={theme.colors.white} style={styles.titleLine}>
-                ERS
-              </AppText>
-            </View>
-            <AppText variant="bodySmall" color="rgba(255,255,255,0.74)" style={styles.tagline}>
-              ride. earn. own.
-            </AppText>
-          </Animated.View>
-        </View>
-        <Animated.View entering={FadeIn.delay(250).duration(450)} style={styles.bottom}>
-          <View style={styles.loaderTrack}>
-            <Animated.View style={styles.loaderBar} />
-          </View>
-          <AppText variant="monoSmall" color="rgba(255,255,255,0.7)" style={styles.hint}>
-            tap anywhere to continue
-          </AppText>
+    <View style={[styles.root, { backgroundColor: variant.background }]}>
+      <StatusBar style={variant.statusBar} backgroundColor={variant.background} />
+      <Pressable
+        accessibilityLabel="Continue"
+        accessibilityRole="button"
+        onPress={onContinue}
+        style={styles.pressable}
+      >
+        <Animated.View entering={FadeIn.duration(350)} style={styles.artWrap}>
+          <Image
+            accessibilityIgnoresInvertColors
+            resizeMode="contain"
+            source={variant.source}
+            style={styles.art}
+          />
         </Animated.View>
       </Pressable>
-    </AppScreen>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    paddingHorizontal: 0,
-    paddingBottom: 0,
+  root: {
+    flex: 1,
   },
   pressable: {
     flex: 1,
-    justifyContent: "space-between",
-    alignItems: "center",
-    width: "100%",
-    paddingVertical: theme.spacing.xxxl,
-  },
-  center: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    width: "100%",
-  },
-  logoWrap: {
-    marginBottom: theme.spacing.md,
-  },
-  logoOuter: {
-    width: 82,
-    height: 82,
-    borderRadius: theme.radius.pill,
-    backgroundColor: "rgba(255,255,255,0.18)",
     alignItems: "center",
     justifyContent: "center",
   },
-  logoInner: {
-    width: 58,
-    height: 58,
-    borderRadius: theme.radius.pill,
-    backgroundColor: "rgba(255,255,255,0.14)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  markText: {
-    fontSize: 25,
-    lineHeight: 25,
-    letterSpacing: -0.4,
-  },
-  titleBlock: {
-    alignItems: "center",
-    gap: theme.spacing.xs,
-  },
-  wordmark: {
-    alignItems: "center",
-    gap: 0,
-  },
-  titleLine: {
-    textAlign: "center",
-    fontSize: 28,
-    lineHeight: 27,
-    letterSpacing: -0.8,
-  },
-  tagline: {
-    letterSpacing: 0.4,
-    lineHeight: 16,
-  },
-  bottom: {
+  artWrap: {
     width: "100%",
-    alignItems: "center",
-    gap: theme.spacing.sm,
-  },
-  blobTop: {
-    position: "absolute",
-    top: -18,
-    left: -20,
-  },
-  starRight: {
-    position: "absolute",
-    right: 20,
-    bottom: 108,
-  },
-  diamondLeft: {
-    position: "absolute",
-    top: 68,
-    left: 28,
-  },
-  loaderTrack: {
-    width: 112,
-    height: 8,
-    borderRadius: theme.radius.pill,
-    backgroundColor: "rgba(255,255,255,0.24)",
-    overflow: "hidden",
-  },
-  loaderBar: {
-    width: "72%",
     height: "100%",
-    borderRadius: theme.radius.pill,
-    backgroundColor: theme.colors.white,
   },
-  hint: {
-    letterSpacing: 1.2,
+  art: {
+    width: "100%",
+    height: "100%",
   },
 });

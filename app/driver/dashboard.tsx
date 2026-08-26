@@ -31,7 +31,8 @@ export default function DriverDashboardScreen() {
   const { getAccessToken } = useAuth();
   const { session, goOnline, goOffline, connectionState } = useDriverSession();
   const { overview } = useWalletOverview();
-  const { permissionState, requestLocationAccess, currentLocation } = useAppLocation();
+  const { permissionState, requestLocationAccess, requestBackgroundLocationAccess, currentLocation } =
+    useAppLocation();
   const { permissionGranted, requestNotificationAccess } = useAppNotifications();
   const responsive = useResponsive();
   const notificationPromptedRef = useRef(false);
@@ -90,6 +91,7 @@ export default function DriverDashboardScreen() {
         console.warn('[dashboard] no location available');
         return;
       }
+      await requestBackgroundLocationAccess();
       await goOnline(currentLocation.lat, currentLocation.lng);
     }
   };

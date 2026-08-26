@@ -1,5 +1,12 @@
 import * as Crypto from 'expo-crypto';
+import {
+  applyRiderCounter,
+  dismissOffer as dismissOfferFrom,
+  mergeOffer,
+  type RideOffer,
+} from '@/lib/ride-offers';
 import { useAuth } from '@/lib/auth';
+import { useAppLocation } from '@/lib/location';
 import {
   createContext,
   useCallback,
@@ -21,13 +28,15 @@ import {
   type RideRouteSnapshot,
 } from '@/lib/api';
 import { resolvePlaceQuery } from '@/lib/google-places';
-import { serializeRideItinerary, type RideItinerary } from '@/lib/ride-route';
+import { isCurrentLocationLabel, serializeRideItinerary, type RideItinerary } from '@/lib/ride-route';
 import { invalidateWalletCache } from '@/lib/wallet-overview';
 
 type RideConnectionState = 'disconnected' | 'connecting' | 'connected';
 type RideStatus =
   | 'idle'
   | 'requesting'
+  /** Published to drivers; their counter-offers are arriving. */
+  | 'bidding'
   | 'matching'
   | 'matched'
   | 'active'
@@ -36,6 +45,8 @@ type RideStatus =
 
 type RideDriver = {
   driverId: string;
+  /** The driver's *user* id — what a rating is addressed to. */
+  driverUserId?: string;
   driverName?: string;
   driverRating?: number;
   vehiclePlate?: string;
@@ -56,6 +67,15 @@ type RideDriverLocation = {
   isStale?: boolean;
 };
 
+/**
+ * One driver's bid on this ride.
+ *
+ * Drivers counter the rider's posted fare rather than accepting it blindly, so
+ * a ride can hold several competing offers at once. Keyed by driverId — a
+ * driver who re-bids replaces their previous number instead of appearing twice.
+ */
+export type { RideOffer };
+
 export type RiderRideState = {
   rideId: string;
   status: RideStatus;
@@ -66,6 +86,16 @@ export type RiderRideState = {
   route?: RideRouteSnapshot;
   driver?: RideDriver;
   driverLocation?: RideDriverLocation;
+  /** Live driver bids, cheapest first. */
+  offers?: RideOffer[];
+  /** What the rider is currently offering. */
+  riderOfferNgn?: number;
+  minOfferNgn?: number;
+  suggestedFareNgn?: number;
+  /** When the bidding window closes; drivers stop being offered the ride. */
+  bidsCloseAt?: string;
+  /** Set when the window closed with nobody accepting. */
+  bidTimeout?: boolean;
   startedAt?: string;
   completedAt?: string;
   completedFareNgn?: number;
@@ -88,16 +118,19 @@ type RideSessionContextValue = {
   currentRide: RiderRideState | null;
   chatMessages: RideChatMessage[];
   error: string | null;
-  requestRide: (itinerary: RideItinerary) => Promise<void>;
-  simulateMatchedRide: (input: {
-    itinerary: RideItinerary;
-    route?: RideRouteSnapshot | null;
-    fareEstimateNgn?: number;
-    plannedDistanceKm?: number;
-    plannedDurationSeconds?: number;
-  }) => void;
+  requestRide: (itinerary: RideItinerary, options?: { offerNgn?: number }) => Promise<void>;
+  /** Take a driver's bid — this is what actually books the ride. */
+  acceptOffer: (driverId: string) => Promise<void>;
+  /** Counter a specific driver with a different price. */
+  counterOffer: (driverId: string, amountNgn: number) => Promise<void>;
+  /** Move the rider's own price and re-offer the trip to every driver. */
+  updateOffer: (amountNgn: number) => Promise<void>;
+  /** Hide a driver's bid locally; they can still re-bid. */
+  dismissOffer: (driverId: string) => void;
   updateRideRoute: (itinerary: RideItinerary) => Promise<void>;
   cancelRide: (reason?: string) => Promise<void>;
+  /** Rate the driver of the ride that just finished. */
+  submitRating: (input: { rating: number; comment?: string }) => Promise<void>;
   sendChatMessage: (rideId: string, content: string) => Promise<void>;
   clearRide: () => void;
 };
@@ -136,11 +169,23 @@ const defaultContext: RideSessionContextValue = {
   requestRide: async () => {
     throw new Error('Ride session is unavailable.');
   },
-  simulateMatchedRide: () => undefined,
+  acceptOffer: async () => {
+    throw new Error('Ride session is unavailable.');
+  },
+  counterOffer: async () => {
+    throw new Error('Ride session is unavailable.');
+  },
+  updateOffer: async () => {
+    throw new Error('Ride session is unavailable.');
+  },
+  dismissOffer: () => undefined,
   updateRideRoute: async () => {
     throw new Error('Ride session is unavailable.');
   },
   cancelRide: async () => {
+    throw new Error('Ride session is unavailable.');
+  },
+  submitRating: async () => {
     throw new Error('Ride session is unavailable.');
   },
   sendChatMessage: async () => {
@@ -240,8 +285,32 @@ async function getAccessTokenWithRetry(
   return null;
 }
 
-async function resolveRideRoute(itinerary: RideItinerary): Promise<ResolvedRoute> {
-  const pickup = await resolvePlaceQuery(itinerary.pickup);
+/**
+ * Turn the itinerary's labels into coordinates.
+ *
+ * "Current location" is resolved from the device fix, never sent to a
+ * geocoder — geocoding that phrase is what pinned every default pickup to one
+ * neighbourhood.
+ */
+async function resolveRideRoute(
+  itinerary: RideItinerary,
+  deviceLocation?: { lat: number; lng: number; address: string } | null,
+): Promise<ResolvedRoute> {
+  const wantsDevicePickup = isCurrentLocationLabel(itinerary.pickup);
+
+  if (wantsDevicePickup && !deviceLocation) {
+    throw new Error(
+      'We could not read your location. Turn on location access, or type your pickup address.',
+    );
+  }
+
+  const pickup = wantsDevicePickup && deviceLocation
+    ? {
+        lat: deviceLocation.lat,
+        lng: deviceLocation.lng,
+        address: deviceLocation.address,
+      }
+    : await resolvePlaceQuery(itinerary.pickup);
   const stopLabels = itinerary.stops.slice(0, -1);
   const destinationLabel = itinerary.stops[itinerary.stops.length - 1];
 
@@ -274,6 +343,14 @@ export function RideSessionProvider({ children }: { children: ReactNode }) {
   const shouldMaintainConnectionRef = useRef(false);
   const currentRideRef = useRef<RiderRideState | null>(null);
   const userRef = useRef(user);
+
+  // The device fix, kept in a ref so requestRide reads the newest value without
+  // being rebuilt (and re-subscribing the socket) on every GPS update.
+  const { currentLocation } = useAppLocation();
+  const currentLocationRef = useRef(currentLocation);
+  useEffect(() => {
+    currentLocationRef.current = currentLocation;
+  }, [currentLocation]);
 
   const setRideState = useCallback(
     (updater: RiderRideState | null | ((previous: RiderRideState | null) => RiderRideState | null)) => {
@@ -324,15 +401,88 @@ export function RideSessionProvider({ children }: { children: ReactNode }) {
 
           return {
             ...previous,
-            status: 'matching',
+            // The request is live and drivers can now bid on it. Calling this
+            // "matching" hid the fact that the rider has a decision to make.
+            status: 'bidding',
             route: parseRideRouteSnapshot(payload) ?? previous.route,
             plannedDistanceKm:
               getNumber(payload.plannedDistanceKm) ?? previous.plannedDistanceKm,
             plannedDurationSeconds:
               getNumber(payload.plannedDurationSeconds) ?? previous.plannedDurationSeconds,
             fareEstimateNgn: getNumber(payload.fareEstimateNgn) ?? previous.fareEstimateNgn,
+            riderOfferNgn: getNumber(payload.riderOfferNgn) ?? previous.riderOfferNgn,
+            minOfferNgn: getNumber(payload.minOfferNgn) ?? previous.minOfferNgn,
+            suggestedFareNgn:
+              getNumber(payload.suggestedFareNgn) ?? previous.suggestedFareNgn,
+            bidsCloseAt: getString(payload.bidsCloseAt) ?? previous.bidsCloseAt,
+            offers: previous.offers ?? [],
           };
         });
+        return;
+      }
+
+      // ── A driver has bid on this ride ───────────────────────────────────
+      if (type === 'ride:counter_offer') {
+        const driverId = getString(payload.driverId);
+        const counterOfferNgn = getNumber(payload.counterOfferNgn);
+        if (!driverId || counterOfferNgn === undefined) {
+          return;
+        }
+
+        setRideState((previous) => {
+          if (!previous) {
+            return previous;
+          }
+
+          const offer: RideOffer = {
+            driverId,
+            driverUserId: getString(payload.driverUserId) ?? '',
+            counterOfferNgn,
+            driverName: getString(payload.driverName) ?? 'Driver',
+            driverRating: getNumber(payload.driverRating) ?? 0,
+            vehiclePlate: getString(payload.vehiclePlate) ?? '',
+            vehicleModel: getString(payload.vehicleModel) ?? '',
+            etaSeconds: getNumber(payload.etaSeconds) ?? 0,
+            distanceKm: getNumber(payload.distanceKm),
+            receivedAt: new Date().toISOString(),
+          };
+
+          const offers = mergeOffer(previous.offers ?? [], offer);
+
+          return {
+            ...previous,
+            status: previous.status === 'requesting' ? 'bidding' : previous.status,
+            bidTimeout: false,
+            offers,
+          };
+        });
+        return;
+      }
+
+      // The rider's own counter reached the driver; show it as pending.
+      if (type === 'ride:rider_counter_offer:confirmed') {
+        const driverId = getString(payload.driverId);
+        const amount = getNumber(payload.counterOfferNgn);
+        if (!driverId || amount === undefined) {
+          return;
+        }
+
+        setRideState((previous) =>
+          previous
+            ? {
+                ...previous,
+                offers: applyRiderCounter(previous.offers ?? [], driverId, amount),
+              }
+            : previous,
+        );
+        return;
+      }
+
+      // Nobody accepted before the window closed.
+      if (type === 'ride:bid_timeout') {
+        setRideState((previous) =>
+          previous ? { ...previous, status: 'bidding', bidTimeout: true, offers: [] } : previous,
+        );
         return;
       }
 
@@ -348,6 +498,8 @@ export function RideSessionProvider({ children }: { children: ReactNode }) {
             status: 'matched',
             driver: {
               driverId: getString(payload.driverId) ?? previous.driver?.driverId ?? '',
+              driverUserId:
+                getString(payload.driverUserId) ?? previous.driver?.driverUserId,
               driverName: getString(payload.driverName) ?? previous.driver?.driverName,
               driverRating: getNumber(payload.driverRating) ?? previous.driver?.driverRating,
               vehiclePlate: getString(payload.vehiclePlate) ?? previous.driver?.vehiclePlate,
@@ -533,6 +685,8 @@ export function RideSessionProvider({ children }: { children: ReactNode }) {
             status: 'matched',
             driver: {
               driverId: getString(payload.driverId) ?? previous.driver?.driverId ?? '',
+              driverUserId:
+                getString(payload.driverUserId) ?? previous.driver?.driverUserId,
               driverName: getString(payload.driverName) ?? previous.driver?.driverName,
               driverRating: getNumber(payload.driverRating) ?? previous.driver?.driverRating,
               vehiclePlate: getString(payload.vehiclePlate) ?? previous.driver?.vehiclePlate,
@@ -570,7 +724,7 @@ export function RideSessionProvider({ children }: { children: ReactNode }) {
 
   const connect = useCallback(async (): Promise<WebSocket> => {
     if (!isBackendConfigured()) {
-      throw new Error('Set EXPO_PUBLIC_API_BASE_URL before requesting rides.');
+      throw new Error('Wheelers is not available right now. Please try again later.');
     }
 
     if (!isReady || !user) {
@@ -588,7 +742,7 @@ export function RideSessionProvider({ children }: { children: ReactNode }) {
 
     const wsBaseUrl = getBackendWebSocketUrl();
     if (!wsBaseUrl) {
-      throw new Error('EXPO_PUBLIC_API_BASE_URL is not configured.');
+      throw new Error('Wheelers is not available right now. Please try again later.');
     }
 
     setConnectionState('connecting');
@@ -683,9 +837,9 @@ export function RideSessionProvider({ children }: { children: ReactNode }) {
   );
 
   const requestRide = useCallback(
-    async (itinerary: RideItinerary): Promise<void> => {
+    async (itinerary: RideItinerary, options?: { offerNgn?: number }): Promise<void> => {
       if (!isBackendConfigured()) {
-        throw new Error('Set EXPO_PUBLIC_API_BASE_URL before requesting rides.');
+        throw new Error('Wheelers is not available right now. Please try again later.');
       }
 
       const itineraryKey = serializeRideItinerary(itinerary);
@@ -709,7 +863,7 @@ export function RideSessionProvider({ children }: { children: ReactNode }) {
       });
 
       try {
-        const resolvedRoute = await resolveRideRoute(itinerary);
+        const resolvedRoute = await resolveRideRoute(itinerary, currentLocationRef.current);
 
         await sendEnvelope('ride:request', {
           rideId,
@@ -717,6 +871,10 @@ export function RideSessionProvider({ children }: { children: ReactNode }) {
           destination: resolvedRoute.destination,
           stops: resolvedRoute.stops,
           paymentMethod: 'wallet_balance',
+          // What the rider is willing to pay. Omitted, the backend falls back
+          // to its suggested fare — but then the rider never named a price,
+          // which is the whole point of bidding.
+          ...(options?.offerNgn !== undefined ? { offerNgn: options.offerNgn } : {}),
         });
       } catch (requestError) {
         setRideState(null);
@@ -727,50 +885,6 @@ export function RideSessionProvider({ children }: { children: ReactNode }) {
       }
     },
     [sendEnvelope, setRideState, user],
-  );
-
-  const simulateMatchedRide = useCallback(
-    (input: {
-      itinerary: RideItinerary;
-      route?: RideRouteSnapshot | null;
-      fareEstimateNgn?: number;
-      plannedDistanceKm?: number;
-      plannedDurationSeconds?: number;
-    }) => {
-      const rideId = `mock-${Crypto.randomUUID()}`;
-      setError(null);
-      setRideState({
-        rideId,
-        status: 'matched',
-        itinerary: input.itinerary,
-        fareEstimateNgn: input.fareEstimateNgn,
-        plannedDistanceKm: input.plannedDistanceKm,
-        plannedDurationSeconds: input.plannedDurationSeconds,
-        route: input.route ?? undefined,
-        driver: {
-          driverId: 'mock-driver-ade',
-          driverName: 'Ade Martins',
-          driverRating: 4.9,
-          vehiclePlate: 'WLR 482 KT',
-          vehicleModel: 'Toyota Corolla',
-          etaSeconds: 240,
-          lockedFareNgn: input.fareEstimateNgn,
-        },
-        driverLocation: input.route?.pickup
-          ? {
-              lat: input.route.pickup.lat + 0.006,
-              lng: input.route.pickup.lng - 0.004,
-              distanceToNextStopKm: 1.2,
-              nextStopAddress: input.route.pickup.address,
-              nextStopOrder: 0,
-              remainingStopCount: input.itinerary.stops.length,
-              totalDistanceKm: input.plannedDistanceKm,
-              isStale: false,
-            }
-          : undefined,
-      });
-    },
-    [setRideState],
   );
 
   const updateRideRoute = useCallback(
@@ -804,6 +918,154 @@ export function RideSessionProvider({ children }: { children: ReactNode }) {
     [sendEnvelope, setRideState],
   );
 
+  /**
+   * Take a driver's bid. This is the moment the ride is actually booked: the
+   * backend locks the agreed fare against the rider's wallet and tells the
+   * driver they won.
+   */
+  const acceptOffer = useCallback(
+    async (driverId: string): Promise<void> => {
+      const ride = currentRideRef.current;
+      const offer = ride?.offers?.find((item) => item.driverId === driverId);
+
+      if (!ride || !offer) {
+        throw new Error('That bid is no longer available.');
+      }
+
+      await sendEnvelope('ride:accept_offer', {
+        rideId: ride.rideId,
+        driverId: offer.driverId,
+        driverUserId: offer.driverUserId,
+        agreedFareNgn: offer.counterOfferNgn,
+        paymentMethod: 'wallet_balance',
+      });
+
+      // Optimistically leave the auction. `ride:matched` fills in the rest of
+      // the driver, but the accepted bid already knows who they are — keeping
+      // it means a rating still has somebody to address if that event is
+      // missed or the app restarts.
+      setRideState((previous) =>
+        previous
+          ? {
+              ...previous,
+              status: 'matching',
+              offers: [],
+              driver: {
+                ...previous.driver,
+                driverId: offer.driverId,
+                driverUserId: offer.driverUserId,
+                driverName: offer.driverName,
+                driverRating: offer.driverRating,
+                vehiclePlate: offer.vehiclePlate,
+                vehicleModel: offer.vehicleModel,
+                etaSeconds: offer.etaSeconds,
+                lockedFareNgn: offer.counterOfferNgn,
+              },
+            }
+          : previous,
+      );
+    },
+    [sendEnvelope, setRideState],
+  );
+
+  /** Counter one driver with a different price; they may re-bid or walk away. */
+  const counterOffer = useCallback(
+    async (driverId: string, amountNgn: number): Promise<void> => {
+      const ride = currentRideRef.current;
+      if (!ride) {
+        throw new Error('You do not have a ride in progress.');
+      }
+
+      if (!Number.isFinite(amountNgn) || amountNgn <= 0) {
+        throw new Error('Enter a valid amount.');
+      }
+
+      // The backend enforces the floor too, but failing here keeps the rider
+      // from watching a bid vanish with no explanation.
+      if (ride.minOfferNgn !== undefined && amountNgn < ride.minOfferNgn) {
+        throw new Error(
+          `The lowest you can offer on this trip is ₦${ride.minOfferNgn.toLocaleString('en-NG')}.`,
+        );
+      }
+
+      await sendEnvelope('ride:rider_counter_offer', {
+        rideId: ride.rideId,
+        driverId,
+        counterOfferNgn: Math.round(amountNgn),
+      });
+
+      setRideState((previous) =>
+        previous
+          ? {
+              ...previous,
+              riderOfferNgn: Math.round(amountNgn),
+              offers: applyRiderCounter(
+                previous.offers ?? [],
+                driverId,
+                Math.round(amountNgn),
+              ),
+            }
+          : previous,
+      );
+    },
+    [sendEnvelope, setRideState],
+  );
+
+  /**
+   * Move the rider's own asking price and show it to every candidate driver.
+   *
+   * This is the lever that unsticks a quiet request. It reuses the rider
+   * counter-offer with no driver targeted, which ride-service treats as a
+   * broadcast — the same path the WhatsApp flow has always used.
+   */
+  const updateOffer = useCallback(
+    async (amountNgn: number): Promise<void> => {
+      const ride = currentRideRef.current;
+      if (!ride) {
+        throw new Error('You do not have a ride in progress.');
+      }
+
+      if (!Number.isFinite(amountNgn) || amountNgn <= 0) {
+        throw new Error('Enter a valid amount.');
+      }
+
+      if (ride.minOfferNgn !== undefined && amountNgn < ride.minOfferNgn) {
+        throw new Error(
+          `The lowest you can offer on this trip is ₦${ride.minOfferNgn.toLocaleString('en-NG')}.`,
+        );
+      }
+
+      const rounded = Math.round(amountNgn);
+      await sendEnvelope('ride:rider_counter_offer', {
+        rideId: ride.rideId,
+        counterOfferNgn: rounded,
+      });
+
+      setRideState((previous) =>
+        previous ? { ...previous, riderOfferNgn: rounded } : previous,
+      );
+    },
+    [sendEnvelope, setRideState],
+  );
+
+  /**
+   * Hide a bid the rider is not interested in. Deliberately local-only — the
+   * driver is not told, and is free to bid again at a better price.
+   */
+  const dismissOffer = useCallback(
+    (driverId: string) => {
+      setRideState((previous) =>
+        previous
+          ? {
+              ...previous,
+              offers: dismissOfferFrom(previous.offers ?? [], driverId),
+            }
+          : previous,
+      );
+    },
+    [setRideState],
+  );
+
   const cancelRide = useCallback(
     async (reason?: string): Promise<void> => {
       const activeRide = currentRideRef.current;
@@ -822,6 +1084,39 @@ export function RideSessionProvider({ children }: { children: ReactNode }) {
       });
     },
     [clearRide, sendEnvelope, user],
+  );
+
+  /**
+   * Rate the driver of a finished ride.
+   *
+   * The rating screen used to collect stars and then navigate to the wallet
+   * without sending anything anywhere, so every rating a rider ever gave was
+   * discarded on the spot.
+   */
+  const submitRating = useCallback(
+    async (input: { rating: number; comment?: string }): Promise<void> => {
+      const ride = currentRideRef.current;
+      const revieweeId = ride?.driver?.driverUserId;
+
+      if (!ride?.rideId || !revieweeId) {
+        throw new Error('There is no completed trip to rate yet.');
+      }
+
+      const rating = Math.round(input.rating);
+      if (!Number.isFinite(rating) || rating < 1 || rating > 5) {
+        throw new Error('Pick between one and five stars.');
+      }
+
+      await sendEnvelope('feedback:submit', {
+        feedbackId: Crypto.randomUUID(),
+        rideId: ride.rideId,
+        reviewerRole: 'rider',
+        revieweeId,
+        rating,
+        ...(input.comment ? { comment: input.comment } : {}),
+      });
+    },
+    [sendEnvelope],
   );
 
   const sendChatMessage = useCallback(
@@ -871,22 +1166,30 @@ export function RideSessionProvider({ children }: { children: ReactNode }) {
       chatMessages,
       error,
       requestRide,
-      simulateMatchedRide,
+      dismissOffer,
+      counterOffer,
+      updateOffer,
+      acceptOffer,
       updateRideRoute,
       cancelRide,
+      submitRating,
       sendChatMessage,
       clearRide,
     }),
     [
+      acceptOffer,
       cancelRide,
+      submitRating,
       chatMessages,
       clearRide,
       connectionState,
+      counterOffer,
+      updateOffer,
       currentRide,
+      dismissOffer,
       error,
       requestRide,
       sendChatMessage,
-      simulateMatchedRide,
       updateRideRoute,
     ],
   );
