@@ -12,6 +12,7 @@ import {
 } from "react";
 
 import { BackgroundLocationDisclosure } from "@/components/BackgroundLocationDisclosure";
+import { setPlaceSearchBias } from "@/lib/google-places";
 
 /**
  * Persisted marker that the user explicitly tapped "Not now" on the Play
@@ -91,6 +92,14 @@ export function LocationProvider({ children }: { children: ReactNode }) {
   const [permissionState, setPermissionState] = useState<LocationPermissionState>("idle");
   const [backgroundGranted, setBackgroundGranted] = useState(false);
   const [currentLocation, setCurrentLocation] = useState<AppLocation | null>(null);
+
+  // Place search ranks results by distance from the rider. Without this it has
+  // no idea where they are and falls back to no bias at all.
+  useEffect(() => {
+    setPlaceSearchBias(
+      currentLocation ? { lat: currentLocation.lat, lng: currentLocation.lng } : null,
+    );
+  }, [currentLocation]);
   const [error, setError] = useState<string | null>(null);
   const [disclosureVisible, setDisclosureVisible] = useState(false);
   const subscriptionRef = useRef<Location.LocationSubscription | null>(null);

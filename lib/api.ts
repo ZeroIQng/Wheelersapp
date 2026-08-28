@@ -653,6 +653,15 @@ async function getJson<TResponse>(
 export async function signupWithUsernamePassword(input: {
   username: string;
   password: string;
+  /**
+   * Sent separately when the identifier is an email address.
+   *
+   * The backend stores `username` and `email` in different columns and only
+   * fills the second one if it is given it. Signing up with an email address
+   * used to leave `email` null, so the account had no email anywhere in the
+   * app — the address the rider typed lived only as their username.
+   */
+  email?: string;
   role?: BackendRole;
 }): Promise<UsernamePasswordAuthResponse> {
   return postJson<UsernamePasswordAuthResponse>(
@@ -660,6 +669,7 @@ export async function signupWithUsernamePassword(input: {
     {
       username: input.username,
       password: input.password,
+      ...(input.email ? { email: input.email } : {}),
       role: input.role ?? "RIDER",
     },
     {

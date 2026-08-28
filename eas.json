@@ -9,7 +9,9 @@
       "distribution": "internal",
       "environment": "development",
       "env": {
-        "EXPO_PUBLIC_GOOGLE_MAPS_API_KEY": "AIzaSyAgZWNd_guJqkC3jxlVtP-V6b6zs1MtxO8"
+        "EXPO_PUBLIC_GOOGLE_MAPS_API_KEY": "AIzaSyCq5HtFzK_ihmJZHJzGdbm9pW2HXVCVvoY",
+        "EXPO_PUBLIC_GOOGLE_CLIENT_ID": "915689509871-jceck5bg2mk6imvq46d6so2i8c26lnsb.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "915689509871-lvs2n7lv6it788n2vvf1edsem3bvn8io.apps.googleusercontent.com"
       }
     },
     "development:driver": {
@@ -19,7 +21,7 @@
       "env": {
         "APP_VARIANT": "driver",
         "EXPO_PUBLIC_APP_VARIANT": "driver",
-        "EXPO_PUBLIC_GOOGLE_MAPS_API_KEY": "AIzaSyAgZWNd_guJqkC3jxlVtP-V6b6zs1MtxO8",
+        "EXPO_PUBLIC_GOOGLE_MAPS_API_KEY": "AIzaSyCq5HtFzK_ihmJZHJzGdbm9pW2HXVCVvoY",
         "EXPO_PUBLIC_GOOGLE_CLIENT_ID": "915689509871-jceck5bg2mk6imvq46d6so2i8c26lnsb.apps.googleusercontent.com",
         "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "915689509871-6sfdaphckt4r0ku30j3d2pg6nbef199a.apps.googleusercontent.com"
       }
@@ -34,7 +36,7 @@
       "env": {
         "APP_VARIANT": "driver",
         "EXPO_PUBLIC_APP_VARIANT": "driver",
-        "EXPO_PUBLIC_GOOGLE_MAPS_API_KEY": "AIzaSyAgZWNd_guJqkC3jxlVtP-V6b6zs1MtxO8",
+        "EXPO_PUBLIC_GOOGLE_MAPS_API_KEY": "AIzaSyCq5HtFzK_ihmJZHJzGdbm9pW2HXVCVvoY",
         "EXPO_PUBLIC_GOOGLE_CLIENT_ID": "915689509871-jceck5bg2mk6imvq46d6so2i8c26lnsb.apps.googleusercontent.com",
         "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "915689509871-6sfdaphckt4r0ku30j3d2pg6nbef199a.apps.googleusercontent.com",
         "EXPO_PUBLIC_API_BASE_URL": "https://app.wheelersng.com"
@@ -44,7 +46,10 @@
       "distribution": "internal",
       "environment": "preview",
       "env": {
-        "EXPO_PUBLIC_GOOGLE_MAPS_API_KEY": "AIzaSyAgZWNd_guJqkC3jxlVtP-V6b6zs1MtxO8"
+        "EXPO_PUBLIC_GOOGLE_MAPS_API_KEY": "AIzaSyCq5HtFzK_ihmJZHJzGdbm9pW2HXVCVvoY",
+        "EXPO_PUBLIC_API_BASE_URL": "https://app.wheelersng.com",
+        "EXPO_PUBLIC_GOOGLE_CLIENT_ID": "915689509871-jceck5bg2mk6imvq46d6so2i8c26lnsb.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "915689509871-lvs2n7lv6it788n2vvf1edsem3bvn8io.apps.googleusercontent.com"
       }
     },
     "preview:driver": {
@@ -57,7 +62,7 @@
       "env": {
         "APP_VARIANT": "driver",
         "EXPO_PUBLIC_APP_VARIANT": "driver",
-        "EXPO_PUBLIC_GOOGLE_MAPS_API_KEY": "AIzaSyAgZWNd_guJqkC3jxlVtP-V6b6zs1MtxO8",
+        "EXPO_PUBLIC_GOOGLE_MAPS_API_KEY": "AIzaSyCq5HtFzK_ihmJZHJzGdbm9pW2HXVCVvoY",
         "EXPO_PUBLIC_GOOGLE_CLIENT_ID": "915689509871-jceck5bg2mk6imvq46d6so2i8c26lnsb.apps.googleusercontent.com",
         "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "915689509871-6sfdaphckt4r0ku30j3d2pg6nbef199a.apps.googleusercontent.com",
         "EXPO_PUBLIC_API_BASE_URL": "https://app.wheelersng.com"
@@ -68,11 +73,10 @@
       "environment": "production",
       "autoIncrement": true,
       "env": {
-        "EXPO_PUBLIC_GOOGLE_MAPS_API_KEY": "AIzaSyAgZWNd_guJqkC3jxlVtP-V6b6zs1MtxO8",
+        "EXPO_PUBLIC_GOOGLE_MAPS_API_KEY": "AIzaSyCq5HtFzK_ihmJZHJzGdbm9pW2HXVCVvoY",
         "EXPO_PUBLIC_GOOGLE_CLIENT_ID": "915689509871-jceck5bg2mk6imvq46d6so2i8c26lnsb.apps.googleusercontent.com",
-        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "915689509871-6sfdaphckt4r0ku30j3d2pg6nbef199a.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "915689509871-lvs2n7lv6it788n2vvf1edsem3bvn8io.apps.googleusercontent.com",
         "EXPO_PUBLIC_API_BASE_URL": "https://app.wheelersng.com"
-
       }
     },
     "production:driver": {
@@ -85,7 +89,7 @@
       "env": {
         "APP_VARIANT": "driver",
         "EXPO_PUBLIC_APP_VARIANT": "driver",
-        "EXPO_PUBLIC_GOOGLE_MAPS_API_KEY": "AIzaSyAgZWNd_guJqkC3jxlVtP-V6b6zs1MtxO8",
+        "EXPO_PUBLIC_GOOGLE_MAPS_API_KEY": "AIzaSyCq5HtFzK_ihmJZHJzGdbm9pW2HXVCVvoY",
         "EXPO_PUBLIC_GOOGLE_CLIENT_ID": "915689509871-jceck5bg2mk6imvq46d6so2i8c26lnsb.apps.googleusercontent.com",
         "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "915689509871-6sfdaphckt4r0ku30j3d2pg6nbef199a.apps.googleusercontent.com",
         "EXPO_PUBLIC_API_BASE_URL": "https://app.wheelersng.com"
@@ -98,7 +102,7 @@
       "env": {
         "APP_VARIANT": "driver",
         "EXPO_PUBLIC_APP_VARIANT": "driver",
-        "EXPO_PUBLIC_GOOGLE_MAPS_API_KEY": "AIzaSyAgZWNd_guJqkC3jxlVtP-V6b6zs1MtxO8",
+        "EXPO_PUBLIC_GOOGLE_MAPS_API_KEY": "AIzaSyCq5HtFzK_ihmJZHJzGdbm9pW2HXVCVvoY",
         "EXPO_PUBLIC_GOOGLE_CLIENT_ID": "915689509871-jceck5bg2mk6imvq46d6so2i8c26lnsb.apps.googleusercontent.com",
         "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "915689509871-6sfdaphckt4r0ku30j3d2pg6nbef199a.apps.googleusercontent.com",
         "EXPO_PUBLIC_API_BASE_URL": "https://app.wheelersng.com"

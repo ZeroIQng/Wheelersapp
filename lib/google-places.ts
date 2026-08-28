@@ -62,30 +62,110 @@ type GoogleGeocodeResponse = {
   error_message?: string;
 };
 
-const googleMapsApiKey =
-  process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY?.trim() ||
-  process.env.GOOGLE_MAPS_API_KEY?.trim() ||
-  (typeof Constants.expoConfig?.extra?.googleMapsApiKey === "string"
+/* ── diagnostics ───────────────────────────────────────────────────────────
+ *
+ * Place search fails in ways that all look identical from the outside: no key,
+ * a key with the wrong APIs enabled, a key restricted to the wrong bundle id,
+ * or a query that genuinely matches nothing. Every one of them ends as an empty
+ * list on screen.
+ *
+ * These logs exist to tell those apart in seconds. Filter the Metro console for
+ * `[places]`. They only run in development, and the key is always masked —
+ * a full Maps key in a shared log is a key someone else can bill you for.
+ */
+
+const PLACES_LOG = "[places]";
+
+function maskKey(key: string | undefined): string {
+  if (!key) return "(none)";
+  if (key.length <= 10) return `${key.slice(0, 2)}…(${key.length} chars)`;
+  return `${key.slice(0, 6)}…${key.slice(-4)} (${key.length} chars)`;
+}
+
+function placesLog(message: string, detail?: Record<string, unknown>): void {
+  if (!__DEV__) return;
+  if (detail) console.log(`${PLACES_LOG} ${message}`, detail);
+  else console.log(`${PLACES_LOG} ${message}`);
+}
+
+const keyFromExpoPublic = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY?.trim();
+const keyFromPlain = process.env.GOOGLE_MAPS_API_KEY?.trim();
+const keyFromExtra =
+  typeof Constants.expoConfig?.extra?.googleMapsApiKey === "string"
     ? Constants.expoConfig.extra.googleMapsApiKey.trim()
-    : undefined);
-const lagosCenter = {
-  lat: 6.5244,
-  lng: 3.3792,
-};
-const lagosBounds = {
-  southWest: {
-    lat: 6.23,
-    lng: 3.0,
-  },
-  northEast: {
-    lat: 6.7,
-    lng: 3.7,
-  },
-};
+    : undefined;
+
+const googleMapsApiKey = keyFromExpoPublic || keyFromPlain || keyFromExtra;
+
+/** Which of the three sources actually supplied the key. */
+const keySource = keyFromExpoPublic
+  ? "EXPO_PUBLIC_GOOGLE_MAPS_API_KEY"
+  : keyFromPlain
+    ? "GOOGLE_MAPS_API_KEY"
+    : keyFromExtra
+      ? "app.config.js → extra.googleMapsApiKey"
+      : "(nowhere — no key found)";
+
+if (__DEV__) {
+  if (googleMapsApiKey) {
+    console.log(`${PLACES_LOG} key loaded from ${keySource}: ${maskKey(googleMapsApiKey)}`);
+  } else {
+    console.warn(
+      `${PLACES_LOG} NO API KEY. Place search and geocoding will fail on every request.\n` +
+        `${PLACES_LOG} Checked, in order:\n` +
+        `${PLACES_LOG}   1. EXPO_PUBLIC_GOOGLE_MAPS_API_KEY  → ${keyFromExpoPublic ? "set" : "not set"}\n` +
+        `${PLACES_LOG}   2. GOOGLE_MAPS_API_KEY              → ${keyFromPlain ? "set" : "not set"}\n` +
+        `${PLACES_LOG}   3. app.config.js extra              → ${keyFromExtra ? "set" : "not set"}\n` +
+        `${PLACES_LOG} Put it in .env at the project root, then RESTART Metro with -c ` +
+        `(EXPO_PUBLIC_* vars are inlined at build time, so a hot reload will not pick it up).`,
+    );
+  }
+}
+
+/**
+ * What a Google status code actually means for whoever is reading the log.
+ * The codes are terse and two of them are routinely misread as "no results".
+ */
+function explainGoogleStatus(status: string | undefined): string {
+  switch (status) {
+    case "REQUEST_DENIED":
+      return "the key was rejected — the API is probably not enabled on it, or an app/IP restriction excludes this build";
+    case "OVER_QUERY_LIMIT":
+      return "billing is not enabled on the Google Cloud project, or the daily quota is spent";
+    case "INVALID_REQUEST":
+      return "a required parameter was missing or malformed";
+    case "ZERO_RESULTS":
+      return "the request worked; Google simply has no match for that text";
+    case "UNKNOWN_ERROR":
+      return "a transient Google-side failure — retrying usually works";
+    default:
+      return "unrecognised status";
+  }
+}
+/**
+ * Where to bias search results towards — the device's own position.
+ *
+ * Set by the location provider as fixes arrive. Everything here used to be
+ * anchored to Lagos: results were *restricted* to 45 km of Lagos island, and
+ * every query had ", Lagos, Nigeria" appended to it. A rider in Abuja typing
+ * "Wuse 2" was searching for "Wuse 2, Lagos, Nigeria", which does not exist, so
+ * the box returned nothing and looked broken.
+ *
+ * Bias is not a filter: results outside it still come back, they just rank
+ * lower. That is the correct tool here — someone in Ikeja searching for a place
+ * in Ibadan should still find it.
+ */
+let searchBias: { lat: number; lng: number } | null = null;
+
+export function setPlaceSearchBias(coords: { lat: number; lng: number } | null): void {
+  searchBias = coords;
+}
 
 function getGoogleMapsApiKey(): string {
   if (!googleMapsApiKey) {
-    throw new Error(`Set ${googleMapsApiKeyEnvVar} to use Google Maps.`);
+    // The console warning at module load carries the diagnosis; this is what
+    // the rider sees, and it must not mention an environment variable.
+    throw new Error("Place search is unavailable right now. Please type your address in full.");
   }
 
   return googleMapsApiKey;
@@ -124,16 +204,15 @@ function buildContextualQuery(input: string): string {
     return "";
   }
 
+  // Only ever add the country. Appending a city the rider did not type is how
+  // "Wuse 2" became "Wuse 2, Lagos, Nigeria" and stopped resolving — the
+  // country keeps results in Nigeria, and `searchBias` handles proximity.
   const normalized = trimmed.toLowerCase();
-  if (normalized.includes("lagos") && normalized.includes("nigeria")) {
+  if (normalized.includes("nigeria")) {
     return trimmed;
   }
 
-  if (normalized.includes("lagos")) {
-    return `${trimmed}, Nigeria`;
-  }
-
-  return `${trimmed}, Lagos, Nigeria`;
+  return `${trimmed}, Nigeria`;
 }
 
 function splitDescription(description: string | undefined): {
@@ -252,10 +331,21 @@ async function fetchGoogleAutocompletePredictions(
     input: query,
     key: getGoogleMapsApiKey(),
     language: "en",
+    // Nigeria only is a real constraint. A city is not — `strictbounds` with a
+    // 45 km Lagos radius used to sit here, which returned literally nothing for
+    // anyone outside Lagos, for any query.
     components: "country:ng",
-    location: `${lagosCenter.lat},${lagosCenter.lng}`,
-    radius: "45000",
-    strictbounds: "true",
+  });
+
+  if (searchBias) {
+    params.set("location", `${searchBias.lat},${searchBias.lng}`);
+    params.set("radius", "50000");
+  }
+
+  placesLog("autocomplete →", {
+    query,
+    bias: searchBias ? `${searchBias.lat.toFixed(4)},${searchBias.lng.toFixed(4)}` : "none",
+    key: maskKey(googleMapsApiKey),
   });
 
   const response = await fetch(
@@ -264,8 +354,14 @@ async function fetchGoogleAutocompletePredictions(
   const data = (await response.json()) as GoogleAutocompleteResponse;
 
   if (!response.ok) {
+    placesLog(`autocomplete ← HTTP ${response.status}`, { body: data });
     throw new Error(`google_places_failed:${response.status}`);
   }
+
+  placesLog(`autocomplete ← ${data.status}`, {
+    predictions: data.predictions?.length ?? 0,
+    ...(data.error_message ? { error_message: data.error_message } : {}),
+  });
 
   if (data.status === "OK") {
     return data.predictions ?? [];
@@ -273,6 +369,14 @@ async function fetchGoogleAutocompletePredictions(
 
   if (data.status === "ZERO_RESULTS") {
     return [];
+  }
+
+  if (__DEV__) {
+    console.warn(
+      `${PLACES_LOG} Places Autocomplete returned ${data.status} — ${explainGoogleStatus(data.status)}.` +
+        (data.error_message ? `\n${PLACES_LOG} Google said: ${data.error_message}` : "") +
+        `\n${PLACES_LOG} Enable "Places API" on this key at console.cloud.google.com → APIs & Services.`,
+    );
   }
 
   throw new Error(data.error_message ?? `google_places_failed:${data.status ?? "unknown"}`);
@@ -285,8 +389,18 @@ async function fetchGoogleGeocodeResults(query: string): Promise<GoogleGeocodeRe
     language: "en",
     region: "ng",
     components: "country:NG",
-    bounds: `${lagosBounds.southWest.lat},${lagosBounds.southWest.lng}|${lagosBounds.northEast.lat},${lagosBounds.northEast.lng}`,
   });
+
+  if (searchBias) {
+    // A ~0.45° box around the rider. Geocode treats `bounds` as a preference,
+    // so a match outside it is still returned.
+    params.set(
+      "bounds",
+      `${searchBias.lat - 0.45},${searchBias.lng - 0.45}|${searchBias.lat + 0.45},${searchBias.lng + 0.45}`,
+    );
+  }
+
+  placesLog("geocode →", { query, key: maskKey(googleMapsApiKey) });
 
   const response = await fetch(
     `https://maps.googleapis.com/maps/api/geocode/json?${params.toString()}`,
@@ -294,7 +408,21 @@ async function fetchGoogleGeocodeResults(query: string): Promise<GoogleGeocodeRe
   const data = (await response.json()) as GoogleGeocodeResponse;
 
   if (!response.ok) {
+    placesLog(`geocode ← HTTP ${response.status}`, { body: data });
     throw new Error(`google_geocode_failed:${response.status}`);
+  }
+
+  placesLog(`geocode ← ${data.status}`, {
+    results: data.results?.length ?? 0,
+    ...(data.error_message ? { error_message: data.error_message } : {}),
+  });
+
+  if (__DEV__ && data.status && !["OK", "ZERO_RESULTS"].includes(data.status)) {
+    console.warn(
+      `${PLACES_LOG} Geocoding returned ${data.status} — ${explainGoogleStatus(data.status)}.` +
+        (data.error_message ? `\n${PLACES_LOG} Google said: ${data.error_message}` : "") +
+        `\n${PLACES_LOG} Enable "Geocoding API" on this key — it is a SEPARATE API from Places.`,
+    );
   }
 
   if (data.status === "OK") {
@@ -389,7 +517,10 @@ export async function resolvePlaceQuery(input: string): Promise<ResolvedPlace> {
       }
     }
 
-    throw new Error(`Could not resolve location with Google Maps: ${input}`);
+    placesLog("resolve failed — no usable result in Nigeria", { input, tried: queries });
+    throw new Error(
+      `We could not find "${input}". Try adding the city, or pick a suggestion from the list.`,
+    );
   })();
 
   resolvedPlaceInflight.set(cacheKey, request);

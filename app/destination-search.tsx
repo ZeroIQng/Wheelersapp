@@ -48,6 +48,7 @@ import {
   type RideItinerary,
 } from "@/lib/ride-route";
 import { useRideSession } from "@/lib/ride-session";
+import { toUserMessage } from "@/lib/error-messages";
 import { useAppLocation } from "@/lib/location";
 import { theme } from "@/theme";
 
@@ -160,6 +161,7 @@ export default function DestinationSearchScreen() {
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
   const [providerSuggestions, setProviderSuggestions] = useState<PlaceSuggestion[]>([]);
+  const [searchError, setSearchError] = useState<string | null>(null);
   const [recentPlaces, setRecentPlaces] = useState<PlaceSuggestion[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   // Which field is currently being edited inline on the editor page.
@@ -231,8 +233,12 @@ export default function DestinationSearchScreen() {
   );
 
   // Google place search runs whenever the current query changes.
+  //
+  // Every early return below is logged, because they are indistinguishable on
+  // screen: the box just stays empty. Filter the console for `[search]`.
   useEffect(() => {
     if (!isGoogleMapsConfigured()) {
+      if (__DEV__) console.log("[search] skipped — no Google Maps key in this build");
       setProviderSuggestions([]);
       setIsSearching(false);
       return;
@@ -241,12 +247,25 @@ export default function DestinationSearchScreen() {
     const normalized = debouncedSearchQuery.trim();
 
     if (!normalized) {
+      if (__DEV__) {
+        console.log("[search] skipped — debounced query is empty", {
+          searchQuery,
+          debouncedSearchQuery,
+        });
+      }
       setProviderSuggestions([]);
       setIsSearching(false);
       return;
     }
 
     if (hasExactRecentMatch) {
+      // A saved place already matches this text exactly, so the history row is
+      // shown instead of asking Google the same question.
+      if (__DEV__) {
+        console.log("[search] skipped — an exact recent place already matches", {
+          query: normalized,
+        });
+      }
       setProviderSuggestions([]);
       setIsSearching(false);
       return;
@@ -254,16 +273,29 @@ export default function DestinationSearchScreen() {
 
     let cancelled = false;
     setIsSearching(true);
+    setSearchError(null);
 
     void (async () => {
       try {
+        if (__DEV__) console.log("[search] asking Google for", normalized);
         const suggestions = await fetchGooglePlaceSuggestions(normalized);
         if (!cancelled) {
+          if (__DEV__) {
+            console.log(`[search] got ${suggestions.length} suggestion(s)`);
+          }
           setProviderSuggestions(suggestions);
         }
-      } catch {
+      } catch (searchError) {
         if (!cancelled) {
+          // This used to swallow every failure into an empty list, so a missing
+          // API key, a denied request and "no such place" were indistinguishable
+          // — all three rendered as an empty box that looked like nothing had
+          // happened. Say what went wrong instead.
+          if (__DEV__) console.warn("[search] failed", searchError);
           setProviderSuggestions([]);
+          setSearchError(
+            toUserMessage(searchError, "We could not search for places just now."),
+          );
         }
       } finally {
         if (!cancelled) {
@@ -275,7 +307,7 @@ export default function DestinationSearchScreen() {
     return () => {
       cancelled = true;
     };
-  }, [debouncedSearchQuery, hasExactRecentMatch]);
+  }, [debouncedSearchQuery, hasExactRecentMatch, searchQuery]);
 
   const shouldUseProviderResults =
     isGoogleMapsConfigured() &&
@@ -617,7 +649,23 @@ export default function DestinationSearchScreen() {
     : "Tap to add pickup location";
 
   // Show results panel in form mode whenever a route field is focused.
+  // The results list only renders while a route field is being edited. A
+  // successful search with `activeInline` null therefore shows nothing at all,
+  // which is indistinguishable on screen from the search having failed — so the
+  // gate is logged alongside what it is gating.
   const showInlineResults = activeInline != null;
+  if (__DEV__ && trimmedSearchQuery.length > 0) {
+    console.log("[search] render gate", {
+      typed: trimmedSearchQuery,
+      activeInline,
+      showInlineResults,
+      shouldUseProviderResults,
+      providerSuggestions: providerSuggestions.length,
+      recentMatches: matchingRecentPlacesPreview.length,
+      searchError,
+    });
+  }
+
   const isCondensedForm = showInlineResults || hasExtraStops;
   const isUltraCondensedForm = showInlineResults || intermediateStops.length > 1;
   const shouldShowIdleHistory = !showInlineResults && recentPlacesPreview.length > 0;
@@ -937,6 +985,26 @@ export default function DestinationSearchScreen() {
 
               {showInlineResults ? (
                 <View style={styles.resultsSection}>
+                  {/* A failed search is not an empty search. Saying so is the
+                      difference between "no such place" and "your key is
+                      rejected", which used to look identical. */}
+                  {searchError && !isSearching ? (
+                    <View style={styles.searchErrorBanner}>
+                      <MaterialIcons
+                        name="error-outline"
+                        size={18}
+                        color={theme.colors.danger}
+                      />
+                      <AppText
+                        variant="bodySmall"
+                        color={theme.colors.danger}
+                        style={styles.searchErrorText}
+                      >
+                        {searchError}
+                      </AppText>
+                    </View>
+                  ) : null}
+
                   {isSearching ? (
                     <View style={styles.emptyState}>
                       <AppText variant="bodyMedium">Searching places...</AppText>
@@ -1247,6 +1315,16 @@ function RouteSummaryRow({
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
+  searchErrorBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing.sm,
+    padding: theme.spacing.md,
+    marginBottom: theme.spacing.sm,
+    borderRadius: theme.radius.sm,
+    backgroundColor: theme.colors.dangerLight,
+  },
+  searchErrorText: { flex: 1 },
   container: {
     flex: 1,
     paddingTop: theme.spacing.lg,

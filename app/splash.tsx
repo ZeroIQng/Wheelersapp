@@ -3,7 +3,6 @@ import { useEffect, useRef, useState } from "react";
 import { StatusBar } from "expo-status-bar";
 import * as NativeSplash from "expo-splash-screen";
 import { Image, Pressable, StyleSheet, View } from "react-native";
-import Animated, { FadeIn } from "react-native-reanimated";
 
 import { publicEntryRoute, type VariantPublicRoute } from "@/lib/app-variant";
 import { useAuth } from "@/lib/auth";
@@ -24,7 +23,7 @@ type SplashRoute = VariantPublicRoute | AuthenticatedRoute;
  * resolves in a few hundred ms, which would flash the artwork and leave — the
  * splash is meant to be seen, so navigation waits out the remainder.
  */
-const MIN_SPLASH_MS = 1600;
+const MIN_SPLASH_MS = 900;
 
 function prefetchHomeData(getAccessToken: () => Promise<string | null | undefined>) {
   void prefetchRiderHistory(getAccessToken);
@@ -107,7 +106,7 @@ export default function SplashScreen() {
       if (!hasNavigated.current) {
         navigate(publicEntryRoute);
       }
-    }, MIN_SPLASH_MS + 900);
+    }, MIN_SPLASH_MS + 1200);
 
     return () => clearTimeout(timer);
   }, []);
@@ -119,20 +118,21 @@ export default function SplashScreen() {
  * The two brand splash artworks. One is chosen at random on every cold start,
  * so the app opens on either the cream or the dark treatment.
  *
- * Each entry carries the artwork's own background colour so the screen behind
- * it matches exactly — the image is drawn with resizeMode="contain", and the
- * matching backdrop makes the letterboxing invisible on any aspect ratio.
+ * The mark is drawn at the same size and position as the native splash
+ * (imageWidth 260, centred, from app.json) so the handoff is invisible — only
+ * the background and ink change. Rendering the full artwork here instead made
+ * the wordmark jump, which read as the splash appearing twice.
  */
 const SPLASH_VARIANTS = [
   {
     key: "light",
-    source: require("../assets/images/splash-light.png"),
+    source: require("../assets/images/splash-wordmark-light.png"),
     background: "#FEFAEF",
     statusBar: "dark" as const,
   },
   {
     key: "dark",
-    source: require("../assets/images/splash-dark.png"),
+    source: require("../assets/images/splash-wordmark-dark.png"),
     background: "#202020",
     statusBar: "light" as const,
   },
@@ -161,14 +161,12 @@ function SplashShell({ onContinue }: { onContinue: () => void }) {
         onPress={onContinue}
         style={styles.pressable}
       >
-        <Animated.View entering={FadeIn.duration(350)} style={styles.artWrap}>
-          <Image
-            accessibilityIgnoresInvertColors
-            resizeMode="contain"
-            source={variant.source}
-            style={styles.art}
-          />
-        </Animated.View>
+        <Image
+          accessibilityIgnoresInvertColors
+          resizeMode="contain"
+          source={variant.source}
+          style={styles.wordmark}
+        />
       </Pressable>
     </View>
   );
@@ -183,12 +181,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  artWrap: {
-    width: "100%",
-    height: "100%",
-  },
-  art: {
-    width: "100%",
-    height: "100%",
+  wordmark: {
+    // Matches the native splash exactly: 260pt wide, centred. The artwork is
+    // 787x165, so the height follows from that ratio.
+    width: 260,
+    height: 260 * (165 / 787),
   },
 });

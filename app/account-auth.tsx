@@ -24,7 +24,8 @@ import {
   signinWithUsernamePassword,
   signupWithUsernamePassword,
 } from "@/lib/api";
-import { getAuthenticatedRoute, persistAuthenticatedRole } from "@/lib/auth-state";
+import { persistAuthenticatedRole } from "@/lib/auth-state";
+import { resolvePostAuthRoute } from "@/lib/post-auth";
 import { getDisplayErrorMessage } from "@/lib/errors";
 import { theme } from "@/theme";
 
@@ -107,6 +108,12 @@ export default function AccountAuthScreen() {
         mode === "signup"
           ? await signupWithUsernamePassword({
               ...credentials,
+              // When the identifier is an email, say so explicitly — the
+              // backend keeps username and email apart and will not infer one
+              // from the other.
+              ...(EMAIL_PATTERN.test(credentials.username)
+                ? { email: credentials.username }
+                : {}),
               role: targetAuthRole,
             })
           : await signinWithUsernamePassword(credentials);
@@ -125,10 +132,13 @@ export default function AccountAuthScreen() {
       await storeLocalAccessToken(response.accessToken);
       await refreshAuthState();
 
-      // Signing in is the whole of onboarding now — no phone step to gate on.
       const nextState = await persistAuthenticatedRole(authenticatedRole);
 
-      router.replace(getAuthenticatedRoute(nextState));
+      // Drivers are gated on KYC exactly as they are on the social sign-in
+      // path — otherwise an email signup lands on the dashboard without ever
+      // submitting documents.
+      const route = await resolvePostAuthRoute(nextState, response.accessToken);
+      router.replace(route);
     } catch (error) {
       const fallback =
         mode === "signup" ? "Could not create your account." : "Could not sign in.";

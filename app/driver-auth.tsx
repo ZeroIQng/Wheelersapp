@@ -4,9 +4,10 @@ import { Alert } from "react-native";
 import * as AppleAuthentication from "expo-apple-authentication";
 
 import { AuthEntryScreen, type AuthProvider } from "@/components/auth-entry";
-import { signInWithApple, signInWithGoogle, getDriverKycStatus } from "@/lib/api";
+import { signInWithApple, signInWithGoogle } from "@/lib/api";
 import { storeLocalAccessToken } from "@/lib/access-token";
 import { persistAuthenticatedRole } from "@/lib/auth-state";
+import { resolvePostAuthRoute } from "@/lib/post-auth";
 import { useAuth } from "@/lib/auth";
 import {
   getGoogleIosClientId,
@@ -48,22 +49,11 @@ export default function DriverAuthScreen() {
       });
 
       await storeLocalAccessToken(result.accessToken);
-      await persistAuthenticatedRole("DRIVER");
+      const nextState = await persistAuthenticatedRole("DRIVER");
       await refreshAuthState();
 
-      // Check KYC status — skip onboarding if already approved
-      try {
-        const kyc = await getDriverKycStatus({ accessToken: result.accessToken });
-        if (kyc.kycStatus === "APPROVED") {
-          router.replace("/driver/(tabs)/home" as any);
-        } else if (kyc.kycStatus === "SUBMITTED") {
-          router.replace("/driver/onboarding/pending");
-        } else {
-          router.replace("/driver/onboarding/welcome");
-        }
-      } catch {
-        router.replace("/driver/onboarding/welcome");
-      }
+      const route = await resolvePostAuthRoute(nextState, result.accessToken);
+      router.replace(route);
     } catch (error: unknown) {
       if (
         error &&
@@ -110,22 +100,11 @@ export default function DriverAuthScreen() {
       const result = await signInWithGoogle({ idToken });
 
       await storeLocalAccessToken(result.accessToken);
-      await persistAuthenticatedRole("DRIVER");
+      const nextState = await persistAuthenticatedRole("DRIVER");
       await refreshAuthState();
 
-      // Check KYC status — skip onboarding if already approved
-      try {
-        const kyc = await getDriverKycStatus({ accessToken: result.accessToken });
-        if (kyc.kycStatus === "APPROVED") {
-          router.replace("/driver/(tabs)/home" as any);
-        } else if (kyc.kycStatus === "SUBMITTED") {
-          router.replace("/driver/onboarding/pending");
-        } else {
-          router.replace("/driver/onboarding/welcome");
-        }
-      } catch {
-        router.replace("/driver/onboarding/welcome");
-      }
+      const route = await resolvePostAuthRoute(nextState, result.accessToken);
+      router.replace(route);
     } catch (error: unknown) {
       if (
         error &&

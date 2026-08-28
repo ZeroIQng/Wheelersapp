@@ -12,6 +12,38 @@ const googleMapsApiKey =
   process.env.GOOGLE_MAPS_API_KEY?.trim() ||
   undefined;
 
+/**
+ * The URL scheme Google redirects back to after sign-in.
+ *
+ * It is the iOS client id reversed, and it is per-bundle. app.json hard-codes
+ * the *driver's* scheme, so the rider app shipped a scheme Google would not
+ * redirect to — the sign-in sheet completed and then returned nothing, which
+ * surfaces as "no OAuth code". Derived from the iOS client id for whichever
+ * variant is building, so the two can never drift apart again.
+ */
+const googleIosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID?.trim();
+const googleIosUrlScheme = googleIosClientId
+  ? `com.googleusercontent.apps.${googleIosClientId.replace(
+      /\.apps\.googleusercontent\.com$/,
+      "",
+    )}`
+  : undefined;
+
+/** Replace the hard-coded google-signin plugin config with the variant's own. */
+function withVariantGoogleScheme(plugins) {
+  if (!googleIosUrlScheme) return plugins;
+
+  return plugins.map((entry) => {
+    if (
+      Array.isArray(entry) &&
+      entry[0] === "@react-native-google-signin/google-signin"
+    ) {
+      return [entry[0], { ...(entry[1] ?? {}), iosUrlScheme: googleIosUrlScheme }];
+    }
+    return entry;
+  });
+}
+
 module.exports = () => ({
   ...appJson,
   expo: {
@@ -24,11 +56,17 @@ module.exports = () => ({
       appVariant,
       googleMapsApiKey,
     },
+    plugins: withVariantGoogleScheme(appJson.expo.plugins ?? []),
     ios: {
       ...appJson.expo.ios,
       bundleIdentifier: isDriverApp
         ? "com.timmy133.wheelers.driver"
         : "com.timmy133.wheelers",
+      // Adds the com.apple.developer.applesignin entitlement. Without it the
+      // native call has no capability behind it and the app crashes the moment
+      // "Continue with Apple" is tapped — which is why EAS kept reporting
+      // "Synced capabilities: No updates": there was nothing to sync.
+      usesAppleSignIn: true,
       config: {
         ...appJson.expo.ios?.config,
         googleMapsApiKey,
