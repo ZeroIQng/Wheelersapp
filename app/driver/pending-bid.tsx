@@ -1,0 +1,309 @@
+import { Href, useLocalSearchParams, useRouter } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
+import { useEffect, useRef, useState } from 'react';
+import { Alert, StyleSheet, View } from 'react-native';
+
+import { AppButton } from '@/components/app-button';
+import { AppScreen } from '@/components/app-screen';
+import { AppText } from '@/components/app-text';
+import { useDriverSession } from '@/lib/driver-session';
+import { theme } from '@/theme';
+
+const VAT_RATE = 0.075;
+const STATE_LEVY_NGN = 30;
+
+/** How often to ask the backend about a bid the rider has accepted but whose
+ *  trip hasn't materialised on this phone yet. */
+const ACCEPTED_SYNC_INTERVAL_MS = 5_000;
+
+function formatNgn(amount: number): string {
+  return `₦${Math.round(amount).toLocaleString('en-NG')}`;
+}
+
+function formatSince(iso: string, now: number): string {
+  const ms = now - new Date(iso).getTime();
+  if (!Number.isFinite(ms) || ms < 0) return 'just now';
+  const minutes = Math.floor(ms / 60_000);
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.floor(minutes / 60);
+  return `${hours} hr${hours === 1 ? '' : 's'} ago`;
+}
+
+function tripScreenFor(status: string): Href | null {
+  switch (status) {
+    case 'navigating':
+      return '/driver/navigation' as Href;
+    case 'arrived':
+      return '/driver/arrived' as Href;
+    case 'active':
+      return '/driver/active-trip' as Href;
+    default:
+      return null;
+  }
+}
+
+/**
+ * One bid the driver has sent, on its own page: the trip, the number, and
+ * where the rider is with it. Before this the bid was a one-line card on the
+ * map that couldn't be tapped, so once the rider paid there was nothing to
+ * press and nowhere to go.
+ */
+export default function PendingBidScreen() {
+  const router = useRouter();
+  const params = useLocalSearchParams<{ rideId?: string | string[] }>();
+  const rideId = Array.isArray(params.rideId) ? params.rideId[0] : params.rideId;
+  const { session, syncActiveRide } = useDriverSession();
+
+  const bid = rideId ? session.pendingBids[rideId] : undefined;
+  const currentRide = session.currentRide;
+  const tripScreen = tripScreenFor(session.status);
+  const tripIsThisRide = Boolean(currentRide && rideId && currentRide.rideId === rideId);
+
+  const [now, setNow] = useState(() => Date.now());
+  const [busy, setBusy] = useState<'refresh' | null>(null);
+  const routedRef = useRef(false);
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // The moment this bid becomes a trip, hand over to the trip screens.
+  useEffect(() => {
+    if (!tripIsThisRide || !tripScreen || routedRef.current) return;
+    routedRef.current = true;
+    router.replace(tripScreen);
+  }, [tripIsThisRide, tripScreen, router]);
+
+  // The bid is gone and it did not become our trip: the rider cancelled,
+  // picked someone else, or the request timed out. Nothing to show.
+  useEffect(() => {
+    if (bid || tripIsThisRide) return;
+    if (router.canGoBack()) router.back();
+    else router.replace('/driver/(tabs)/home' as Href);
+  }, [bid, tripIsThisRide, router]);
+
+  // A stale card is the whole reason this page exists: the socket can miss the
+  // match while the app is backgrounded. Ask the backend once on open, and
+  // keep asking while the rider has accepted but the trip hasn't arrived.
+  const accepted = Boolean(bid?.acceptedAt);
+  useEffect(() => {
+    if (!bid) return;
+    void syncActiveRide();
+    if (!accepted) return;
+    const timer = setInterval(() => {
+      void syncActiveRide();
+    }, ACCEPTED_SYNC_INTERVAL_MS);
+    return () => clearInterval(timer);
+  }, [bid, accepted, syncActiveRide]);
+
+  if (!bid) return null;
+
+  const { offer } = bid;
+  const fare = bid.agreedFareNgn ?? bid.amountNgn;
+  const vat = Math.round(fare * VAT_RATE);
+  const payout = fare - vat - STATE_LEVY_NGN;
+  const riderOffer = offer.riderOfferNgn ?? offer.fareEstimateNgn;
+
+  const handleRefresh = async () => {
+    setBusy('refresh');
+    try {
+      const found = await syncActiveRide();
+      if (!found) {
+        Alert.alert(
+          'Not started yet',
+          'The rider has accepted, but the trip has not been set up on our side yet. Give it a moment and try again.',
+        );
+      }
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <AppScreen scroll safeAreaEdges={['top', 'bottom']}>
+      <StatusBar style="dark" />
+
+      <View style={styles.header}>
+        <AppText variant="h2">Your bid</AppText>
+        <AppText variant="bodySmall" color={theme.colors.muted}>
+          Sent {formatSince(bid.sentAt, now)}
+        </AppText>
+      </View>
+
+      {/* Status — the one line the driver opened this page for. */}
+      <View style={[styles.statusCard, accepted ? styles.statusAccepted : styles.statusWaiting]}>
+        <AppText variant="label" color={accepted ? theme.colors.orange : theme.colors.green}>
+          {accepted
+            ? bid.riderPaid
+              ? '✅ Rider accepted and paid'
+              : '✅ Rider accepted your bid'
+            : '⏳ Waiting for the rider'}
+        </AppText>
+        <AppText variant="bodySmall" color={theme.colors.muted}>
+          {accepted
+            ? tripIsThisRide
+              ? 'Your trip is ready.'
+              : 'Setting up your trip — this usually takes a few seconds.'
+            : 'The rider is looking at bids. A bid stands until the rider decides or the request ends — you can leave this page; we will alert you when they decide.'}
+        </AppText>
+      </View>
+
+      {/* The trip */}
+      <View style={styles.card}>
+        <AppText variant="label" color={theme.colors.muted} style={styles.cardTitle}>
+          Trip
+        </AppText>
+        <View style={styles.stopRow}>
+          <View style={[styles.stopDot, { backgroundColor: theme.colors.green }]} />
+          <View style={styles.stopText}>
+            <AppText variant="caption" color={theme.colors.muted}>Pickup</AppText>
+            <AppText variant="body">{offer.pickup.address}</AppText>
+          </View>
+        </View>
+        {offer.stops.map((stop, index) => (
+          <View key={`${stop.lat},${stop.lng},${index}`} style={styles.stopRow}>
+            <View style={[styles.stopDot, { backgroundColor: theme.colors.mutedLight }]} />
+            <View style={styles.stopText}>
+              <AppText variant="caption" color={theme.colors.muted}>Stop {index + 1}</AppText>
+              <AppText variant="body">{stop.address}</AppText>
+            </View>
+          </View>
+        ))}
+        <View style={styles.stopRow}>
+          <View style={[styles.stopDot, { backgroundColor: theme.colors.orange }]} />
+          <View style={styles.stopText}>
+            <AppText variant="caption" color={theme.colors.muted}>Destination</AppText>
+            <AppText variant="body">{offer.destination.address}</AppText>
+          </View>
+        </View>
+        <AppText variant="monoSmall" color={theme.colors.mutedLight} style={styles.tripMeta}>
+          {offer.plannedDistanceKm ? `${offer.plannedDistanceKm.toFixed(1)} km` : 'distance unknown'}
+          {offer.plannedDurationSeconds
+            ? ` · ~${Math.max(1, Math.round(offer.plannedDurationSeconds / 60))} min`
+            : ''}
+          {offer.isGroupRide ? ` · group · ${offer.riderCount ?? 2} riders` : ''}
+        </AppText>
+      </View>
+
+      {/* The money */}
+      <View style={styles.card}>
+        <AppText variant="label" color={theme.colors.muted} style={styles.cardTitle}>
+          Fare
+        </AppText>
+        <View style={styles.lineRow}>
+          <AppText variant="bodySmall" color={theme.colors.muted}>Rider offered</AppText>
+          <AppText variant="bodySmall">{formatNgn(riderOffer)}</AppText>
+        </View>
+        <View style={styles.lineRow}>
+          <AppText variant="body">{accepted ? 'Agreed fare' : 'Your bid'}</AppText>
+          <AppText variant="h3" color={theme.colors.orange}>{formatNgn(fare)}</AppText>
+        </View>
+        <View style={styles.divider} />
+        <View style={styles.lineRow}>
+          <AppText variant="bodySmall" color={theme.colors.muted}>VAT (7.5%)</AppText>
+          <AppText variant="bodySmall" color={theme.colors.muted}>-{formatNgn(vat)}</AppText>
+        </View>
+        <View style={styles.lineRow}>
+          <AppText variant="bodySmall" color={theme.colors.muted}>State levy</AppText>
+          <AppText variant="bodySmall" color={theme.colors.muted}>-{formatNgn(STATE_LEVY_NGN)}</AppText>
+        </View>
+        <View style={styles.divider} />
+        <View style={styles.lineRow}>
+          <AppText variant="label">You earn</AppText>
+          <AppText variant="label" color={theme.colors.green}>{formatNgn(payout)}</AppText>
+        </View>
+      </View>
+
+      <View style={styles.actions}>
+        {accepted ? (
+          tripIsThisRide && tripScreen ? (
+            <AppButton title="Open trip" onPress={() => router.replace(tripScreen)} />
+          ) : (
+            <AppButton
+              title="Refresh"
+              onPress={handleRefresh}
+              loading={busy === 'refresh'}
+            />
+          )
+        ) : null}
+        <AppButton
+          title={accepted ? 'Back' : 'Close — keep my bid'}
+          variant="ghost"
+          onPress={() => {
+            if (router.canGoBack()) router.back();
+            else router.replace('/driver/(tabs)/home' as Href);
+          }}
+        />
+      </View>
+    </AppScreen>
+  );
+}
+
+const styles = StyleSheet.create({
+  header: {
+    gap: theme.spacing.xs,
+    marginBottom: theme.spacing.lg,
+  },
+  statusCard: {
+    gap: theme.spacing.xs,
+    padding: theme.spacing.lg,
+    borderRadius: theme.radius.md,
+    borderWidth: theme.borders.thick,
+    backgroundColor: theme.colors.white,
+    marginBottom: theme.spacing.md,
+  },
+  statusWaiting: {
+    borderColor: theme.colors.green,
+  },
+  statusAccepted: {
+    borderColor: theme.colors.orange,
+    backgroundColor: theme.colors.orangeLight,
+  },
+  card: {
+    gap: theme.spacing.sm,
+    padding: theme.spacing.lg,
+    borderRadius: theme.radius.md,
+    borderWidth: 1,
+    borderColor: theme.colors.borderLight,
+    backgroundColor: theme.colors.white,
+    marginBottom: theme.spacing.md,
+  },
+  cardTitle: {
+    marginBottom: theme.spacing.xs,
+  },
+  stopRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: theme.spacing.md,
+  },
+  stopDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    marginTop: 6,
+  },
+  stopText: {
+    flex: 1,
+    gap: 2,
+  },
+  tripMeta: {
+    marginTop: theme.spacing.xs,
+  },
+  lineRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: theme.spacing.md,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: theme.colors.borderLight,
+    marginVertical: theme.spacing.xs,
+  },
+  actions: {
+    gap: theme.spacing.sm,
+    marginTop: theme.spacing.sm,
+  },
+});

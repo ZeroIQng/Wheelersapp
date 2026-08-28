@@ -1,14 +1,18 @@
+import { useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 
 import { AppScreen } from '@/components/app-screen';
 import { AppCard } from '@/components/app-card';
 import { AppText } from '@/components/app-text';
+import { DriverBidsList } from '@/components/driver-bids-list';
 import { useAuth } from '@/lib/auth';
 import { getAccessTokenWithRetry } from '@/lib/access-token';
 import {
+  getDriverBids,
   getDriverRideHistory,
   getWalletTransactions,
+  type DriverBidRecord,
   type DriverHistoryRide,
   type WalletTransaction,
 } from '@/lib/api';
@@ -16,7 +20,11 @@ import { useResponsive } from '@/lib/responsive';
 import { useAppTheme } from '@/lib/theme-context';
 import { theme } from '@/theme';
 
-type Tab = 'rides' | 'transactions';
+type Tab = 'rides' | 'bids' | 'transactions';
+
+function isTab(value: unknown): value is Tab {
+  return value === 'rides' || value === 'bids' || value === 'transactions';
+}
 
 function formatNgn(amount: number): string {
   return `NGN ${Math.round(amount).toLocaleString('en-NG')}`;
@@ -50,8 +58,15 @@ export default function DriverHistoryScreen() {
   const { getAccessToken } = useAuth();
   const { isDark } = useAppTheme();
   const responsive = useResponsive();
-  const [activeTab, setActiveTab] = useState<Tab>('rides');
+  // `?tab=bids` deep-links straight to the bids list (from the home card).
+  const params = useLocalSearchParams<{ tab?: string | string[] }>();
+  const requestedTab = Array.isArray(params.tab) ? params.tab[0] : params.tab;
+  const [activeTab, setActiveTab] = useState<Tab>(isTab(requestedTab) ? requestedTab : 'rides');
+  useEffect(() => {
+    if (isTab(requestedTab)) setActiveTab(requestedTab);
+  }, [requestedTab]);
   const [rides, setRides] = useState<DriverHistoryRide[]>([]);
+  const [bids, setBids] = useState<DriverBidRecord[]>([]);
   const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
   const [loadingRides, setLoadingRides] = useState(true);
   const [loadingTxns, setLoadingTxns] = useState(true);
@@ -61,12 +76,16 @@ export default function DriverHistoryScreen() {
     try {
       const accessToken = await getAccessTokenWithRetry(getAccessToken);
       if (!accessToken) return;
-      const [rideData, txnData] = await Promise.all([
+      const [rideData, txnData, bidData] = await Promise.all([
         getDriverRideHistory({ accessToken, limit: 30 }),
         getWalletTransactions({ accessToken, limit: 30 }),
+        // Bids are best-effort: an older backend without the route must not
+        // blank the rides and transactions beside it.
+        getDriverBids({ accessToken, limit: 50 }).catch(() => ({ items: [] as DriverBidRecord[] })),
       ]);
       setRides(rideData.items);
       setTransactions(txnData.items);
+      setBids(bidData.items);
     } catch {
       // non-blocking
     } finally {
@@ -85,7 +104,7 @@ export default function DriverHistoryScreen() {
     setRefreshing(false);
   }, [fetchData]);
 
-  const loading = activeTab === 'rides' ? loadingRides : loadingTxns;
+  const loading = activeTab === 'transactions' ? loadingTxns : loadingRides;
 
   return (
     <AppScreen
@@ -113,6 +132,20 @@ export default function DriverHistoryScreen() {
           </AppText>
         </Pressable>
         <Pressable
+          onPress={() => setActiveTab('bids')}
+          style={[styles.tab, { minHeight: responsive.scale(40) }, activeTab === 'bids' && styles.tabActive]}
+        >
+          <AppText
+            variant="label"
+            color={activeTab === 'bids' ? theme.colors.white : theme.colors.muted}
+            adjustsFontSizeToFit
+            minimumFontScale={0.8}
+            numberOfLines={1}
+          >
+            Bids
+          </AppText>
+        </Pressable>
+        <Pressable
           onPress={() => setActiveTab('transactions')}
           style={[styles.tab, { minHeight: responsive.scale(40) }, activeTab === 'transactions' && styles.tabActive]}
         >
@@ -132,6 +165,8 @@ export default function DriverHistoryScreen() {
         <View style={[styles.loaderWrap, { paddingVertical: responsive.vh(8, 32, 60) }]}>
           <ActivityIndicator size="large" color={theme.colors.orange} />
         </View>
+      ) : activeTab === 'bids' ? (
+        <DriverBidsList history={bids} />
       ) : activeTab === 'rides' ? (
         rides.length === 0 ? (
           <View style={[styles.emptyWrap, { paddingVertical: responsive.vh(6, 28, 48) }]}>

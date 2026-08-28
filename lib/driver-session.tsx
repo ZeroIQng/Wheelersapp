@@ -1,4 +1,4 @@
-import * as Crypto from 'expo-crypto';
+import { AppState, type AppStateStatus } from 'react-native';
 import { useAuth } from '@/lib/auth';
 import {
   createContext,
@@ -13,88 +13,34 @@ import {
 
 import {
   getBackendWebSocketUrl,
+  getDriverActiveRide,
   isBackendConfigured,
-  type RideEstimateWaypoint,
-  type RideRouteGeometry,
+  type DriverActiveRide,
 } from '@/lib/api';
 import { getAccessTokenWithRetry } from '@/lib/access-token';
+import {
+  applyActiveRideSnapshot,
+  defaultDriverSession,
+  getString,
+  pruneExpiredOffers,
+  recordBid,
+  reduceDriverSession,
+  type DriverSessionState,
+  type GroupSeat,
+} from '@/lib/driver-session-reducer';
 import { estimateEtaSeconds, haversineKm } from '@/lib/geo';
 import { invalidateWalletCache } from '@/lib/wallet-overview';
 
+export type {
+  DriverRide,
+  DriverSessionState,
+  DriverStatus,
+  GroupSeat,
+  PendingBid,
+  RideOffer,
+} from '@/lib/driver-session-reducer';
+
 type DriverConnectionState = 'disconnected' | 'connecting' | 'connected';
-
-type DriverStatus =
-  | 'offline'
-  | 'online'
-  | 'offered'
-  | 'navigating'
-  | 'arrived'
-  | 'active'
-  | 'completed';
-
-type RideOffer = {
-  rideId: string;
-  riderId: string;
-  pickup: RideEstimateWaypoint;
-  destination: RideEstimateWaypoint;
-  stops: RideEstimateWaypoint[];
-  fareEstimateNgn: number;
-  /**
-   * What the rider is actually offering right now. A rider counter-offer only
-   * moves this field — fareEstimateNgn stays at the original estimate — so a
-   * screen that reads fareEstimateNgn shows a stale price forever.
-   */
-  riderOfferNgn?: number;
-  plannedDistanceKm?: number;
-  plannedDurationSeconds?: number;
-  /**
-   * Driver→pickup at match time, from the backend. A seed for the live
-   * "to pickup" card — screens recompute from the phone's own GPS when a fix
-   * is available.
-   */
-  pickupDistanceKm?: number;
-  pickupEtaSeconds?: number;
-  expiresAt: string;
-  route?: RideRouteGeometry;
-  /** Shared ride: several riders picked up and dropped along one route. */
-  isGroupRide?: boolean;
-  riderCount?: number;
-  /** Parallel to `stops` — which waypoints are pickups vs drop-offs. */
-  stopKinds?: Array<'pickup' | 'dropoff'>;
-  /**
-   * Group rides: each rider's own leg and seat offer. The driver negotiates
-   * per seat — accept one rider's price, bid another — not on a lump sum.
-   */
-  groupMembers?: GroupSeat[];
-};
-
-export type GroupSeat = {
-  rideId: string;
-  riderId: string;
-  pickup: RideEstimateWaypoint;
-  dropoff: RideEstimateWaypoint;
-  offerNgn: number;
-};
-
-type DriverRide = {
-  rideId: string;
-  riderId: string;
-  pickup: RideEstimateWaypoint;
-  destination: RideEstimateWaypoint;
-  stops: RideEstimateWaypoint[];
-  fareNgn: number;
-  plannedDistanceKm?: number;
-  plannedDurationSeconds?: number;
-  route?: RideRouteGeometry;
-  startedAt?: string;
-  completedAt?: string;
-  completedFareNgn?: number;
-  distanceKm?: number;
-  durationSeconds?: number;
-  riderPaid?: boolean;
-  riderPhone?: string;
-  liveDistanceKm?: number;
-};
 
 export type ChatMessage = {
   id: string;
@@ -103,33 +49,6 @@ export type ChatMessage = {
   senderRole: 'RIDER' | 'DRIVER';
   content: string;
   createdAt: string;
-};
-
-/**
- * A bid the driver has sent, waiting on the rider. Snapshotted from the offer
- * at bid time because the offer card expires after 30s while the rider has
- * minutes to decide — by the time ride:matched arrives, the offer is usually
- * gone from the queue, and the match used to be silently dropped.
- */
-export type PendingBid = {
-  offer: RideOffer;
-  amountNgn: number;
-  sentAt: string;
-};
-
-export type DriverSessionState = {
-  status: DriverStatus;
-  /**
-   * Every live request, newest first. Offers used to be a single slot, so a
-   * second request silently overwrote the first and the driver never knew it
-   * existed — they only ever saw whichever one arrived last.
-   */
-  offers: RideOffer[];
-  /** The offer currently open on screen. */
-  currentOffer: RideOffer | null;
-  currentRide: DriverRide | null;
-  /** Bids sent and not yet answered, keyed by rideId. */
-  pendingBids: Record<string, PendingBid>;
 };
 
 type DriverSessionContextValue = {
@@ -151,6 +70,16 @@ type DriverSessionContextValue = {
     origin?: { lat: number; lng: number },
   ) => Promise<void>;
   rejectRide: (rideId: string) => Promise<void>;
+  /**
+   * Give up an assigned trip (rider no-show, wrong pickup, can't reach them).
+   * The ride goes back to the rider to re-match.
+   */
+  cancelTrip: (rideId: string, reason?: string) => Promise<void>;
+  /**
+   * Ask the backend which ride (if any) this driver is assigned to and adopt
+   * it. Returns true when an active ride was found.
+   */
+  syncActiveRide: () => Promise<boolean>;
   /** Open one of the queued requests. */
   selectOffer: (rideId: string) => void;
   /** Close the open request without rejecting it — it stays in the queue. */
@@ -170,56 +99,18 @@ type GatewayMessage = {
 
 const reconnectDelayMs = 1500;
 
-function getString(value: unknown): string | undefined {
-  return typeof value === 'string' && value.trim().length > 0 ? value : undefined;
-}
-
-function getNumber(value: unknown): number | undefined {
-  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
-}
-
-function getRecord(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined;
-}
-
-function parseWaypoint(value: unknown): RideEstimateWaypoint | null {
-  const record = getRecord(value);
-  if (!record) return null;
-  const lat = getNumber(record.lat);
-  const lng = getNumber(record.lng);
-  const address = getString(record.address);
-  if (lat === undefined || lng === undefined || !address) return null;
-  return { lat, lng, address };
-}
-
-function parseWaypointList(value: unknown): RideEstimateWaypoint[] {
-  if (!Array.isArray(value)) return [];
-  return value.map(parseWaypoint).filter((w): w is RideEstimateWaypoint => w !== null);
-}
-
-const defaultSession: DriverSessionState = {
-  status: 'offline',
-  offers: [],
-  currentOffer: null,
-  currentRide: null,
-  pendingBids: {},
-};
-
-/** Drops requests whose bid window has already closed. */
-function pruneExpiredOffers(offers: RideOffer[]): RideOffer[] {
-  const now = Date.now();
-  return offers.filter((offer) => {
-    const expiresMs = new Date(offer.expiresAt).getTime();
-    return !Number.isFinite(expiresMs) || expiresMs > now;
-  });
-}
+/**
+ * How long a ride the driver just finished (or cancelled) stays off-limits to
+ * the active-ride sync. The gateway acks "end"/"cancel" immediately, but the
+ * DB row is written by ride-service a moment later — a foreground sync in
+ * that gap would happily re-adopt the trip the driver just closed.
+ */
+const recentlyEndedTtlMs = 5 * 60_000;
 
 const defaultContext: DriverSessionContextValue = {
   isConfigured: false,
   connectionState: 'disconnected',
-  session: defaultSession,
+  session: defaultDriverSession,
   chatMessages: [],
   error: null,
   goOnline: async (_lat: number, _lng: number) => { throw new Error('Driver session unavailable.'); },
@@ -229,6 +120,8 @@ const defaultContext: DriverSessionContextValue = {
   selectOffer: (_rideId: string) => {},
   closeOffer: () => {},
   rejectRide: async () => { throw new Error('Driver session unavailable.'); },
+  cancelTrip: async () => { throw new Error('Driver session unavailable.'); },
+  syncActiveRide: async () => false,
   arriveAtPickup: async () => { throw new Error('Driver session unavailable.'); },
   startTrip: async () => { throw new Error('Driver session unavailable.'); },
   endTrip: async () => { throw new Error('Driver session unavailable.'); },
@@ -239,15 +132,11 @@ const defaultContext: DriverSessionContextValue = {
 
 const DriverSessionContext = createContext<DriverSessionContextValue>(defaultContext);
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 export function DriverSessionProvider({ children }: { children: ReactNode }) {
   const { user, isReady, getAccessToken } = useAuth();
 
   const [connectionState, setConnectionState] = useState<DriverConnectionState>('disconnected');
-  const [session, setSession] = useState<DriverSessionState>(defaultSession);
+  const [session, setSession] = useState<DriverSessionState>(defaultDriverSession);
   const [error, setError] = useState<string | null>(null);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
 
@@ -258,6 +147,13 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
   const lastOnlineCoordsRef = useRef<{ lat: number; lng: number } | null>(null);
   const userRef = useRef(user);
   const sessionRef = useRef(session);
+  const connectRef = useRef<(() => Promise<WebSocket>) | null>(null);
+  const recentlyEndedRef = useRef<Map<string, number>>(new Map());
+
+  const markRideEnded = useCallback((rideId: string | undefined) => {
+    if (!rideId) return;
+    recentlyEndedRef.current.set(rideId, Date.now());
+  }, []);
 
   useEffect(() => {
     sessionRef.current = session;
@@ -277,231 +173,6 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
 
       if (type === 'error') {
         setError(getString(payload.message) ?? 'Driver session error.');
-        return;
-      }
-
-      if (type === 'ride:offer') {
-        const pickup = parseWaypoint(payload.pickup);
-        const destination = parseWaypoint(payload.destination);
-        if (!pickup || !destination) return;
-
-        setSession((prev) => {
-          const incoming: RideOffer = {
-            rideId: getString(payload.rideId) ?? '',
-            riderId: getString(payload.riderId) ?? '',
-            pickup,
-            destination,
-            stops: parseWaypointList(payload.stops),
-            fareEstimateNgn: getNumber(payload.fareEstimateNgn) ?? 0,
-            riderOfferNgn: getNumber(payload.riderOfferNgn),
-            plannedDistanceKm: getNumber(payload.plannedDistanceKm),
-            plannedDurationSeconds: getNumber(payload.plannedDurationSeconds),
-            pickupDistanceKm: getNumber(payload.pickupDistanceKm),
-            pickupEtaSeconds: getNumber(payload.pickupEtaSeconds),
-            expiresAt: getString(payload.expiresAt) ?? '',
-            route: payload.route as RideRouteGeometry | undefined,
-            isGroupRide: payload.isGroupRide === true,
-            riderCount: getNumber(payload.riderCount),
-            stopKinds: Array.isArray(payload.stopKinds)
-              ? (payload.stopKinds.filter(
-                  (k): k is 'pickup' | 'dropoff' => k === 'pickup' || k === 'dropoff',
-                ))
-              : undefined,
-            groupMembers: Array.isArray(payload.groupMembers) && payload.groupMembers.length > 0
-              ? (payload.groupMembers as GroupSeat[])
-              : undefined,
-          };
-
-          // Same rideId means a re-priced version of a request already in the
-          // queue, so it replaces that entry rather than adding a duplicate.
-          const others = pruneExpiredOffers(prev.offers).filter(
-            (queued) => queued.rideId !== incoming.rideId,
-          );
-          const offers = [incoming, ...others];
-
-          // Don't yank the driver off a request they're reading. Only take
-          // over the screen when nothing is open, or when this update is for
-          // the very request they're looking at.
-          const keepsCurrent =
-            prev.currentOffer !== null && prev.currentOffer.rideId !== incoming.rideId;
-
-          return {
-            ...prev,
-            status: prev.currentRide ? prev.status : 'offered',
-            offers,
-            currentOffer: keepsCurrent ? prev.currentOffer : incoming,
-          };
-        });
-        return;
-      }
-
-      if (type === 'driver:accept:accepted') {
-        // Bid sent — stay on the offer screen, wait for rider to accept
-        setSession((prev) => ({
-          ...prev,
-          status: 'offered',
-        }));
-        return;
-      }
-
-      if (type === 'ride:matched') {
-        // Rider accepted — now navigate to pickup
-        setSession((prev) => {
-          const matchedRideId = getString(payload.rideId);
-          const offer =
-            (matchedRideId
-              ? (prev.currentOffer?.rideId === matchedRideId ? prev.currentOffer : undefined) ??
-                prev.offers.find((queued) => queued.rideId === matchedRideId) ??
-                prev.pendingBids[matchedRideId]?.offer
-              : prev.currentOffer) ?? null;
-
-          if (!offer) {
-            // Backend has assigned this ride to us but we can no longer
-            // reconstruct it (e.g. app restarted mid-bid). Say so instead of
-            // pretending nothing happened.
-            console.warn('[driver-session] ride:matched for unknown ride', matchedRideId);
-            return prev;
-          }
-
-          return {
-            ...prev,
-            status: 'navigating',
-            // Taking this ride drops every other request — the driver is busy.
-            offers: [],
-            currentOffer: null,
-            pendingBids: {},
-            currentRide: {
-              rideId: offer.rideId,
-              riderId: offer.riderId,
-              pickup: offer.pickup,
-              destination: offer.destination,
-              stops: offer.stops,
-              fareNgn: getNumber(payload.agreedFareNgn) ?? offer.fareEstimateNgn,
-              plannedDistanceKm: offer.plannedDistanceKm,
-              plannedDurationSeconds: offer.plannedDurationSeconds,
-              route: offer.route,
-              riderPaid: payload.riderPaid === true,
-              riderPhone: getString(payload.riderPhone),
-            },
-          };
-        });
-        return;
-      }
-
-      if (type === 'driver:reject:accepted') {
-        setSession((prev) => {
-          const rejectedRideId = getString(payload.rideId) ?? prev.currentOffer?.rideId;
-          const offers = pruneExpiredOffers(prev.offers).filter(
-            (queued) => queued.rideId !== rejectedRideId,
-          );
-
-          // Rejecting one request should surface the next one waiting, not
-          // dump the driver back to an empty home screen.
-          return {
-            ...prev,
-            status: prev.currentRide ? prev.status : offers.length > 0 ? 'offered' : 'online',
-            offers,
-            currentOffer: offers[0] ?? null,
-          };
-        });
-        return;
-      }
-
-      if (type === 'ride:arrived:ack') {
-        setSession((prev) => ({
-          ...prev,
-          status: 'arrived',
-        }));
-        return;
-      }
-
-      if (type === 'ride:start:accepted' || type === 'ride:started') {
-        setSession((prev) => ({
-          ...prev,
-          status: 'active',
-          currentRide: prev.currentRide
-            ? { ...prev.currentRide, startedAt: getString(payload.startedAt) ?? new Date().toISOString() }
-            : prev.currentRide,
-        }));
-        return;
-      }
-
-      if (type === 'ride:end:accepted' || type === 'ride:completed') {
-        setSession((prev) => ({
-          ...prev,
-          status: 'completed',
-          currentRide: prev.currentRide
-            ? {
-                ...prev.currentRide,
-                completedAt: getString(payload.completedAt) ?? new Date().toISOString(),
-                completedFareNgn: getNumber(payload.fareNgn) ?? prev.currentRide.fareNgn,
-                distanceKm: getNumber(payload.distanceKm),
-                durationSeconds: getNumber(payload.durationSeconds),
-              }
-            : prev.currentRide,
-        }));
-        return;
-      }
-
-      if (type === 'ride:cancelled') {
-        setSession((prev) => {
-          const cancelledRideId = getString(payload.rideId);
-          // Only the cancelled ride leaves the queue; other live requests stay.
-          const offers = pruneExpiredOffers(prev.offers).filter(
-            (queued) => queued.rideId !== cancelledRideId,
-          );
-          const cancelledCurrentRide =
-            !cancelledRideId || prev.currentRide?.rideId === cancelledRideId;
-
-          const pendingBids = { ...prev.pendingBids };
-          if (cancelledRideId) delete pendingBids[cancelledRideId];
-
-          return {
-            ...prev,
-            status: offers.length > 0 ? 'offered' : 'online',
-            offers,
-            currentOffer:
-              prev.currentOffer && prev.currentOffer.rideId !== cancelledRideId
-                ? prev.currentOffer
-                : offers[0] ?? null,
-            currentRide: cancelledCurrentRide ? null : prev.currentRide,
-            pendingBids,
-          };
-        });
-        setError('Ride was cancelled.');
-        return;
-      }
-
-      if (type === 'ride:gps_update') {
-        setSession((prev) => {
-          if (!prev.currentRide) return prev;
-          return {
-            ...prev,
-            currentRide: {
-              ...prev.currentRide,
-              liveDistanceKm: getNumber(payload.totalDistanceKm) ?? prev.currentRide.liveDistanceKm,
-            },
-          };
-        });
-        return;
-      }
-
-      if (type === 'ride:route:updated') {
-        setSession((prev) => {
-          if (!prev.currentRide) return prev;
-          const destination = parseWaypoint(payload.destination);
-          return {
-            ...prev,
-            currentRide: {
-              ...prev.currentRide,
-              destination: destination ?? prev.currentRide.destination,
-              stops: parseWaypointList(payload.stops) ?? prev.currentRide.stops,
-              plannedDistanceKm: getNumber(payload.plannedDistanceKm) ?? prev.currentRide.plannedDistanceKm,
-              plannedDurationSeconds: getNumber(payload.plannedDurationSeconds) ?? prev.currentRide.plannedDurationSeconds,
-              route: (payload.route as RideRouteGeometry | undefined) ?? prev.currentRide.route,
-            },
-          };
-        });
         return;
       }
 
@@ -533,8 +204,24 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
         invalidateWalletCache();
         return;
       }
+
+      if (
+        type === 'ride:cancelled' ||
+        type === 'ride:cancel:accepted' ||
+        type === 'ride:end:accepted' ||
+        type === 'ride:completed'
+      ) {
+        markRideEnded(getString(payload.rideId) ?? sessionRef.current.currentRide?.rideId);
+      }
+
+      // Everything else is a session transition — see driver-session-reducer.
+      setSession((prev) => reduceDriverSession(prev, type, payload) ?? prev);
+
+      if (type === 'ride:cancelled') {
+        setError('Ride was cancelled.');
+      }
     },
-    [],
+    [markRideEnded],
   );
 
   const scheduleReconnect = useCallback(() => {
@@ -547,6 +234,44 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
       void connect().catch(() => undefined);
     }, reconnectDelayMs);
   }, []);
+
+  const syncActiveRide = useCallback(async (): Promise<boolean> => {
+    if (!isBackendConfigured() || !userRef.current) return false;
+    let accessToken: string | null = null;
+    try {
+      accessToken = await getAccessTokenWithRetry(getAccessToken);
+    } catch {
+      return false;
+    }
+    if (!accessToken) return false;
+
+    let ride: DriverActiveRide | null;
+    try {
+      ride = (await getDriverActiveRide({ accessToken })).ride;
+    } catch (err) {
+      console.warn('[driver-session] active ride sync failed', err instanceof Error ? err.message : String(err));
+      return false;
+    }
+
+    if (!ride) return false;
+
+    const endedAt = recentlyEndedRef.current.get(ride.rideId);
+    if (endedAt !== undefined && Date.now() - endedAt < recentlyEndedTtlMs) {
+      // We closed this trip moments ago; the backend just hasn't caught up.
+      return false;
+    }
+
+    setSession((prev) => applyActiveRideSnapshot(prev, ride));
+
+    // A trip needs the socket: GPS, arrive/start/end, the rider's messages.
+    // After a cold start the driver hasn't pressed "Go Online", so nothing
+    // else would open it — and nothing would reconnect it if it dropped.
+    if (!shouldMaintainConnectionRef.current) {
+      shouldMaintainConnectionRef.current = true;
+      void connectRef.current?.().catch(() => undefined);
+    }
+    return true;
+  }, [getAccessToken]);
 
   const connect = useCallback(async (): Promise<WebSocket> => {
     if (!isBackendConfigured() || !isReady || !user) {
@@ -599,6 +324,10 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
           if (shouldMaintainConnectionRef.current && lastOnline && sessionRef.current.status !== 'offline') {
             socket.send(JSON.stringify({ type: 'driver:online', payload: lastOnline }));
           }
+          // The gateway also re-sends ride:matched for an assigned ride on
+          // connect; this REST check is the belt to that brace — it survives
+          // an older gateway and a dropped first frame.
+          void syncActiveRide();
           resolve(socket);
         };
 
@@ -637,7 +366,11 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
       scheduleReconnect();
       throw err;
     }
-  }, [clearReconnectTimer, getAccessToken, handleGatewayMessage, isReady, scheduleReconnect, user]);
+  }, [clearReconnectTimer, getAccessToken, handleGatewayMessage, isReady, scheduleReconnect, syncActiveRide, user]);
+
+  useEffect(() => {
+    connectRef.current = connect;
+  }, [connect]);
 
   const sendEnvelope = useCallback(
     async (type: string, payload: Record<string, unknown>): Promise<void> => {
@@ -659,7 +392,7 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
       console.log('[driver-session] connected, sending driver:online');
       await sendEnvelope('driver:online', { lat, lng });
       console.log('[driver-session] driver:online sent');
-      setSession((prev) => ({ ...prev, status: 'online' }));
+      setSession((prev) => ({ ...prev, status: prev.currentRide ? prev.status : 'online' }));
       setError(null);
     } catch (err) {
       console.log('[driver-session] connection failed, will retry', err instanceof Error ? err.message : String(err));
@@ -679,7 +412,7 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
     if (socket) socket.close();
     connectPromiseRef.current = null;
     setConnectionState('disconnected');
-    setSession(defaultSession);
+    setSession(defaultDriverSession);
     setError(null);
   }, [clearReconnectTimer]);
 
@@ -714,13 +447,7 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
 
       // Remember the bid past the offer card's 30s life — the rider has
       // minutes to answer, and ride:matched must survive that gap.
-      setSession((prev) => ({
-        ...prev,
-        pendingBids: {
-          ...prev.pendingBids,
-          [rideId]: { offer, amountNgn, sentAt: new Date().toISOString() },
-        },
-      }));
+      setSession((prev) => recordBid(prev, offer, amountNgn));
     },
     [sendEnvelope],
   );
@@ -760,6 +487,20 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
       });
     },
     [sendEnvelope],
+  );
+
+  const cancelTrip = useCallback(
+    async (rideId: string, reason?: string) => {
+      await sendEnvelope('ride:cancel', {
+        rideId,
+        ...(reason ? { reason } : {}),
+      });
+      // The ack (ride:cancel:accepted) clears the trip too; doing it here as
+      // well means the screen moves on even if that frame is lost.
+      markRideEnded(rideId);
+      setSession((prev) => reduceDriverSession(prev, 'ride:cancel:accepted', { rideId }) ?? prev);
+    },
+    [markRideEnded, sendEnvelope],
   );
 
   const arriveAtPickup = useCallback(
@@ -842,6 +583,7 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const clearCompleted = useCallback(() => {
+    markRideEnded(sessionRef.current.currentRide?.rideId);
     setSession((prev) => ({
       ...prev,
       status: 'online',
@@ -852,7 +594,7 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
     }));
     setChatMessages([]);
     setError(null);
-  }, []);
+  }, [markRideEnded]);
 
   useEffect(() => {
     userRef.current = user;
@@ -871,6 +613,25 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
     }
   }, [clearReconnectTimer, isReady, user]);
 
+  // A cold start mid-trip: the phone died, the app was killed, the driver
+  // reinstalled. The backend still has them on a ride — pick it back up
+  // without waiting for "Go Online".
+  useEffect(() => {
+    if (!isBackendConfigured() || !isReady || !user) return;
+    void syncActiveRide();
+  }, [isReady, user, syncActiveRide]);
+
+  // Coming back from the background is exactly when a match was missed: the
+  // socket is dead while the app is suspended, and the rider paid meanwhile.
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (next: AppStateStatus) => {
+      if (next !== 'active') return;
+      if (!shouldMaintainConnectionRef.current || !userRef.current) return;
+      void syncActiveRide();
+    });
+    return () => subscription.remove();
+  }, [syncActiveRide]);
+
   const value = useMemo<DriverSessionContextValue>(
     () => ({
       isConfigured: isBackendConfigured(),
@@ -883,6 +644,8 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
       acceptRide,
       bidOnSeat,
       rejectRide,
+      cancelTrip,
+      syncActiveRide,
       selectOffer,
       closeOffer,
       arriveAtPickup,
@@ -902,6 +665,8 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
       acceptRide,
       bidOnSeat,
       rejectRide,
+      cancelTrip,
+      syncActiveRide,
       selectOffer,
       closeOffer,
       arriveAtPickup,

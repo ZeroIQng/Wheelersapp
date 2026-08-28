@@ -22,7 +22,7 @@ function formatNgn(amount: number): string {
 
 export default function DriverArrivedScreen() {
   const router = useRouter();
-  const { session, startTrip } = useDriverSession();
+  const { session, startTrip, cancelTrip } = useDriverSession();
   const responsive = useResponsive();
   const ride = session.currentRide;
 
@@ -75,6 +75,30 @@ export default function DriverArrivedScreen() {
     } catch (err) {
       Alert.alert('Error', err instanceof Error ? err.message : 'Could not start trip. Please try again.');
     }
+  };
+
+  // A rider who never shows is the one way a trip can end here. Without an
+  // exit the driver is stuck on this screen — and the app now reopens an
+  // assigned trip on every launch, so "stuck" would mean permanently.
+  const handleNoShow = () => {
+    Alert.alert(
+      'Cancel this trip?',
+      'The rider will be told and the ride goes back to them to re-match. Only do this if you cannot reach the rider.',
+      [
+        { text: 'Keep waiting', style: 'cancel' },
+        {
+          text: 'Cancel trip',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await cancelTrip(ride.rideId, 'rider_no_show');
+            } catch (err) {
+              Alert.alert('Error', err instanceof Error ? err.message : 'Could not cancel the trip. Please try again.');
+            }
+          },
+        },
+      ],
+    );
   };
 
   const avatarSize = responsive.scale(44);
@@ -146,11 +170,24 @@ export default function DriverArrivedScreen() {
       </View>
 
       <AppButton title="Start trip" onPress={handleStartTrip} />
+      {waitOverdue ? (
+        <AppButton title="Rider didn't show — cancel trip" variant="danger" onPress={handleNoShow} />
+      ) : (
+        <Pressable onPress={handleNoShow} style={styles.cancelLink}>
+          <AppText variant="bodySmall" color={theme.colors.muted}>
+            Can&apos;t reach the rider? Cancel trip
+          </AppText>
+        </Pressable>
+      )}
     </AppScreen>
   );
 }
 
 const styles = StyleSheet.create({
+  cancelLink: {
+    alignItems: 'center',
+    paddingVertical: 12,
+  },
   container: {
     // flexGrow (not flex) keeps the centred layout on tall screens while
     // still allowing the content to scroll on short ones.

@@ -140,6 +140,21 @@ export default function DriverHomeScreen() {
 
   const isOnline = session.status !== 'offline';
 
+  // Moving onto the trip screens when a match lands is DriverTripRouter's
+  // job (it works from any tab). This screen only needs to offer the way
+  // back in for a driver who came back to the map mid-trip.
+  const currentRide = session.currentRide;
+  const tripStatus = session.status;
+
+  const tripScreenFor = (status: typeof tripStatus): Href | null =>
+    status === 'navigating'
+      ? ('/driver/navigation' as Href)
+      : status === 'arrived'
+        ? ('/driver/arrived' as Href)
+        : status === 'active'
+          ? ('/driver/active-trip' as Href)
+          : null;
+
   // Idle position pings (~30s) while online with no active trip, so the
   // backend's copy of this driver's position — which drives matching and the
   // pickup distance riders see — doesn't stay frozen at the go-online spot.
@@ -167,6 +182,26 @@ export default function DriverHomeScreen() {
   const handleToggleOnline = async () => {
     try {
       if (isOnline) {
+        // Going offline wipes the local session, but the backend still has
+        // this driver on the trip — it would reappear on the next sync. Make
+        // them finish or cancel it properly instead.
+        if (currentRide) {
+          Alert.alert(
+            'Trip in progress',
+            'Finish or cancel your current trip before going offline.',
+            [
+              { text: 'OK', style: 'cancel' },
+              {
+                text: 'Open trip',
+                onPress: () => {
+                  const target = tripScreenFor(tripStatus);
+                  if (target) router.push(target);
+                },
+              },
+            ],
+          );
+          return;
+        }
         await goOffline();
       } else {
         if (!currentLocation) {
@@ -241,8 +276,45 @@ export default function DriverHomeScreen() {
         </View>
       </View>
 
-      {/* Bids awaiting a rider's answer — visible until resolved */}
-      {pendingBids.length > 0 ? (
+      {/* A trip already underway — the way back in after leaving the trip
+          screen (swipe back, tab switch). Without it the driver was stranded
+          on a map that only says "waiting for ride requests". */}
+      {currentRide && tripScreenFor(tripStatus) ? (
+        <View
+          style={[
+            styles.requestsOverlay,
+            {
+              top: insets.top + responsive.scale(56),
+              left: responsive.gutter,
+              right: responsive.gutter,
+            },
+          ]}>
+          <Pressable
+            onPress={() => {
+              const target = tripScreenFor(tripStatus);
+              if (target) router.push(target);
+            }}
+            style={({ pressed }) => [styles.pendingBidCard, pressed && styles.pendingBidPressed]}>
+            <View style={styles.pendingBidRow}>
+              <AppText variant="label" color={theme.colors.green}>
+                🚗 Trip in progress · {formatNgn(currentRide.fareNgn)}
+                {currentRide.riderPaid ? ' · paid' : ''}
+              </AppText>
+              <AppText variant="bodySmall" color={theme.colors.muted} numberOfLines={1}>
+                {tripStatus === 'active'
+                  ? `To ${currentRide.destination.address}`
+                  : `Pickup at ${currentRide.pickup.address}`}
+                {' — tap to open'}
+              </AppText>
+            </View>
+          </Pressable>
+        </View>
+      ) : null}
+
+      {/* Bids awaiting a rider's answer — visible until resolved. Each one
+          opens its own page: what was bid, on which trip, and whether the
+          rider has paid yet. */}
+      {!currentRide && pendingBids.length > 0 ? (
         <View
           style={[
             styles.requestsOverlay,
@@ -253,16 +325,39 @@ export default function DriverHomeScreen() {
             },
           ]}>
           <View style={styles.pendingBidCard}>
-            {pendingBids.map((bid) => (
-              <View key={bid.offer.rideId} style={styles.pendingBidRow}>
-                <AppText variant="label" color={theme.colors.green}>
-                  ⏳ Bid sent · {formatNgn(bid.amountNgn)}
-                </AppText>
-                <AppText variant="bodySmall" color={theme.colors.muted} numberOfLines={1}>
-                  {bid.offer.pickup.address} — waiting for rider
-                </AppText>
-              </View>
-            ))}
+            <Pressable
+              onPress={() => router.push('/driver/(tabs)/history?tab=bids' as Href)}
+              style={({ pressed }) => [styles.allBidsLink, pressed && styles.pendingBidPressed]}>
+              <AppText variant="caption" color={theme.colors.muted}>
+                {pendingBids.length === 1 ? 'Your bid' : `${pendingBids.length} bids`}
+              </AppText>
+              <AppText variant="caption" color={theme.colors.orange}>
+                All bids ›
+              </AppText>
+            </Pressable>
+            {pendingBids.map((bid) => {
+              const accepted = Boolean(bid.acceptedAt);
+              return (
+                <Pressable
+                  key={bid.offer.rideId}
+                  onPress={() =>
+                    router.push(
+                      `/driver/pending-bid?rideId=${encodeURIComponent(bid.offer.rideId)}` as Href,
+                    )
+                  }
+                  style={({ pressed }) => [styles.pendingBidRow, pressed && styles.pendingBidPressed]}>
+                  <AppText variant="label" color={accepted ? theme.colors.orange : theme.colors.green}>
+                    {accepted
+                      ? `✅ Rider ${bid.riderPaid ? 'paid' : 'accepted'} · ${formatNgn(bid.agreedFareNgn ?? bid.amountNgn)}`
+                      : `⏳ Bid sent · ${formatNgn(bid.amountNgn)}`}
+                  </AppText>
+                  <AppText variant="bodySmall" color={theme.colors.muted} numberOfLines={1}>
+                    {bid.offer.pickup.address}
+                    {accepted ? ' — tap to view' : ' — waiting for rider · tap to view'}
+                  </AppText>
+                </Pressable>
+              );
+            })}
           </View>
         </View>
       ) : null}
@@ -276,7 +371,9 @@ export default function DriverHomeScreen() {
           style={[
             styles.requestsOverlay,
             {
-              top: insets.top + responsive.scale(pendingBids.length > 0 ? 132 : 56),
+              top:
+                insets.top +
+                responsive.scale(currentRide || pendingBids.length > 0 ? 132 : 56),
               left: responsive.gutter,
               right: responsive.gutter,
             },
@@ -517,6 +614,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 10,
     gap: 6,
+  },
+  allBidsLink: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  pendingBidPressed: {
+    opacity: 0.6,
   },
   pendingBidRow: {
     gap: 2,

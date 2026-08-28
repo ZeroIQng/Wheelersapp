@@ -1533,3 +1533,105 @@ export async function deleteAccount(input: {
     fallbackError: "Could not delete account.",
   });
 }
+
+// ─── Driver active ride ─────────────────────────────────────────
+
+/**
+ * The ride the signed-in driver is assigned to right now. The socket's
+ * `ride:matched` is fire-and-forget, so this is how the app catches up after
+ * a reconnect, a restart, or a spell in the background while the rider paid.
+ */
+export interface DriverActiveRide {
+  rideId: string;
+  riderId: string;
+  driverId: string | null;
+  rideStatus:
+    | "REQUESTED"
+    | "MATCHING"
+    | "DRIVER_ASSIGNED"
+    | "DRIVER_EN_ROUTE"
+    | "ARRIVED"
+    | "IN_PROGRESS"
+    | "COMPLETED"
+    | "CANCELLED"
+    | "DISPUTED"
+    | (string & {});
+  paymentMethod: string;
+  pickup: RideEstimateWaypoint;
+  destination: RideEstimateWaypoint;
+  stops: RideEstimateWaypoint[];
+  agreedFareNgn: number;
+  riderOfferNgn: number | null;
+  riderPaid: boolean;
+  riderPhone: string | null;
+  matchedAt: string | null;
+  arrivedAt: string | null;
+  startedAt: string | null;
+}
+
+export interface DriverActiveRideResponse {
+  ride: DriverActiveRide | null;
+}
+
+export async function getDriverActiveRide(input: {
+  accessToken: string;
+}): Promise<DriverActiveRideResponse> {
+  return getJson<DriverActiveRideResponse>("/drivers/me/rides/active", {
+    accessToken: input.accessToken,
+    fallbackError: "Could not load your current ride.",
+  });
+}
+
+// ─── Driver bids ────────────────────────────────────────────────
+
+export type DriverBidStatus =
+  | "PENDING"
+  | "ACCEPTED"
+  | "LOST"
+  | "WITHDRAWN"
+  | "EXPIRED"
+  | "CANCELLED";
+
+export interface DriverBidRecord {
+  id: string;
+  rideId: string;
+  amountNgn: number;
+  etaSeconds: number;
+  distanceKm: number | null;
+  status: DriverBidStatus;
+  createdAt: string;
+  resolvedAt: string | null;
+  ride: {
+    status: string;
+    pickupAddress: string;
+    destAddress: string;
+    riderOfferNgn: number | null;
+    agreedFareNgn: number | null;
+    fareEstimateNgn: number | null;
+    distanceKm: number | null;
+    matchedAt: string | null;
+    completedAt: string | null;
+    cancelledAt: string | null;
+  };
+}
+
+export interface DriverBidsResponse {
+  items: DriverBidRecord[];
+  nextCursor: string | null;
+}
+
+/** Every bid this driver has sent, newest first, with how each one ended. */
+export async function getDriverBids(input: {
+  accessToken: string;
+  limit?: number;
+  cursor?: string;
+}): Promise<DriverBidsResponse> {
+  const params = new URLSearchParams();
+  if (input.limit) params.set("limit", String(input.limit));
+  if (input.cursor) params.set("cursor", input.cursor);
+  const path = params.size > 0 ? `/drivers/me/bids?${params.toString()}` : "/drivers/me/bids";
+  return getJson<DriverBidsResponse>(path, {
+    accessToken: input.accessToken,
+    fallbackError: "Could not load your bids.",
+  });
+}

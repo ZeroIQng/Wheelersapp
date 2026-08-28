@@ -1,12 +1,15 @@
 import { Stack } from 'expo-router';
+import { DriverTripRouter } from '@/components/driver-trip-router';
 import { DriverSessionProvider } from '@/lib/driver-session';
 
 export default function DriverLayout() {
   return (
     <DriverSessionProvider>
+      <DriverTripRouter />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="incoming-request" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="pending-bid" options={{ presentation: 'modal' }} />
         <Stack.Screen name="navigation" />
         <Stack.Screen name="arrived" />
         <Stack.Screen name="active-trip" />

@@ -24,7 +24,7 @@ function formatNgn(amount: number): string {
 
 export default function DriverNavigationScreen() {
   const router = useRouter();
-  const { session, arriveAtPickup, sendGps } = useDriverSession();
+  const { session, arriveAtPickup, cancelTrip, sendGps } = useDriverSession();
   const { currentLocation } = useAppLocation();
   const responsive = useResponsive();
   const ride = session.currentRide;
@@ -101,6 +101,30 @@ export default function DriverNavigationScreen() {
   ]
     .filter(Boolean)
     .join(' · ');
+
+  // The only exit from a trip that shouldn't happen — wrong pickup, rider
+  // unreachable, a stale assignment reopened on launch. Without it the
+  // driver is trapped on this screen.
+  const handleCancelTrip = () => {
+    Alert.alert(
+      'Cancel this trip?',
+      'The rider will be told and the ride goes back to them to re-match. Only do this if you cannot do the trip.',
+      [
+        { text: 'Keep trip', style: 'cancel' },
+        {
+          text: 'Cancel trip',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await cancelTrip(ride.rideId, 'driver_cancelled');
+            } catch (err) {
+              Alert.alert('Error', err instanceof Error ? err.message : 'Could not cancel the trip. Please try again.');
+            }
+          },
+        },
+      ],
+    );
+  };
 
   const handleArrived = async () => {
     try {
@@ -205,6 +229,11 @@ export default function DriverNavigationScreen() {
         </AppCard>
 
         <AppButton title="I've arrived" onPress={handleArrived} />
+        <Pressable onPress={handleCancelTrip} style={styles.cancelLink}>
+          <AppText variant="bodySmall" color={theme.colors.muted}>
+            Can&apos;t do this trip? Cancel
+          </AppText>
+        </Pressable>
       </View>
     </AppScreen>
   );
@@ -237,6 +266,10 @@ const styles = StyleSheet.create({
     height: 8,
     borderRadius: 4,
     backgroundColor: theme.colors.offWhite,
+  },
+  cancelLink: {
+    alignItems: 'center',
+    paddingVertical: theme.spacing.sm,
   },
   content: {
     flexGrow: 1,
