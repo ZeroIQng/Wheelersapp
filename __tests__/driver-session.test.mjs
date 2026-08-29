@@ -26,6 +26,7 @@ const {
   recordBid,
   applyActiveRideSnapshot,
   pruneExpiredBids,
+  dismissBid,
   defaultDriverSession,
 } = createRequire(import.meta.url)(outFile);
 
@@ -249,29 +250,47 @@ test('a rider counter-offer updates the bid card instead of spawning a new reque
   assert.equal(again.pendingBids['ride-2'].counteredAt, undefined);
 });
 
-test('ride:bid_timeout kills the bid and the request — the auction is over', () => {
+test('a timed-out bid becomes a terminal card that says why — never vanishes', () => {
   const s = reduceDriverSession(bidSent('ride-1'), 'ride:bid_timeout', { rideId: 'ride-1' }, NOW);
-  assert.deepEqual(s.pendingBids, {});
+  const bid = s.pendingBids['ride-1'];
+  assert.equal(bid.outcome, 'expired', 'stays visible with its outcome');
+  assert.ok(bid.resolvedAt);
   assert.deepEqual(s.offers, []);
-  assert.equal(s.currentRide, null);
+
+  // Rider chose someone else → same shape, different story.
+  const lost = reduceDriverSession(bidSent('ride-2'), 'ride:bid_lost', { rideId: 'ride-2' }, NOW);
+  assert.equal(lost.pendingBids['ride-2'].outcome, 'lost');
+
+  // A dead bid never absorbs a fresh broadcast for its old rideId.
+  const revived = reduceDriverSession(s, 'ride:offer', offerPayload('ride-1'), NOW);
+  assert.equal(revived.pendingBids['ride-1'].outcome, 'expired', 'terminal stays terminal');
+
+  // The driver can swipe the story away.
+  assert.deepEqual(dismissBid(s, 'ride-1').pendingBids, {});
 
   // Unknown ride: no-op, same reference.
   const before = online();
   assert.equal(reduceDriverSession(before, 'ride:bid_timeout', { rideId: 'ghost' }, NOW), before);
 });
 
-test('a bid the backend never resolved expires on its own after the auction window', () => {
+test('an unresolved bid past its auction turns terminal, then leaves after the linger', () => {
   const s = bidSent('ride-1');
-  assert.equal(pruneExpiredBids(s, NOW + 60_000), s, 'young bids survive, same reference');
-  const later = pruneExpiredBids(s, NOW + 211_000);
-  assert.deepEqual(later.pendingBids, {}, 'stale bid swept');
+  assert.equal(pruneExpiredBids(s, NOW + 40_000), s, 'young bids survive, same reference');
 
-  // A counter restarts the clock — the negotiation is clearly alive.
-  let countered = reduceDriverSession(s, 'ride:offer', offerPayload('ride-1', { riderOfferNgn: 3600 }), NOW + 200_000);
-  assert.ok(pruneExpiredBids(countered, NOW + 211_000).pendingBids['ride-1'], 'countered bid lives on');
+  // Offer clock (30s card) + grace passes with no verdict → terminal, visible.
+  const stale = pruneExpiredBids(s, NOW + 50_000);
+  assert.equal(stale.pendingBids['ride-1'].outcome, 'expired', 'converted, not deleted');
+
+  // …and only after the 10-minute linger does the card actually leave.
+  assert.deepEqual(pruneExpiredBids(stale, NOW + 50_000 + 601_000).pendingBids, {});
+
+  // A counter refreshes the offer (fresh expiresAt) — negotiation alive.
+  const countered = reduceDriverSession(s, 'ride:offer',
+    offerPayload('ride-1', { riderOfferNgn: 3600, expiresAt: new Date(NOW + 130_000).toISOString() }), NOW + 40_000);
+  assert.equal(pruneExpiredBids(countered, NOW + 60_000).pendingBids['ride-1'].outcome, undefined);
 
   // An accepted bid holds much longer (resync will normally convert it).
-  let accepted = reduceDriverSession(bidSent('ride-2'), 'ride:offer_accepted', { rideId: 'ride-2', paymentMethod: 'WALLET' }, NOW);
+  const accepted = reduceDriverSession(bidSent('ride-2'), 'ride:offer_accepted', { rideId: 'ride-2', paymentMethod: 'WALLET' }, NOW);
   assert.ok(pruneExpiredBids(accepted, NOW + 300_000).pendingBids['ride-2']);
   assert.deepEqual(pruneExpiredBids(accepted, NOW + 601_000).pendingBids, {});
 });

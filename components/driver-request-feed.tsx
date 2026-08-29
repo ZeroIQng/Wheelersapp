@@ -3,8 +3,14 @@ import { useEffect, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { AppText } from '@/components/app-text';
-import { BID_LIFETIME_MS, type PendingBid, type RideOffer } from '@/lib/driver-session-reducer';
+import { bidDeadlineMs, type PendingBid, type RideOffer } from '@/lib/driver-session-reducer';
 import { useDriverSession } from '@/lib/driver-session';
+import {
+  getDriverFilters,
+  loadDriverFilters,
+  subscribeDriverFilters,
+  type DriverFilters,
+} from '@/lib/driver-filters';
 import { haversineKm } from '@/lib/geo';
 import { useAppLocation } from '@/lib/location';
 import { stopRideRequestSound } from '@/lib/sounds';
@@ -31,7 +37,12 @@ const BID_INCREMENTS = [100, 200, 500];
  */
 export function DriverRequestFeed() {
   const router = useRouter();
-  const { session, acceptRide, selectOffer } = useDriverSession();
+  const { session, acceptRide, selectOffer, dismissBid } = useDriverSession();
+  const [filters, setFilters] = useState<DriverFilters>(getDriverFilters());
+  useEffect(() => {
+    void loadDriverFilters().then(setFilters);
+    return subscribeDriverFilters(setFilters);
+  }, []);
   const { currentLocation } = useAppLocation();
   const [now, setNow] = useState(() => Date.now());
   const [bidOpenFor, setBidOpenFor] = useState<string | null>(null);
@@ -48,6 +59,16 @@ export function DriverRequestFeed() {
   const answered = new Set(bids.map((bid) => bid.offer.rideId));
   const requests = session.offers
     .filter((offer) => !answered.has(offer.rideId))
+    .filter((offer) => {
+      // The driver's own bar for what's worth a look.
+      const ask = offer.riderOfferNgn ?? offer.fareEstimateNgn;
+      if (filters.minFareNgn !== null && ask < filters.minFareNgn) return false;
+      if (filters.maxPickupKm !== null) {
+        const km = distanceKm(offer);
+        if (km !== null && km > filters.maxPickupKm) return false;
+      }
+      return true;
+    })
     .sort((a, b) => (distanceKm(a) ?? 99) - (distanceKm(b) ?? 99));
 
   function distanceKm(offer: RideOffer): number | null {
@@ -90,10 +111,27 @@ export function DriverRequestFeed() {
     const riderAsk = offer.riderOfferNgn ?? offer.fareEstimateNgn;
     const accepted = Boolean(bid.acceptedAt);
     const countered = Boolean(bid.counteredAt) && riderAsk !== bid.amountNgn;
-    const timeLeft = countdown(
-      new Date(bid.counteredAt ?? bid.sentAt).getTime() + BID_LIFETIME_MS - 30_000,
-      now,
-    );
+    const timeLeft = countdown(bidDeadlineMs(bid) - 15_000, now);
+
+    // A resolved bid stays as its story — greyed, dismissible — instead of
+    // vanishing mid-thought.
+    if (bid.outcome) {
+      return (
+        <View key={offer.rideId} style={[styles.card, styles.cardResolved]}>
+          <View style={styles.topRow}>
+            <AppText variant="label" color={theme.colors.muted}>
+              {bid.outcome === 'lost' ? 'Rider chose another driver' : 'Request ended ⏱'}
+            </AppText>
+            <Pressable onPress={() => dismissBid(offer.rideId)} style={styles.cancelChip}>
+              <AppText variant="label" color={theme.colors.muted}>✕</AppText>
+            </Pressable>
+          </View>
+          <AppText variant="bodySmall" color={theme.colors.mutedLight} numberOfLines={1}>
+            {offer.pickup.address} → {offer.destination.address} · your bid {formatNgn(bid.amountNgn)}
+          </AppText>
+        </View>
+      );
+    }
 
     return (
       <Pressable
@@ -186,6 +224,18 @@ export function DriverRequestFeed() {
               </AppText>
             </View>
           </View>
+          <View style={styles.personRow}>
+            <AppText variant="bodySmall" color={theme.colors.muted} numberOfLines={1} style={styles.personText}>
+              {offer.riderName ?? 'Rider'}
+              {offer.riderRating !== undefined ? ` ⭐${offer.riderRating.toFixed(1)}` : ''}
+              {offer.riderTripCount !== undefined
+                ? ` · ${offer.riderTripCount} ride${offer.riderTripCount === 1 ? '' : 's'}`
+                : ''}
+            </AppText>
+            <AppText variant="caption" color={theme.colors.muted}>
+              {offer.paymentMethod === 'CASH' ? '💵 cash' : '💰 wallet'}
+            </AppText>
+          </View>
           <AppText variant="body" numberOfLines={1}>{offer.pickup.address}</AppText>
           <AppText variant="bodySmall" color={theme.colors.muted} numberOfLines={1}>
             → {offer.destination.address}
@@ -272,6 +322,20 @@ const styles = StyleSheet.create({
   cardAccepted: {
     borderColor: theme.colors.orange,
     backgroundColor: theme.colors.orangeLight,
+  },
+  cardResolved: {
+    borderColor: theme.colors.borderLight,
+    backgroundColor: theme.colors.offWhite,
+    opacity: 0.85,
+  },
+  personRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: theme.spacing.sm,
+  },
+  personText: {
+    flexShrink: 1,
   },
   topRow: {
     flexDirection: 'row',

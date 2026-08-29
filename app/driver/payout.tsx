@@ -1,4 +1,5 @@
 import { Href, useRouter } from 'expo-router';
+import { useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { Pressable, StyleSheet, View } from 'react-native';
 
@@ -22,7 +23,8 @@ function formatNgn(amount: number): string {
 
 export default function DriverPayoutScreen() {
   const router = useRouter();
-  const { session, goOffline, clearCompleted } = useDriverSession();
+  const { session, goOffline, clearCompleted, rateRider } = useDriverSession();
+  const [givenRating, setGivenRating] = useState<number | null>(null);
   const responsive = useResponsive();
   const ride = session.currentRide;
 
@@ -109,6 +111,32 @@ export default function DriverPayoutScreen() {
         </View>
       </AppCard>
 
+      {/* Two-sided reputation starts here: the driver's one-tap verdict on
+          the rider, at the exact moment the trip is fresh. */}
+      {ride ? (
+        <View style={styles.rateWrap}>
+          <AppText variant="label" color={theme.colors.muted}>
+            {givenRating ? 'Thanks — rating sent' : 'How was the rider?'}
+          </AppText>
+          <View style={styles.starsRow}>
+            {[1, 2, 3, 4, 5].map((star) => (
+              <Pressable
+                key={star}
+                disabled={givenRating !== null}
+                onPress={() => {
+                  setGivenRating(star);
+                  rateRider(ride.rideId, ride.riderId, star).catch(() => setGivenRating(null));
+                }}
+                style={({ pressed }) => [styles.star, pressed && styles.starPressed]}>
+                <AppText variant="h2" color={(givenRating ?? 0) >= star ? theme.colors.orange : theme.colors.borderLight}>
+                  ★
+                </AppText>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      ) : null}
+
       <AppButton title="Next ride" onPress={handleNextRide} />
       <Pressable
         style={[styles.offlineButton, { minHeight: responsive.scale(52) }]}
@@ -157,6 +185,21 @@ function Confetti({
 }
 
 const styles = StyleSheet.create({
+  rateWrap: {
+    alignItems: 'center',
+    gap: 4,
+    marginBottom: theme.spacing.md,
+  },
+  starsRow: {
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+  },
+  star: {
+    paddingHorizontal: 4,
+  },
+  starPressed: {
+    opacity: 0.6,
+  },
   container: {
     flexGrow: 1,
     justifyContent: 'center',

@@ -18,9 +18,11 @@ import {
   type DriverActiveRide,
 } from '@/lib/api';
 import { getAccessTokenWithRetry } from '@/lib/access-token';
+import { startDriverLivenessUpdates, stopDriverLivenessUpdates } from '@/lib/background-location';
 import {
   applyActiveRideSnapshot,
   defaultDriverSession,
+  dismissBid as dismissBidState,
   getString,
   pruneExpiredBids,
   pruneExpiredOffers,
@@ -81,6 +83,10 @@ type DriverSessionContextValue = {
    * it. Returns true when an active ride was found.
    */
   syncActiveRide: () => Promise<boolean>;
+  /** Swipe away a resolved (expired/lost) bid card. */
+  dismissBid: (rideId: string) => void;
+  /** Rate the rider after a trip — feeds their rider rating. */
+  rateRider: (rideId: string, riderId: string, rating: number) => Promise<void>;
   /** Open one of the queued requests. */
   selectOffer: (rideId: string) => void;
   /** Close the open request without rejecting it — it stays in the queue. */
@@ -123,6 +129,8 @@ const defaultContext: DriverSessionContextValue = {
   rejectRide: async () => { throw new Error('Driver session unavailable.'); },
   cancelTrip: async () => { throw new Error('Driver session unavailable.'); },
   syncActiveRide: async () => false,
+  dismissBid: () => undefined,
+  rateRider: async () => { throw new Error('Driver session unavailable.'); },
   arriveAtPickup: async () => { throw new Error('Driver session unavailable.'); },
   startTrip: async () => { throw new Error('Driver session unavailable.'); },
   endTrip: async () => { throw new Error('Driver session unavailable.'); },
@@ -393,13 +401,18 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
       console.log('[driver-session] connected, sending driver:online');
       await sendEnvelope('driver:online', { lat, lng });
       console.log('[driver-session] driver:online sent');
+      // The pocket heartbeat: keeps this driver alive in matching when the
+      // app backgrounds and the socket dies. Best-effort by design.
+      void getAccessTokenWithRetry(getAccessToken)
+        .then((token) => (token ? startDriverLivenessUpdates(token) : undefined))
+        .catch(() => undefined);
       setSession((prev) => ({ ...prev, status: prev.currentRide ? prev.status : 'online' }));
       setError(null);
     } catch (err) {
       console.log('[driver-session] connection failed, will retry', err instanceof Error ? err.message : String(err));
       scheduleReconnect();
     }
-  }, [connect, sendEnvelope, scheduleReconnect]);
+  }, [connect, sendEnvelope, scheduleReconnect, getAccessToken]);
 
   const goOffline = useCallback(async () => {
     const socket = socketRef.current;
@@ -408,6 +421,7 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
     }
     shouldMaintainConnectionRef.current = false;
     lastOnlineCoordsRef.current = null;
+    void stopDriverLivenessUpdates();
     clearReconnectTimer();
     socketRef.current = null;
     if (socket) socket.close();
@@ -591,6 +605,22 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
     }));
   }, []);
 
+  const dismissBid = useCallback((rideId: string) => {
+    setSession((prev) => dismissBidState(prev, rideId));
+  }, []);
+
+  const rateRider = useCallback(
+    async (rideId: string, riderId: string, rating: number) => {
+      await sendEnvelope('feedback:submit', {
+        rideId,
+        revieweeId: riderId,
+        rating,
+        reviewerRole: 'DRIVER',
+      });
+    },
+    [sendEnvelope],
+  );
+
   const clearCompleted = useCallback(() => {
     markRideEnded(sessionRef.current.currentRide?.rideId);
     setSession((prev) => ({
@@ -669,6 +699,8 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
       rejectRide,
       cancelTrip,
       syncActiveRide,
+      dismissBid,
+      rateRider,
       selectOffer,
       closeOffer,
       arriveAtPickup,
@@ -690,6 +722,8 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
       rejectRide,
       cancelTrip,
       syncActiveRide,
+      dismissBid,
+      rateRider,
       selectOffer,
       closeOffer,
       arriveAtPickup,

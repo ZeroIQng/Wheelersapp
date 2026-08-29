@@ -1,4 +1,5 @@
 import { Href, useRouter } from 'expo-router';
+import { useEffect, useState } from 'react';
 import { Alert, Linking, Platform, Pressable, StyleSheet, Switch, View } from 'react-native';
 import Svg, { Circle, Line, Path, Polyline, Rect } from 'react-native-svg';
 
@@ -8,6 +9,15 @@ import { useAuth } from '@/lib/auth';
 import { getAccessTokenWithRetry } from '@/lib/access-token';
 import { deleteAccount } from '@/lib/api';
 import { isMockLocationAvailable, nextMockLocationPreset } from '@/lib/dev-mock-location';
+import {
+  MAX_PICKUP_STEPS,
+  MIN_FARE_STEPS,
+  getDriverFilters,
+  loadDriverFilters,
+  nextStep,
+  setDriverFilters,
+  subscribeDriverFilters,
+} from '@/lib/driver-filters';
 import { useAppLocation } from '@/lib/location';
 import { useResponsive } from '@/lib/responsive';
 import { useAppTheme } from '@/lib/theme-context';
@@ -92,6 +102,11 @@ function ChevronRightIcon({ size = 18 }: { size?: number }) {
 export default function DriverSettingsScreen() {
   const router = useRouter();
   const { mockLocation, setMockLocation } = useAppLocation();
+  const [filters, setFilters] = useState(getDriverFilters());
+  useEffect(() => {
+    void loadDriverFilters().then(setFilters);
+    return subscribeDriverFilters(setFilters);
+  }, []);
   const { getAccessToken, logout } = useAuth();
   const { isDark, toggleTheme } = useAppTheme();
   const responsive = useResponsive();
@@ -253,6 +268,53 @@ export default function DriverSettingsScreen() {
             <View style={styles.menuInfo}>
               <AppText variant="bodyMedium">Customer support</AppText>
               <AppText variant="bodySmall" color={theme.colors.muted}>Chat with us on WhatsApp</AppText>
+            </View>
+            <ChevronRightIcon size={responsive.scale(18)} />
+          </Pressable>
+        </View>
+      </View>
+
+      {/* ── Requests section: the driver's bar for what rings the phone ── */}
+      <View style={styles.section}>
+        <AppText
+          variant="label"
+          color={theme.colors.muted}
+          style={[styles.sectionLabel, { fontSize: responsive.font(10) }]}
+          numberOfLines={1}>
+          RIDE REQUESTS
+        </AppText>
+        <View style={[styles.card, { backgroundColor: cardBg }]}>
+          <Pressable
+            onPress={() => setDriverFilters({ minFareNgn: nextStep(MIN_FARE_STEPS, filters.minFareNgn) })}
+            style={({ pressed }) => [styles.menuItem, menuItemStyle, pressed && { backgroundColor: pressedBg }]}
+          >
+            <View style={[styles.menuIcon, menuIconStyle, { backgroundColor: filters.minFareNgn ? theme.colors.orangeLight : subtleBg }]}>
+              <AppText variant="label" color={filters.minFareNgn ? theme.colors.orange : theme.colors.muted}>₦</AppText>
+            </View>
+            <View style={styles.menuInfo}>
+              <AppText variant="bodyMedium">Minimum fare</AppText>
+              <AppText variant="bodySmall" color={theme.colors.muted}>
+                {filters.minFareNgn
+                  ? `Hide requests under ₦${filters.minFareNgn.toLocaleString()} — tap to change`
+                  : 'Off — showing every fare. Tap to set a floor'}
+              </AppText>
+            </View>
+            <ChevronRightIcon size={responsive.scale(18)} />
+          </Pressable>
+          <Pressable
+            onPress={() => setDriverFilters({ maxPickupKm: nextStep(MAX_PICKUP_STEPS, filters.maxPickupKm) })}
+            style={({ pressed }) => [styles.menuItem, menuItemStyle, pressed && { backgroundColor: pressedBg }]}
+          >
+            <View style={[styles.menuIcon, menuIconStyle, { backgroundColor: filters.maxPickupKm ? theme.colors.orangeLight : subtleBg }]}>
+              <AppText variant="label" color={filters.maxPickupKm ? theme.colors.orange : theme.colors.muted}>📍</AppText>
+            </View>
+            <View style={styles.menuInfo}>
+              <AppText variant="bodyMedium">Pickup distance</AppText>
+              <AppText variant="bodySmall" color={theme.colors.muted}>
+                {filters.maxPickupKm
+                  ? `Only pickups within ${filters.maxPickupKm} km — tap to change`
+                  : 'Off — any distance. Tap to set a limit'}
+              </AppText>
             </View>
             <ChevronRightIcon size={responsive.scale(18)} />
           </Pressable>

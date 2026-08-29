@@ -1635,3 +1635,15 @@ export async function getDriverBids(input: {
     fallbackError: "Could not load your bids.",
   });
 }
+
+/** Background liveness heartbeat — keeps a pocketed driver alive in matching. */
+export async function postDriverLocation(input: {
+  accessToken: string;
+  lat: number;
+  lng: number;
+}): Promise<void> {
+  await postJson("/drivers/me/location", { lat: input.lat, lng: input.lng }, {
+    accessToken: input.accessToken,
+    fallbackError: "Could not update location.",
+  });
+}
