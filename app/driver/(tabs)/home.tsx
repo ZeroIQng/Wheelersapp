@@ -395,7 +395,10 @@ export default function DriverHomeScreen() {
             pressed && styles.toggleBtnPressed,
           ]}
         >
-          <AppText variant="label" color={theme.colors.white} numberOfLines={1}>
+          <AppText
+            variant="label"
+            color={isOnline ? theme.colors.orange : theme.colors.white}
+            numberOfLines={1}>
             {isOnline ? 'Go Offline' : 'Go Online'}
           </AppText>
         </Pressable>
