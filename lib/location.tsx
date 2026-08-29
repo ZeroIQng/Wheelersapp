@@ -1,6 +1,12 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Location from "expo-location";
 import {
+  isMockLocationAvailable,
+  loadMockLocationPreset,
+  saveMockLocationPreset,
+  type MockLocationPreset,
+} from "@/lib/dev-mock-location";
+import {
   useCallback,
   createContext,
   useContext,
@@ -47,6 +53,9 @@ type LocationContextValue = {
   requestLocationAccess: () => Promise<void>;
   requestBackgroundLocationAccess: (options?: RequestBackgroundOptions) => Promise<void>;
   refreshLocation: () => Promise<void>;
+  /** Dev builds only: the Lagos preset overriding the real GPS, if any. */
+  mockLocation: MockLocationPreset | null;
+  setMockLocation: (preset: MockLocationPreset | null) => Promise<void>;
 };
 
 const defaultValue: LocationContextValue = {
@@ -57,6 +66,8 @@ const defaultValue: LocationContextValue = {
   requestLocationAccess: async () => undefined,
   requestBackgroundLocationAccess: async () => undefined,
   refreshLocation: async () => undefined,
+  mockLocation: null,
+  setMockLocation: async () => undefined,
 };
 
 const LocationContext = createContext<LocationContextValue>(defaultValue);
@@ -91,7 +102,28 @@ async function resolveAddress(lat: number, lng: number): Promise<string> {
 export function LocationProvider({ children }: { children: ReactNode }) {
   const [permissionState, setPermissionState] = useState<LocationPermissionState>("idle");
   const [backgroundGranted, setBackgroundGranted] = useState(false);
-  const [currentLocation, setCurrentLocation] = useState<AppLocation | null>(null);
+  const [gpsLocation, setGpsLocation] = useState<AppLocation | null>(null);
+
+  // Dev-only fake GPS (see dev-mock-location.ts). When set, it wins over the
+  // real position everywhere downstream — matching, the map, pickup distances.
+  const [mockLocation, setMockLocationState] = useState<MockLocationPreset | null>(null);
+  useEffect(() => {
+    if (!isMockLocationAvailable()) return;
+    void loadMockLocationPreset().then(setMockLocationState);
+  }, []);
+  const setMockLocation = useCallback(async (preset: MockLocationPreset | null) => {
+    if (!isMockLocationAvailable()) return;
+    setMockLocationState(preset);
+    await saveMockLocationPreset(preset);
+  }, []);
+
+  const currentLocation = useMemo<AppLocation | null>(
+    () =>
+      mockLocation
+        ? { lat: mockLocation.lat, lng: mockLocation.lng, address: mockLocation.address }
+        : gpsLocation,
+    [mockLocation, gpsLocation],
+  );
 
   // Place search ranks results by distance from the rider. Without this it has
   // no idea where they are and falls back to no bias at all.
@@ -129,18 +161,50 @@ export function LocationProvider({ children }: { children: ReactNode }) {
     resolve?.(accepted);
   }, []);
 
+  // Last reverse-geocoded label. Reused while the device hasn't moved far,
+  // so the geocoder is called on real movement, not on every 25 m tick —
+  // Apple rate-limits it hard, and a hung lookup used to block the position
+  // update behind it, freezing the driver's location entirely.
+  const lastAddressRef = useRef<{ lat: number; lng: number; address: string } | null>(null);
+
   const updateCurrentLocation = useCallback(
     async (
       latitude: number,
       longitude: number,
       providedAddress?: string | null,
     ) => {
-      const address = providedAddress ?? (await resolveAddress(latitude, longitude));
-      setCurrentLocation({
+      const cached = lastAddressRef.current;
+      const nearCache =
+        cached &&
+        Math.abs(cached.lat - latitude) < 0.003 &&
+        Math.abs(cached.lng - longitude) < 0.003;
+
+      // Coordinates land NOW — matching, the map arrow and GPS pings must
+      // never wait on a network geocoder.
+      setGpsLocation({
         lat: latitude,
         lng: longitude,
-        address,
+        address: providedAddress ?? cached?.address ?? "",
       });
+
+      if (providedAddress) {
+        lastAddressRef.current = { lat: latitude, lng: longitude, address: providedAddress };
+        return;
+      }
+      if (nearCache) return;
+
+      void resolveAddress(latitude, longitude)
+        .then((address) => {
+          if (!address) return;
+          lastAddressRef.current = { lat: latitude, lng: longitude, address };
+          // Attach the label only if the fix hasn't moved on meanwhile.
+          setGpsLocation((prev) =>
+            prev && prev.lat === latitude && prev.lng === longitude
+              ? { ...prev, address }
+              : prev,
+          );
+        })
+        .catch(() => {});
     },
     [],
   );
@@ -323,6 +387,8 @@ export function LocationProvider({ children }: { children: ReactNode }) {
       requestLocationAccess,
       requestBackgroundLocationAccess,
       refreshLocation,
+      mockLocation,
+      setMockLocation,
     }),
     [
       backgroundGranted,
@@ -332,6 +398,8 @@ export function LocationProvider({ children }: { children: ReactNode }) {
       refreshLocation,
       requestBackgroundLocationAccess,
       requestLocationAccess,
+      mockLocation,
+      setMockLocation,
     ],
   );
 

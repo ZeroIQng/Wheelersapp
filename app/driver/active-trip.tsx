@@ -1,20 +1,22 @@
 import { Href, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Linking, Pressable, StyleSheet, View } from 'react-native';
+import { Alert, StyleSheet, View } from 'react-native';
 import type MapView from 'react-native-maps';
 import { Marker, Polyline } from 'react-native-maps';
 
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
 import { AppButton } from '@/components/app-button';
-import { AppCard } from '@/components/app-card';
-import { AppScreen } from '@/components/app-screen';
 import { AppText } from '@/components/app-text';
+import { CourseArrowMarker } from '@/components/course-arrow-marker';
 import { EmergencyButton } from '@/components/emergency-button';
 import { GoogleMapView } from '@/components/GoogleMapView';
 import { TripProgressBar } from '@/components/TripProgressBar';
 import { useDriverSession } from '@/lib/driver-session';
 import { toUserMessage } from '@/lib/error-messages';
 import { useAppLocation } from '@/lib/location';
+import { useCourseBearing, useLiveRoute } from '@/lib/use-live-route';
 import { useResponsive } from '@/lib/responsive';
 import { theme } from '@/theme';
 
@@ -22,12 +24,14 @@ function formatNgn(amount: number): string {
   return `NGN ${Math.round(amount).toLocaleString('en-NG')}`;
 }
 
-function formatDuration(seconds: number): string {
-  const mins = Math.floor(seconds / 60);
-  if (mins < 60) return `${mins} min`;
-  const hrs = Math.floor(mins / 60);
-  const rem = mins % 60;
-  return `${hrs}h ${rem}m`;
+/** A live trip timer: 0:07 → 12:45 → 1:02:33. Coarse "1 min" reads frozen. */
+function formatElapsed(seconds: number): string {
+  const secs = Math.max(0, seconds);
+  const hrs = Math.floor(secs / 3600);
+  const mins = Math.floor((secs % 3600) / 60);
+  const rem = secs % 60;
+  const mmss = `${mins}:${String(rem).padStart(2, '0')}`;
+  return hrs > 0 ? `${hrs}:${String(mins).padStart(2, '0')}:${String(rem).padStart(2, '0')}` : mmss;
 }
 
 export default function DriverActiveTripScreen() {
@@ -35,7 +39,17 @@ export default function DriverActiveTripScreen() {
   const { session, endTrip, sendGps } = useDriverSession();
   const { currentLocation } = useAppLocation();
   const responsive = useResponsive();
+  const insets = useSafeAreaInsets();
   const ride = session.currentRide;
+
+  // Road from the driver's position to the drop-off, refreshed as they move —
+  // the planned route (when it exists at all) starts at the pickup, not here.
+  const { coords: liveRouteCoords } = useLiveRoute({
+    origin: currentLocation,
+    target: ride?.destination ?? null,
+    enabled: Boolean(ride),
+  });
+  const courseBearing = useCourseBearing(currentLocation, ride?.destination ?? null);
 
   const mapRef = useRef<MapView>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -82,7 +96,9 @@ export default function DriverActiveTripScreen() {
       coords.push({ latitude: currentLocation.lat, longitude: currentLocation.lng });
     }
     mapRef.current.fitToCoordinates(coords, {
-      edgePadding: { top: 50, right: 40, bottom: 40, left: 40 },
+      // The bottom padding clears the floating trip panel — without it the
+      // destination half of the route sits underneath the card.
+      edgePadding: { top: 90, right: 40, bottom: 300, left: 40 },
       animated: true,
     });
   }, [ride, currentLocation]);
@@ -91,10 +107,21 @@ export default function DriverActiveTripScreen() {
   // check, so the render where `ride` clears — trip completed or cancelled,
   // while the driver is on this very screen — changed the hook count and
   // crashed React mid-transition.
-  const routeCoords = useMemo(() => {
+  const plannedCoords = useMemo(() => {
     if (!ride?.route?.coordinates) return [];
     return ride.route.coordinates.map((c) => ({ latitude: c.lat, longitude: c.lng }));
   }, [ride?.route]);
+
+  // Best line we can draw, in order of truth: live driver→drop-off road,
+  // the planned trip route, else a straight dashed pointer at the target.
+  const routeCoords = liveRouteCoords.length > 1 ? liveRouteCoords : plannedCoords;
+  const fallbackLine =
+    routeCoords.length < 2 && currentLocation
+      ? [
+          { latitude: currentLocation.lat, longitude: currentLocation.lng },
+          { latitude: ride?.destination.lat ?? 0, longitude: ride?.destination.lng ?? 0 },
+        ]
+      : null;
 
   if (!ride) return null;
 
@@ -122,73 +149,91 @@ export default function DriverActiveTripScreen() {
   };
 
   return (
-    <AppScreen backgroundColor={theme.colors.offWhite} scroll contentStyle={styles.container}>
-      <StatusBar style="dark" backgroundColor={theme.colors.mapBase} />
-      <View style={styles.mapWrap}>
-        {/* Over the map, where a driver's thumb already is. Compact because a
-            labelled button would cover the road they are looking at. */}
-        <View style={styles.sosOverlay} pointerEvents="box-none">
-          <EmergencyButton role="DRIVER" rideId={ride.rideId} compact />
-        </View>
-        {/* Height scales with the screen so the trip stats and "End ride"
-            button stay reachable on short devices. */}
-        <View style={[styles.mapContainer, { height: responsive.vh(28, 160, 300) }]}>
-          <GoogleMapView
-            ref={mapRef}
-            initialRegion={initialRegion}
-            style={StyleSheet.absoluteFill}
-            showsUserLocation
-            showsMyLocationButton={false}
-            showsCompass={false}
-            showsBuildings
-            showsTraffic
-            toolbarEnabled={false}
-            pitchEnabled={false}
-            rotateEnabled={false}
-          >
-            {routeCoords.length > 1 && (
-              <Polyline coordinates={routeCoords} strokeColor={theme.colors.orange} strokeWidth={5} />
-            )}
-            <Marker coordinate={destinationCoord}>
-              <View style={styles.destinationMarker}>
-                <View style={styles.destinationDot} />
-              </View>
-            </Marker>
-          </GoogleMapView>
+    <View style={styles.screen}>
+      <StatusBar style="dark" />
 
-          <View style={styles.liveBadge}>
-            <View style={styles.liveDot} />
-            <AppText variant="monoSmall" color={theme.colors.offWhite}>LIVE</AppText>
+      {/* The map IS the screen — mid-trip, the road is what matters. All
+          chrome floats above it in a compact panel. */}
+      <GoogleMapView
+        ref={mapRef}
+        initialRegion={initialRegion}
+        style={StyleSheet.absoluteFill}
+        showsMyLocationButton={false}
+        showsCompass={false}
+        showsBuildings
+        showsTraffic
+        toolbarEnabled={false}
+        pitchEnabled={false}
+        rotateEnabled={false}
+      >
+        {routeCoords.length > 1 && (
+          <Polyline coordinates={routeCoords} strokeColor={theme.colors.orange} strokeWidth={5} />
+        )}
+        {fallbackLine && (
+          <Polyline
+            coordinates={fallbackLine}
+            strokeColor={theme.colors.orange}
+            strokeWidth={4}
+            lineDashPattern={[10, 8]}
+          />
+        )}
+        {currentLocation && (
+          <CourseArrowMarker
+            coordinate={{ latitude: currentLocation.lat, longitude: currentLocation.lng }}
+            bearing={courseBearing}
+          />
+        )}
+        <Marker coordinate={destinationCoord}>
+          <View style={styles.destinationMarker}>
+            <View style={styles.destinationDot} />
           </View>
+        </Marker>
+      </GoogleMapView>
+
+      {/* Top overlay: LIVE + SOS, out of the road's way */}
+      <View
+        style={[styles.topOverlay, { top: insets.top + responsive.scale(10) }]}
+        pointerEvents="box-none">
+        <View style={styles.liveBadge}>
+          <View style={styles.liveDot} />
+          <AppText variant="monoSmall" color={theme.colors.offWhite}>LIVE</AppText>
         </View>
+        <EmergencyButton role="DRIVER" rideId={ride.rideId} compact />
       </View>
 
-      <View style={styles.content}>
-        {/* Trip stats row */}
+      {/* Compact trip panel */}
+      <View
+        style={[
+          styles.panel,
+          {
+            bottom: Math.max(insets.bottom, responsive.scale(12)),
+            left: responsive.gutter,
+            right: responsive.gutter,
+          },
+        ]}>
         <View style={styles.statsRow}>
           <View style={styles.stat}>
-            <AppText variant="monoLarge" color={theme.colors.orange} adjustsFontSizeToFit minimumFontScale={0.7} numberOfLines={1}>
-              {formatDuration(elapsedSeconds)}
+            <AppText variant="mono" color={theme.colors.orange} adjustsFontSizeToFit minimumFontScale={0.7} numberOfLines={1}>
+              {formatElapsed(elapsedSeconds)}
             </AppText>
-            <AppText variant="bodySmall" color={theme.colors.muted} numberOfLines={1}>Elapsed</AppText>
+            <AppText variant="caption" color={theme.colors.muted} numberOfLines={1}>elapsed</AppText>
           </View>
           <View style={styles.statDivider} />
           <View style={styles.stat}>
-            <AppText variant="monoLarge" color={theme.colors.black} adjustsFontSizeToFit minimumFontScale={0.7} numberOfLines={1}>
+            <AppText variant="mono" color={theme.colors.black} adjustsFontSizeToFit minimumFontScale={0.7} numberOfLines={1}>
               {liveDistanceKm.toFixed(1)} km
             </AppText>
-            <AppText variant="bodySmall" color={theme.colors.muted} numberOfLines={1}>Traveled</AppText>
+            <AppText variant="caption" color={theme.colors.muted} numberOfLines={1}>traveled</AppText>
           </View>
           <View style={styles.statDivider} />
           <View style={styles.stat}>
-            <AppText variant="monoLarge" color={theme.colors.green} adjustsFontSizeToFit minimumFontScale={0.6} numberOfLines={1}>
+            <AppText variant="mono" color={theme.colors.green} adjustsFontSizeToFit minimumFontScale={0.6} numberOfLines={1}>
               {formatNgn(ride.fareNgn)}
             </AppText>
-            <AppText variant="bodySmall" color={theme.colors.muted} numberOfLines={1}>Fare</AppText>
+            <AppText variant="caption" color={theme.colors.muted} numberOfLines={1}>fare</AppText>
           </View>
         </View>
 
-        {/* Progress bar */}
         <TripProgressBar
           fillColor={theme.colors.orange}
           label={plannedDistanceKm > 0
@@ -198,50 +243,35 @@ export default function DriverActiveTripScreen() {
           progress={distanceProgress}
         />
 
-        {/* Destination card */}
-        <AppCard style={styles.destinationCard}>
-          <View style={styles.destinationRow}>
-            <View style={styles.destinationIcon}>
-              <View style={styles.destinationIconDot} />
-            </View>
-            <View style={styles.destinationCopy}>
-              <AppText variant="bodySmall" color={theme.colors.muted}>Drop-off</AppText>
-              <AppText variant="h3" numberOfLines={2}>{ride.destination.address}</AppText>
-            </View>
+        {/* Drop-off, one line — the rider is in the car; no actions needed */}
+        <View style={styles.dropoffRow}>
+          <View style={styles.destinationIconSmall}>
+            <View style={styles.destinationIconDotSmall} />
           </View>
-          {ride.riderPhone ? (
-            <Pressable
-              style={styles.callButton}
-              onPress={() => Linking.openURL(`tel:${ride.riderPhone}`)}
-            >
-              <AppText variant="label">Call rider</AppText>
-            </Pressable>
-          ) : null}
-        </AppCard>
+          <AppText variant="bodySmall" numberOfLines={1} style={styles.dropoffText}>
+            {ride.destination.address}
+          </AppText>
+        </View>
 
         <AppButton title="End ride" onPress={handleEndRide} />
       </View>
-    </AppScreen>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  sosOverlay: {
-    position: 'absolute',
-    top: theme.spacing.md,
-    right: theme.spacing.md,
-    zIndex: 10,
-  },
-  container: {
-    flexGrow: 1,
-    paddingHorizontal: 0,
-  },
-  mapWrap: {
-    borderBottomWidth: theme.borders.thick,
-    borderBottomColor: theme.colors.black,
-  },
-  mapContainer: {
+  screen: {
+    flex: 1,
     backgroundColor: theme.colors.mapBase,
+  },
+  topOverlay: {
+    position: 'absolute',
+    left: theme.spacing.gutter,
+    right: theme.spacing.gutter,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    zIndex: 10,
   },
   destinationMarker: {
     width: 24,
@@ -260,9 +290,6 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.offWhite,
   },
   liveBadge: {
-    position: 'absolute',
-    top: 10,
-    right: 10,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
@@ -280,26 +307,26 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     backgroundColor: theme.colors.green,
   },
-  content: {
-    flexGrow: 1,
-    paddingHorizontal: theme.spacing.gutter,
-    paddingTop: theme.spacing.lg,
-    gap: theme.spacing.md,
-  },
-  statsRow: {
-    flexDirection: 'row',
+  panel: {
+    position: 'absolute',
     backgroundColor: theme.colors.white,
     borderWidth: theme.borders.thick,
     borderColor: theme.colors.black,
-    borderRadius: theme.radii.sm,
+    borderRadius: theme.radii.md,
+    paddingHorizontal: theme.spacing.md,
     paddingVertical: theme.spacing.md,
+    gap: theme.spacing.sm,
     ...theme.shadows.card,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    paddingVertical: theme.spacing.xs,
   },
   stat: {
     flex: 1,
     minWidth: 0,
     alignItems: 'center',
-    gap: 2,
+    gap: 1,
     paddingHorizontal: 4,
   },
   statDivider: {
@@ -307,42 +334,28 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.borderLight,
     alignSelf: 'stretch',
   },
-  destinationCard: {
-    gap: theme.spacing.sm,
-  },
-  destinationRow: {
+  dropoffRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: theme.spacing.sm,
   },
-  destinationIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+  destinationIconSmall: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
     backgroundColor: theme.colors.orange,
-    borderWidth: theme.borders.thick,
+    borderWidth: 1.5,
     borderColor: theme.colors.black,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  destinationIconDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+  destinationIconDotSmall: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
     backgroundColor: theme.colors.offWhite,
   },
-  destinationCopy: {
+  dropoffText: {
     flex: 1,
-    gap: 1,
-  },
-  callButton: {
-    height: 42,
-    borderRadius: theme.radii.sm,
-    borderWidth: theme.borders.thick,
-    borderColor: theme.colors.green,
-    backgroundColor: theme.colors.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...theme.shadows.subtle,
   },
 });

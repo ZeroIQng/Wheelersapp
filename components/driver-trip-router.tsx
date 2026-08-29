@@ -46,6 +46,16 @@ export function DriverTripRouter() {
   const currentRide = session.currentRide;
   const status = session.status;
 
+  // The request alert must never outlive the auction. Screens stop it on
+  // their own transitions, but this is the one place that always renders —
+  // so it is the backstop: a live trip or an empty request queue means quiet.
+  const hasOffers = session.offers.length > 0;
+  useEffect(() => {
+    if (currentRide || !hasOffers) {
+      void stopRideRequestSound();
+    }
+  }, [currentRide, hasOffers]);
+
   useEffect(() => {
     if (!currentRide) {
       routedKeyRef.current = null;

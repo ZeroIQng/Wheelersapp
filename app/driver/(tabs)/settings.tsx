@@ -7,6 +7,8 @@ import { AppText } from '@/components/app-text';
 import { useAuth } from '@/lib/auth';
 import { getAccessTokenWithRetry } from '@/lib/access-token';
 import { deleteAccount } from '@/lib/api';
+import { isMockLocationAvailable, nextMockLocationPreset } from '@/lib/dev-mock-location';
+import { useAppLocation } from '@/lib/location';
 import { useResponsive } from '@/lib/responsive';
 import { useAppTheme } from '@/lib/theme-context';
 import { theme } from '@/theme';
@@ -89,6 +91,7 @@ function ChevronRightIcon({ size = 18 }: { size?: number }) {
 
 export default function DriverSettingsScreen() {
   const router = useRouter();
+  const { mockLocation, setMockLocation } = useAppLocation();
   const { getAccessToken, logout } = useAuth();
   const { isDark, toggleTheme } = useAppTheme();
   const responsive = useResponsive();
@@ -255,6 +258,39 @@ export default function DriverSettingsScreen() {
           </Pressable>
         </View>
       </View>
+
+      {/* ── Developer section (dev builds only) ── */}
+      {isMockLocationAvailable() ? (
+        <View style={styles.section}>
+          <AppText
+            variant="label"
+            color={theme.colors.muted}
+            style={[styles.sectionLabel, { fontSize: responsive.font(10) }]}
+            numberOfLines={1}>
+            DEVELOPER
+          </AppText>
+          <View style={[styles.card, { backgroundColor: cardBg }]}>
+            <Pressable
+              onPress={() => void setMockLocation(nextMockLocationPreset(mockLocation))}
+              onLongPress={() => void setMockLocation(null)}
+              style={({ pressed }) => [styles.menuItem, menuItemStyle, pressed && { backgroundColor: pressedBg }]}
+            >
+              <View style={[styles.menuIcon, menuIconStyle, { backgroundColor: mockLocation ? theme.colors.orangeLight : subtleBg }]}>
+                <AppText variant="label" color={mockLocation ? theme.colors.orange : theme.colors.muted}>📍</AppText>
+              </View>
+              <View style={styles.menuInfo}>
+                <AppText variant="bodyMedium">Mock location</AppText>
+                <AppText variant="bodySmall" color={theme.colors.muted}>
+                  {mockLocation
+                    ? `${mockLocation.label} — tap to cycle, hold to turn off`
+                    : 'Off — simulators sit in Cupertino; tap to pin to Lagos'}
+                </AppText>
+              </View>
+              <ChevronRightIcon size={responsive.scale(18)} />
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
 
       {/* ── About section ── */}
       <View style={styles.section}>

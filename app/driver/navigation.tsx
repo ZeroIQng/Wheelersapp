@@ -1,11 +1,12 @@
 import { Href, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { Alert, Linking, Pressable, StyleSheet, View } from 'react-native';
 import { Marker, Polyline } from 'react-native-maps';
 import type MapView from 'react-native-maps';
 
 import { AppButton } from '@/components/app-button';
+import { CourseArrowMarker } from '@/components/course-arrow-marker';
 import { AppCard } from '@/components/app-card';
 import { AppScreen } from '@/components/app-screen';
 import { AppText } from '@/components/app-text';
@@ -14,6 +15,7 @@ import { StatusPill } from '@/components/StatusPill';
 import { useDriverSession } from '@/lib/driver-session';
 import { estimateEtaMinutes, haversineKm } from '@/lib/geo';
 import { useAppLocation } from '@/lib/location';
+import { useCourseBearing, useLiveRoute } from '@/lib/use-live-route';
 import { useResponsive } from '@/lib/responsive';
 import { theme } from '@/theme';
 
@@ -30,6 +32,16 @@ export default function DriverNavigationScreen() {
   const ride = session.currentRide;
   const mapRef = useRef<MapView>(null);
   const lastGpsSentRef = useRef(0);
+
+  // Heading to pickup: the line that matters is driver → pickup. The route
+  // shipped with the offer is the whole trip (pickup → destination) and used
+  // to be drawn here, which pointed the driver at the wrong thing.
+  const { coords: liveRouteCoords } = useLiveRoute({
+    origin: currentLocation,
+    target: ride?.pickup ?? null,
+    enabled: Boolean(ride),
+  });
+  const courseBearing = useCourseBearing(currentLocation, ride?.pickup ?? null);
 
   // Send GPS while navigating to pickup
   useEffect(() => {
@@ -69,10 +81,13 @@ export default function DriverNavigationScreen() {
     }
   }, [ride, currentLocation]);
 
-  const routeCoords = useMemo(() => {
-    if (!ride?.route?.coordinates) return [];
-    return ride.route.coordinates.map((c) => ({ latitude: c.lat, longitude: c.lng }));
-  }, [ride?.route]);
+  const fallbackLine =
+    liveRouteCoords.length < 2 && currentLocation && ride
+      ? [
+          { latitude: currentLocation.lat, longitude: currentLocation.lng },
+          { latitude: ride.pickup.lat, longitude: ride.pickup.lng },
+        ]
+      : null;
 
   if (!ride) return null;
 
@@ -145,7 +160,6 @@ export default function DriverNavigationScreen() {
             ref={mapRef}
             initialRegion={initialRegion}
             style={StyleSheet.absoluteFill}
-            showsUserLocation
             showsMyLocationButton={false}
             showsCompass={false}
             showsBuildings
@@ -154,8 +168,22 @@ export default function DriverNavigationScreen() {
             pitchEnabled={false}
             rotateEnabled={false}
           >
-            {routeCoords.length > 1 && (
-              <Polyline coordinates={routeCoords} strokeColor={theme.colors.orange} strokeWidth={5} />
+            {liveRouteCoords.length > 1 && (
+              <Polyline coordinates={liveRouteCoords} strokeColor={theme.colors.orange} strokeWidth={5} />
+            )}
+            {fallbackLine && (
+              <Polyline
+                coordinates={fallbackLine}
+                strokeColor={theme.colors.orange}
+                strokeWidth={4}
+                lineDashPattern={[10, 8]}
+              />
+            )}
+            {currentLocation && (
+              <CourseArrowMarker
+                coordinate={{ latitude: currentLocation.lat, longitude: currentLocation.lng }}
+                bearing={courseBearing}
+              />
             )}
             <Marker coordinate={pickupCoord}>
               <View style={styles.pickupMarker}>
