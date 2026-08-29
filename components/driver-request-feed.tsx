@@ -96,7 +96,7 @@ export function DriverRequestFeed({ fullHeight = false }: { fullHeight?: boolean
     router.push('/driver/incoming-request' as Href);
   }
 
-  const missed = session.missedOffers;
+  const missed = fullHeight ? session.missedOffers : [];
 
   if (bids.length === 0 && requests.length === 0 && missed.length === 0) return null;
 
