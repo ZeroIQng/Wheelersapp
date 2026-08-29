@@ -40,9 +40,11 @@ export async function playRideRequestSound(): Promise<void> {
     await unloadCurrent();
     if (token !== playToken) return;
 
+    // Silent switch wins: the ring pairs with haptics, so a muted phone
+    // still buzzes instead of blaring through a meeting.
     await Audio.setAudioModeAsync({
-      playsInSilentModeIOS: true,
-      staysActiveInBackground: true,
+      playsInSilentModeIOS: false,
+      staysActiveInBackground: false,
       shouldDuckAndroid: false,
     });
     if (token !== playToken) return;
@@ -79,4 +81,34 @@ export async function playRideRequestSound(): Promise<void> {
 export async function stopRideRequestSound(): Promise<void> {
   playToken += 1;
   await unloadCurrent();
+}
+
+
+/**
+ * A short one-shot chirp for "something changed on a bid you already made"
+ * (rider countered / re-priced). Never loops; hard-capped so a long asset
+ * can't turn an alert into a ringtone.
+ */
+export async function playBidAlertChime(): Promise<void> {
+  if (!Audio) return;
+  try {
+    await Audio.setAudioModeAsync({
+      playsInSilentModeIOS: false,
+      staysActiveInBackground: false,
+      shouldDuckAndroid: true,
+    });
+    const { sound } = await Audio.Sound.createAsync(
+      require('@/assets/sounds/ride-request.wav'),
+      { isLooping: false, volume: 0.7, shouldPlay: true },
+    );
+    const dispose = () => {
+      void sound.stopAsync().then(() => sound.unloadAsync()).catch(() => {});
+    };
+    sound.setOnPlaybackStatusUpdate((status: any) => {
+      if (status?.didJustFinish) dispose();
+    });
+    setTimeout(dispose, 2500);
+  } catch {
+    // sound is a nice-to-have
+  }
 }

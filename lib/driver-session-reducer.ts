@@ -42,6 +42,8 @@ export type RideOffer = {
   pickupDistanceKm?: number;
   pickupEtaSeconds?: number;
   expiresAt: string;
+  /** When THIS device first saw the request — the ring window counts from here. */
+  receivedAtMs?: number;
   /** The one auction clock — same instant as expiresAt, named for intent. */
   bidsCloseAt?: string;
   /** How this rider pays — a driver decides differently for cash. */
@@ -135,7 +137,18 @@ export type DriverSessionState = {
   currentRide: DriverRide | null;
   /** Bids sent and not yet answered, keyed by rideId. */
   pendingBids: Record<string, PendingBid>;
+  /**
+   * Requests that closed without the driver ever answering — expired, or
+   * taken by another driver. They linger as grey cards instead of vanishing:
+   * a timer running out is a UI event, not the silent death of the request.
+   */
+  missedOffers: MissedOffer[];
 };
+
+export type MissedOfferReason = 'expired' | 'taken';
+export type MissedOffer = { offer: RideOffer; missedAt: number; reason: MissedOfferReason };
+/** Missed cards are a rear-view mirror, not a backlog — keep the last few. */
+export const MISSED_OFFER_CAP = 5;
 
 export const defaultDriverSession: DriverSessionState = {
   status: 'offline',
@@ -143,6 +156,7 @@ export const defaultDriverSession: DriverSessionState = {
   currentOffer: null,
   currentRide: null,
   pendingBids: {},
+  missedOffers: [],
 };
 
 // ── Payload parsing ────────────────────────────────────────────────────────
@@ -182,6 +196,59 @@ export function pruneExpiredOffers(offers: RideOffer[], now: number = Date.now()
     const expiresMs = new Date(offer.expiresAt).getTime();
     return !Number.isFinite(expiresMs) || expiresMs > now;
   });
+}
+
+/**
+ * The siren is a doorbell, not a fire alarm: a request rings for this long,
+ * then goes quiet — while the request itself stays biddable for its full
+ * backend TTL (90s). Two different clocks on purpose.
+ */
+export const RING_WINDOW_MS = 30_000;
+
+/** When the audible alert for this request must stop (never past its expiry). */
+export function ringDeadlineMs(offer: RideOffer): number {
+  const ringEnd = (offer.receivedAtMs ?? 0) + RING_WINDOW_MS;
+  const expiresMs = new Date(offer.expiresAt).getTime();
+  return Number.isFinite(expiresMs) ? Math.min(ringEnd, expiresMs) : ringEnd;
+}
+
+/**
+ * Splits the queue into what's still live and what quietly ran out. An
+ * expired request the driver never answered becomes a missed card — answered
+ * ones already live on as bid cards, so they are simply dropped here.
+ * Lingered-out missed cards leave at the same time. Identity-stable when
+ * nothing changed.
+ */
+export function harvestOffers(
+  prev: DriverSessionState,
+  now: number,
+): { offers: RideOffer[]; missedOffers: MissedOffer[] } {
+  const live: RideOffer[] = [];
+  const newlyMissed: MissedOffer[] = [];
+  for (const offer of prev.offers) {
+    const expiresMs = new Date(offer.expiresAt).getTime();
+    if (!Number.isFinite(expiresMs) || expiresMs > now) {
+      live.push(offer);
+    } else if (!prev.pendingBids[offer.rideId]) {
+      newlyMissed.push({ offer, missedAt: now, reason: 'expired' });
+    }
+  }
+  const kept = prev.missedOffers.filter((m) => now - m.missedAt < RESOLVED_BID_LINGER_MS);
+  const missedOffers =
+    newlyMissed.length === 0 && kept.length === prev.missedOffers.length
+      ? prev.missedOffers
+      : [...newlyMissed, ...kept].slice(0, MISSED_OFFER_CAP);
+  return {
+    offers: live.length === prev.offers.length ? prev.offers : live,
+    missedOffers,
+  };
+}
+
+/** The driver read the missed card and swiped it away. */
+export function dismissMissedOffer(prev: DriverSessionState, rideId: string): DriverSessionState {
+  const missedOffers = prev.missedOffers.filter((m) => m.offer.rideId !== rideId);
+  if (missedOffers.length === prev.missedOffers.length) return prev;
+  return { ...prev, missedOffers };
 }
 
 /**
@@ -276,7 +343,6 @@ export function bidDeadlineMs(bid: PendingBid): number {
  */
 export function pruneExpiredBids(prev: DriverSessionState, now: number = Date.now()): DriverSessionState {
   const entries = Object.entries(prev.pendingBids);
-  if (entries.length === 0) return prev;
 
   let changed = false;
   const next: Record<string, PendingBid> = {};
@@ -300,8 +366,23 @@ export function pruneExpiredBids(prev: DriverSessionState, now: number = Date.no
     }
     next[rideId] = bid;
   }
-  if (!changed) return prev;
-  return { ...prev, pendingBids: next };
+  const base = changed ? { ...prev, pendingBids: next } : prev;
+
+  // Same sweep also retires run-out requests into missed cards, and clears a
+  // current offer that no longer exists (the request screen watches this).
+  const harvested = harvestOffers(base, now);
+  if (harvested.offers === base.offers && harvested.missedOffers === base.missedOffers) {
+    return base;
+  }
+  return {
+    ...base,
+    offers: harvested.offers,
+    missedOffers: harvested.missedOffers,
+    currentOffer:
+      base.currentOffer && !harvested.offers.some((o) => o.rideId === base.currentOffer?.rideId)
+        ? null
+        : base.currentOffer,
+  };
 }
 
 /** The driver read the outcome and swiped it away. */
@@ -377,6 +458,7 @@ export function reduceDriverSession(
       pickupDistanceKm: getNumber(payload.pickupDistanceKm),
       pickupEtaSeconds: getNumber(payload.pickupEtaSeconds),
       expiresAt: getString(payload.expiresAt) ?? '',
+      receivedAtMs: now,
       bidsCloseAt: getString(payload.bidsCloseAt),
       paymentMethod: getString(payload.paymentMethod),
       riderName: getString(payload.riderName),
@@ -403,11 +485,11 @@ export function reduceDriverSession(
     if (existingBid && !existingBid.outcome) {
       const previousAsk = existingBid.offer.riderOfferNgn ?? existingBid.offer.fareEstimateNgn;
       const nextAsk = incoming.riderOfferNgn ?? incoming.fareEstimateNgn;
+      const harvestedForBid = harvestOffers(prev, now);
       return {
         ...prev,
-        offers: pruneExpiredOffers(prev.offers, now).filter(
-          (queued) => queued.rideId !== incoming.rideId,
-        ),
+        offers: harvestedForBid.offers.filter((queued) => queued.rideId !== incoming.rideId),
+        missedOffers: harvestedForBid.missedOffers,
         currentOffer:
           prev.currentOffer?.rideId === incoming.rideId ? incoming : prev.currentOffer,
         pendingBids: {
@@ -424,10 +506,13 @@ export function reduceDriverSession(
 
     // Same rideId means a re-priced version of a request already in the
     // queue, so it replaces that entry rather than adding a duplicate.
-    const others = pruneExpiredOffers(prev.offers, now).filter(
-      (queued) => queued.rideId !== incoming.rideId,
-    );
+    const harvested = harvestOffers(prev, now);
+    const others = harvested.offers.filter((queued) => queued.rideId !== incoming.rideId);
     const offers = [incoming, ...others];
+    // A re-broadcast revives a request that had gone missed — it's live again.
+    const missedOffers = harvested.missedOffers.filter(
+      (m) => m.offer.rideId !== incoming.rideId,
+    );
 
     // Don't yank the driver off a request they're reading. Only take over
     // the screen when nothing is open, or when this update is for the very
@@ -439,6 +524,7 @@ export function reduceDriverSession(
       ...prev,
       status: prev.currentRide ? prev.status : 'offered',
       offers,
+      missedOffers,
       currentOffer: keepsCurrent ? prev.currentOffer : incoming,
     };
   }
@@ -568,9 +654,26 @@ export function reduceDriverSession(
       };
     }
     const offers = prev.offers.filter((queued) => queued.rideId !== rideId);
+    // A request the driver never answered doesn't vanish when the auction
+    // closes — it becomes a missed card saying what happened to it.
+    const droppedOffer = prev.offers.find((queued) => queued.rideId === rideId);
+    const missedOffers =
+      droppedOffer && !bid
+        ? (
+            [
+              {
+                offer: droppedOffer,
+                missedAt: now,
+                reason: (type === 'ride:bid_lost' ? 'taken' : 'expired') as MissedOfferReason,
+              },
+              ...prev.missedOffers,
+            ] satisfies MissedOffer[]
+          ).slice(0, MISSED_OFFER_CAP)
+        : prev.missedOffers;
     return {
       ...prev,
       offers,
+      missedOffers,
       currentOffer: prev.currentOffer?.rideId === rideId ? offers[0] ?? null : prev.currentOffer,
       status: prev.currentRide
         ? prev.status
@@ -597,7 +700,8 @@ export function reduceDriverSession(
 
   if (type === 'driver:reject:accepted') {
     const rejectedRideId = getString(payload.rideId) ?? prev.currentOffer?.rideId;
-    const offers = pruneExpiredOffers(prev.offers, now).filter(
+    const harvestedOnReject = harvestOffers(prev, now);
+    const offers = harvestedOnReject.offers.filter(
       (queued) => queued.rideId !== rejectedRideId,
     );
 
@@ -607,6 +711,7 @@ export function reduceDriverSession(
       ...prev,
       status: prev.currentRide ? prev.status : offers.length > 0 ? 'offered' : 'online',
       offers,
+      missedOffers: harvestedOnReject.missedOffers,
       currentOffer: offers[0] ?? null,
     };
   }
@@ -649,8 +754,12 @@ export function reduceDriverSession(
   if (type === 'ride:cancelled' || type === 'ride:cancel:accepted') {
     const cancelledRideId = getString(payload.rideId);
     // Only the cancelled ride leaves the queue; other live requests stay.
-    const offers = pruneExpiredOffers(prev.offers, now).filter(
+    const harvestedOnCancel = harvestOffers(prev, now);
+    const offers = harvestedOnCancel.offers.filter(
       (queued) => queued.rideId !== cancelledRideId,
+    );
+    const missedAfterCancel = harvestedOnCancel.missedOffers.filter(
+      (m) => m.offer.rideId !== cancelledRideId,
     );
     const cancelledCurrentRide = !cancelledRideId || prev.currentRide?.rideId === cancelledRideId;
 
@@ -661,6 +770,7 @@ export function reduceDriverSession(
       ...prev,
       status: offers.length > 0 ? 'offered' : 'online',
       offers,
+      missedOffers: missedAfterCancel,
       currentOffer:
         prev.currentOffer && prev.currentOffer.rideId !== cancelledRideId
           ? prev.currentOffer

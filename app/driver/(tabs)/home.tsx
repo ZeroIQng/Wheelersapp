@@ -2,7 +2,7 @@ import { Href, useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { Alert, AppState, Platform, Pressable, StyleSheet, View } from 'react-native';
 import MapView, { Circle, PROVIDER_GOOGLE } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -12,11 +12,12 @@ import { getAccessTokenWithRetry } from '@/lib/access-token';
 import { getDriverStats, getDriverEarnings, type DriverStatsResponse } from '@/lib/api';
 import { DriverRequestFeed } from '@/components/driver-request-feed';
 import { useDriverSession } from '@/lib/driver-session';
+import { ringDeadlineMs } from '@/lib/driver-session-reducer';
 import { useAppLocation } from '@/lib/location';
 import { useAppNotifications } from '@/lib/notifications';
 import { useQuestBadge } from '@/lib/quest-badge-context';
 import { useResponsive } from '@/lib/responsive';
-import { playRideRequestSound, stopRideRequestSound } from '@/lib/sounds';
+import { playBidAlertChime, playRideRequestSound, stopRideRequestSound } from '@/lib/sounds';
 import { theme } from '@/theme';
 
 function countCompletedQuests(todayRides: number, todayEarnings: number, totalRides: number, rating: number): number {
@@ -110,21 +111,76 @@ export default function DriverHomeScreen() {
   // → home remounts → push again, which is the flicker you see. The driver taps
   // a request from the list below instead.
   //
-  // Because nothing opens on its own, the alert has to live here: ring while
-  // there is at least one live request, stop as soon as the list empties.
-  const hasOffers = session.offers.length > 0;
+  // Because nothing opens on its own, the alert has to live here. Two clocks:
+  // the request stays biddable for its full backend TTL, but it only RINGS
+  // for its 30s ring window (RING_WINDOW_MS). The ring also dies the moment
+  // the app leaves the foreground, and haptics pulse alongside so a phone on
+  // silent still gets a physical alert.
+  const offers = session.offers;
+  const bidsByRide = session.pendingBids;
   useEffect(() => {
-    if (!hasOffers) {
+    const now = Date.now();
+    const ringUntil = offers
+      .filter((offer) => !bidsByRide[offer.rideId])
+      .reduce((latest, offer) => Math.max(latest, ringDeadlineMs(offer)), 0);
+
+    if (ringUntil <= now) {
       void stopRideRequestSound();
       return;
     }
 
     void playRideRequestSound();
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    const hapticPulse = setInterval(() => {
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }, 2500);
+    const stopAtDeadline = setTimeout(() => {
+      clearInterval(hapticPulse);
+      void stopRideRequestSound();
+    }, ringUntil - now);
+    const appStateSub = AppState.addEventListener('change', (state) => {
+      if (state !== 'active') void stopRideRequestSound();
+    });
+
     return () => {
+      clearTimeout(stopAtDeadline);
+      clearInterval(hapticPulse);
+      appStateSub.remove();
       void stopRideRequestSound();
     };
-  }, [hasOffers]);
+  }, [offers, bidsByRide]);
+
+  // A rider talking back to a bid deserves a chirp even when the driver has
+  // long left the request screen — one short alert per counter, no loop.
+  const counterBaselineRef = useRef<number | null>(null);
+  useEffect(() => {
+    let latest = 0;
+    for (const bid of Object.values(bidsByRide)) {
+      if (bid.counteredAt) {
+        const at = Date.parse(bid.counteredAt);
+        if (Number.isFinite(at)) latest = Math.max(latest, at);
+      }
+    }
+    if (counterBaselineRef.current === null) {
+      counterBaselineRef.current = latest;
+      return;
+    }
+    if (latest > counterBaselineRef.current) {
+      counterBaselineRef.current = latest;
+      void playBidAlertChime();
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    }
+  }, [bidsByRide]);
+
+  // A request slipping away unanswered gets one honest buzz — the missed
+  // card in the Active tab tells the rest of the story.
+  const missedCountRef = useRef(session.missedOffers.length);
+  useEffect(() => {
+    if (session.missedOffers.length > missedCountRef.current) {
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    }
+    missedCountRef.current = session.missedOffers.length;
+  }, [session.missedOffers.length]);
 
   // Center map on user location when available
   useEffect(() => {

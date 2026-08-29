@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { AppText } from '@/components/app-text';
-import { bidDeadlineMs, type PendingBid, type RideOffer } from '@/lib/driver-session-reducer';
+import { bidDeadlineMs, type MissedOffer, type PendingBid, type RideOffer } from '@/lib/driver-session-reducer';
 import { useDriverSession } from '@/lib/driver-session';
 import {
   getDriverFilters,
@@ -37,7 +37,7 @@ const BID_INCREMENTS = [100, 200, 500];
  */
 export function DriverRequestFeed({ fullHeight = false }: { fullHeight?: boolean } = {}) {
   const router = useRouter();
-  const { session, acceptRide, selectOffer, dismissBid } = useDriverSession();
+  const { session, acceptRide, selectOffer, dismissBid, dismissMissedOffer } = useDriverSession();
   const [filters, setFilters] = useState<DriverFilters>(getDriverFilters());
   useEffect(() => {
     void loadDriverFilters().then(setFilters);
@@ -96,7 +96,9 @@ export function DriverRequestFeed({ fullHeight = false }: { fullHeight?: boolean
     router.push('/driver/incoming-request' as Href);
   }
 
-  if (bids.length === 0 && requests.length === 0) return null;
+  const missed = session.missedOffers;
+
+  if (bids.length === 0 && requests.length === 0 && missed.length === 0) return null;
 
   return (
     <ScrollView
@@ -104,8 +106,30 @@ export function DriverRequestFeed({ fullHeight = false }: { fullHeight?: boolean
       showsVerticalScrollIndicator={false}>
       {bids.map((bid) => renderBidCard(bid))}
       {requests.map((offer) => renderRequestCard(offer))}
+      {missed.map((entry) => renderMissedCard(entry))}
     </ScrollView>
   );
+
+  // ── A request that ran out unanswered: greyed, dismissible, honest ──────
+  function renderMissedCard(entry: MissedOffer) {
+    const { offer } = entry;
+    const ask = offer.riderOfferNgn ?? offer.fareEstimateNgn;
+    return (
+      <View key={`missed-${offer.rideId}`} style={[styles.card, styles.cardResolved]}>
+        <View style={styles.topRow}>
+          <AppText variant="label" color={theme.colors.muted}>
+            {entry.reason === 'taken' ? 'Taken by another driver' : 'Expired — not answered ⏱'}
+          </AppText>
+          <Pressable onPress={() => dismissMissedOffer(offer.rideId)} style={styles.cancelChip}>
+            <AppText variant="label" color={theme.colors.muted}>✕</AppText>
+          </Pressable>
+        </View>
+        <AppText variant="bodySmall" color={theme.colors.mutedLight} numberOfLines={1}>
+          {offer.pickup.address} → {offer.destination.address} · {formatNgn(ask)}
+        </AppText>
+      </View>
+    );
+  }
 
   // ── One life-cycle card: the bid states ─────────────────────────────────
   function renderBidCard(bid: PendingBid) {

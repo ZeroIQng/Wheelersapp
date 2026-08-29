@@ -37,6 +37,10 @@ export default function DriverActiveScreen() {
   const liveCount =
     session.offers.length +
     Object.values(session.pendingBids).filter((bid) => !bid.outcome).length;
+  const showFeed =
+    liveCount > 0 ||
+    Object.keys(session.pendingBids).length > 0 ||
+    session.missedOffers.length > 0;
 
   return (
     <AppScreen
@@ -68,7 +72,7 @@ export default function DriverActiveScreen() {
         </Pressable>
       ) : null}
 
-      {liveCount === 0 && !currentRide ? (
+      {!showFeed && !currentRide ? (
         <View style={styles.emptyWrap}>
           <AppText variant="h3" style={styles.emptyTitle}>Nothing in flight</AppText>
           <AppText variant="body" color={theme.colors.muted} style={styles.emptyText}>

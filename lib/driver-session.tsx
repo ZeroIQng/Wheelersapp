@@ -23,6 +23,7 @@ import {
   applyActiveRideSnapshot,
   defaultDriverSession,
   dismissBid as dismissBidState,
+  dismissMissedOffer as dismissMissedOfferState,
   getString,
   pruneExpiredBids,
   pruneExpiredOffers,
@@ -85,6 +86,7 @@ type DriverSessionContextValue = {
   syncActiveRide: () => Promise<boolean>;
   /** Swipe away a resolved (expired/lost) bid card. */
   dismissBid: (rideId: string) => void;
+  dismissMissedOffer: (rideId: string) => void;
   /** Rate the rider after a trip — feeds their rider rating. */
   rateRider: (rideId: string, riderId: string, rating: number) => Promise<void>;
   /** Open one of the queued requests. */
@@ -130,6 +132,7 @@ const defaultContext: DriverSessionContextValue = {
   cancelTrip: async () => { throw new Error('Driver session unavailable.'); },
   syncActiveRide: async () => false,
   dismissBid: () => undefined,
+  dismissMissedOffer: () => undefined,
   rateRider: async () => { throw new Error('Driver session unavailable.'); },
   arriveAtPickup: async () => { throw new Error('Driver session unavailable.'); },
   startTrip: async () => { throw new Error('Driver session unavailable.'); },
@@ -605,6 +608,10 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
     }));
   }, []);
 
+  const dismissMissedOffer = useCallback((rideId: string) => {
+    setSession((prev) => dismissMissedOfferState(prev, rideId));
+  }, []);
+
   const dismissBid = useCallback((rideId: string) => {
     setSession((prev) => dismissBidState(prev, rideId));
   }, []);
@@ -700,6 +707,7 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
       cancelTrip,
       syncActiveRide,
       dismissBid,
+      dismissMissedOffer,
       rateRider,
       selectOffer,
       closeOffer,
@@ -723,6 +731,7 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
       cancelTrip,
       syncActiveRide,
       dismissBid,
+      dismissMissedOffer,
       rateRider,
       selectOffer,
       closeOffer,

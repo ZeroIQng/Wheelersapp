@@ -27,6 +27,11 @@ const {
   applyActiveRideSnapshot,
   pruneExpiredBids,
   dismissBid,
+  dismissMissedOffer,
+  ringDeadlineMs,
+  RING_WINDOW_MS,
+  MISSED_OFFER_CAP,
+  RESOLVED_BID_LINGER_MS,
   defaultDriverSession,
 } = createRequire(import.meta.url)(outFile);
 
@@ -314,4 +319,90 @@ test('the full happy path: offer → bid → paid → matched → arrived → st
 test('messages that are not session transitions are reported as unhandled', () => {
   assert.equal(reduceDriverSession(online(), 'chat:message', {}, NOW), null);
   assert.equal(reduceDriverSession(online(), 'wallet:updated', {}, NOW), null);
+});
+
+/* ── missed requests: a timer running out is a UI event, not a deletion ── */
+
+test('an untouched request that expires becomes a missed card, not a deletion', () => {
+  let s = reduceDriverSession(online(), 'ride:offer', offerPayload('ride-m1'), NOW);
+  s = pruneExpiredBids(s, NOW + 31_000); // past expiresAt (NOW+30s)
+  assert.equal(s.offers.length, 0);
+  assert.equal(s.missedOffers.length, 1);
+  assert.equal(s.missedOffers[0].offer.rideId, 'ride-m1');
+  assert.equal(s.missedOffers[0].reason, 'expired');
+  assert.equal(s.currentOffer, null);
+});
+
+test('an answered request never doubles as a missed card — the bid card owns it', () => {
+  let s = bidSent('ride-m2');
+  s = pruneExpiredBids(s, NOW + 61_000);
+  assert.equal(s.missedOffers.length, 0);
+  assert.ok(s.pendingBids['ride-m2']);
+});
+
+test('bid_timeout on an untouched request files it as missed (expired)', () => {
+  let s = reduceDriverSession(online(), 'ride:offer', offerPayload('ride-m3'), NOW);
+  s = reduceDriverSession(s, 'ride:bid_timeout', { rideId: 'ride-m3' }, NOW + 5_000);
+  assert.equal(s.offers.length, 0);
+  assert.equal(s.missedOffers.length, 1);
+  assert.equal(s.missedOffers[0].reason, 'expired');
+});
+
+test('bid_lost on an untouched request files it as missed (taken)', () => {
+  let s = reduceDriverSession(online(), 'ride:offer', offerPayload('ride-m4'), NOW);
+  s = reduceDriverSession(s, 'ride:bid_lost', { rideId: 'ride-m4' }, NOW + 5_000);
+  assert.equal(s.missedOffers.length, 1);
+  assert.equal(s.missedOffers[0].reason, 'taken');
+});
+
+test('a re-broadcast revives a missed request back into the live queue', () => {
+  let s = reduceDriverSession(online(), 'ride:offer', offerPayload('ride-m5'), NOW);
+  s = pruneExpiredBids(s, NOW + 31_000);
+  assert.equal(s.missedOffers.length, 1);
+  s = reduceDriverSession(
+    s,
+    'ride:offer',
+    offerPayload('ride-m5', { expiresAt: new Date(NOW + 120_000).toISOString() }),
+    NOW + 32_000,
+  );
+  assert.equal(s.missedOffers.length, 0);
+  assert.equal(s.offers.length, 1);
+});
+
+test('missed cards leave after their linger, and the pile is capped', () => {
+  let s = online();
+  for (let i = 0; i < MISSED_OFFER_CAP + 3; i += 1) {
+    s = reduceDriverSession(s, 'ride:offer', offerPayload(`ride-c${i}`), NOW);
+  }
+  s = pruneExpiredBids(s, NOW + 31_000);
+  assert.equal(s.missedOffers.length, MISSED_OFFER_CAP);
+  s = pruneExpiredBids(s, NOW + 31_000 + RESOLVED_BID_LINGER_MS + 1);
+  assert.equal(s.missedOffers.length, 0);
+});
+
+test('dismissMissedOffer removes exactly the swiped card', () => {
+  let s = reduceDriverSession(online(), 'ride:offer', offerPayload('ride-m6'), NOW);
+  s = reduceDriverSession(s, 'ride:offer', offerPayload('ride-m7'), NOW);
+  s = pruneExpiredBids(s, NOW + 31_000);
+  assert.equal(s.missedOffers.length, 2);
+  s = dismissMissedOffer(s, 'ride-m6');
+  assert.equal(s.missedOffers.length, 1);
+  assert.equal(s.missedOffers[0].offer.rideId, 'ride-m7');
+});
+
+/* ── the ring window: 30s of noise inside a 90s auction ── */
+
+test('ringDeadlineMs is receivedAt + 30s, clamped to the offer expiry', () => {
+  const s = reduceDriverSession(
+    online(),
+    'ride:offer',
+    offerPayload('ride-r1', { expiresAt: new Date(NOW + 90_000).toISOString() }),
+    NOW,
+  );
+  const offer = s.offers[0];
+  assert.equal(offer.receivedAtMs, NOW);
+  assert.equal(ringDeadlineMs(offer), NOW + RING_WINDOW_MS);
+  // a request already near expiry rings only until the auction closes
+  const late = { ...offer, expiresAt: new Date(NOW + 10_000).toISOString() };
+  assert.equal(ringDeadlineMs(late), NOW + 10_000);
 });
