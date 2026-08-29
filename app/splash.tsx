@@ -2,7 +2,7 @@ import { useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { StatusBar } from "expo-status-bar";
 import * as NativeSplash from "expo-splash-screen";
-import { Animated, Pressable, StyleSheet, View } from "react-native";
+import { Animated, Image, Pressable, StyleSheet, View, useColorScheme } from "react-native";
 
 import { BrandLogo } from "@/components/brand-logo";
 
@@ -154,6 +154,26 @@ const SPLASH_VARIANTS = [
 
 const IS_DRIVER = process.env.EXPO_PUBLIC_APP_VARIANT === "driver";
 
+/**
+ * What the NATIVE splash of the binary this code ships in looks like. The JS
+ * splash must open on that exact frame or the handoff reads as two splash
+ * screens. Flip to 'brand' in the same commit as the next native build
+ * (whose baked splash is the logo on #FF7700) — JS travels with binaries,
+ * so this stays truthful.
+ */
+const NATIVE_SPLASH_STYLE: "legacy-wordmark" | "brand" = "legacy-wordmark";
+
+const LEGACY_WORDMARKS = {
+  light: {
+    source: require("../assets/images/splash-wordmark-light.png"),
+    background: "#FEFAEF",
+  },
+  dark: {
+    source: require("../assets/images/splash-wordmark-dark.png"),
+    background: "#202020",
+  },
+};
+
 function pickSplashVariant() {
   return SPLASH_VARIANTS[Math.floor(Math.random() * SPLASH_VARIANTS.length)];
 }
@@ -185,6 +205,28 @@ function AppNameText({ color }: { color: string }) {
   );
 }
 
+function SplashBase() {
+  const scheme = useColorScheme();
+  if (NATIVE_SPLASH_STYLE === "brand") {
+    return (
+      <View style={[StyleSheet.absoluteFillObject, styles.center, { backgroundColor: "#FF7700" }]}>
+        <SplashMark variant={SPLASH_VARIANTS[0]} />
+      </View>
+    );
+  }
+  const legacy = scheme === "dark" ? LEGACY_WORDMARKS.dark : LEGACY_WORDMARKS.light;
+  return (
+    <View style={[StyleSheet.absoluteFillObject, styles.center, { backgroundColor: legacy.background }]}>
+      <Image
+        accessibilityIgnoresInvertColors
+        resizeMode="contain"
+        source={legacy.source}
+        style={styles.legacyWordmark}
+      />
+    </View>
+  );
+}
+
 function SplashShell({ onContinue }: { onContinue: () => void }) {
   // Chosen once per mount via the lazy initialiser — re-renders must not
   // reshuffle the artwork mid-splash.
@@ -197,8 +239,8 @@ function SplashShell({ onContinue }: { onContinue: () => void }) {
     NativeSplash.hideAsync();
     Animated.timing(variantOpacity, {
       toValue: 1,
-      duration: 420,
-      delay: 220,
+      duration: 450,
+      delay: 350,
       useNativeDriver: true,
     }).start();
   }, [variantOpacity]);
@@ -207,10 +249,9 @@ function SplashShell({ onContinue }: { onContinue: () => void }) {
     <View style={styles.root}>
       <StatusBar style={variant.statusBar} backgroundColor={variant.background} />
 
-      {/* Base: the native splash frame, continued. */}
-      <View style={[StyleSheet.absoluteFillObject, styles.center, { backgroundColor: "#FF7700" }]}>
-        <SplashMark variant={SPLASH_VARIANTS[0]} />
-      </View>
+      {/* Base: the native splash frame, continued — pixel-matched to what
+          THIS binary bakes in, so the handoff is invisible. */}
+      <SplashBase />
 
       {/* The randomly chosen treatment fades in over it. */}
       <Animated.View
@@ -262,5 +303,10 @@ const styles = StyleSheet.create({
     fontFamily: "ClashDisplay_500Medium",
     fontSize: 13,
     letterSpacing: 6,
+  },
+  legacyWordmark: {
+    // Matches the baked native splash: 260pt wide, centred (artwork 787x165).
+    width: 260,
+    height: 260 * (165 / 787),
   },
 });
