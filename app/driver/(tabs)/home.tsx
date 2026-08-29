@@ -140,6 +140,23 @@ export default function DriverHomeScreen() {
 
   const isOnline = session.status !== 'offline';
 
+  // An honest read on silence: how long since anything happened. Fifteen
+  // quiet minutes means the driver is probably parked outside demand — say
+  // so instead of pretending requests are imminent.
+  const lastActivityRef = useRef<number>(Date.now());
+  const [quietMinutes, setQuietMinutes] = useState(0);
+  useEffect(() => {
+    lastActivityRef.current = Date.now();
+    setQuietMinutes(0);
+  }, [isOnline, session.offers.length, pendingBids.length]);
+  useEffect(() => {
+    if (!isOnline) return;
+    const timer = setInterval(() => {
+      setQuietMinutes(Math.floor((Date.now() - lastActivityRef.current) / 60_000));
+    }, 60_000);
+    return () => clearInterval(timer);
+  }, [isOnline]);
+
   // Moving onto the trip screens when a match lands is DriverTripRouter's
   // job (it works from any tab). This screen only needs to offer the way
   // back in for a driver who came back to the map mid-trip.
@@ -389,8 +406,14 @@ export default function DriverHomeScreen() {
           </AppText>
         )}
         {!responsive.isShort && isOnline && (
-          <AppText variant="bodySmall" color={theme.colors.green} style={styles.hint} numberOfLines={2}>
-            Waiting for ride requests nearby...
+          <AppText
+            variant="bodySmall"
+            color={quietMinutes >= 15 ? theme.colors.muted : theme.colors.green}
+            style={styles.hint}
+            numberOfLines={2}>
+            {quietMinutes >= 15
+              ? `Quiet here for ${quietMinutes} min — demand is usually strongest around Ikeja, Opebi & Yaba`
+              : 'Waiting for ride requests nearby...'}
           </AppText>
         )}
       </View>

@@ -132,6 +132,15 @@ export default function DriverDashboardScreen() {
         </View>
       )}
 
+      {/* Accountability starts as a number on your own profile before it is
+          ever a policy: how often trips you took ended cancelled. */}
+      {stats?.cancellationRate !== undefined && (stats.completedRides ?? 0) + (stats.cancelledRides ?? 0) > 0 ? (
+        <AppText variant="bodySmall" color={stats.cancellationRate > 0.2 ? theme.colors.danger : theme.colors.muted} style={styles.reliabilityLine}>
+          Reliability: {Math.round((1 - stats.cancellationRate) * 100)}% of your trips completed
+          {stats.cancelledRides ? ` · ${stats.cancelledRides} cancelled` : ''}
+        </AppText>
+      ) : null}
+
       <Pressable style={styles.mapPressable}>
         {/* A quarter of the viewport instead of a flat 220pt: the map stays a
             map on a short phone and does not swallow a tablet. */}
@@ -188,6 +197,10 @@ export default function DriverDashboardScreen() {
 }
 
 const styles = StyleSheet.create({
+  reliabilityLine: {
+    textAlign: 'center',
+    marginTop: -4,
+  },
   container: {
     gap: theme.spacing.lg,
     paddingTop: theme.spacing.lg,

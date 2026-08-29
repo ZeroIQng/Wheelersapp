@@ -1324,6 +1324,11 @@ export interface DriverStatsResponse {
   vehicleYear: number | null;
   balanceNgn: number;
   lockedNgn: number;
+  ratingCount?: number;
+  completedRides?: number;
+  cancelledRides?: number;
+  /** Share of decided trips (completed + cancelled) that ended cancelled. */
+  cancellationRate?: number;
 }
 
 export interface DriverEarningItem {
