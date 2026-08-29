@@ -1,11 +1,11 @@
 import { Platform, TextStyle, ViewStyle } from 'react-native';
 
 // Palette sampled from the Wheelers splash artwork, so every screen reads as a
-// continuation of what the app opened on. The harsh #FF5C00 orange is retired;
-// the accent is now the softer orange of the dark splash wordmark.
+// continuation of what the app opened on. The accent is the brand tile's
+// #FF7700 — the same orange as the app icon and splash.
 const colors = {
-  orange: '#F0913F',
-  orangeLight: '#FBEBDA',
+  orange: '#FF7700',
+  orangeLight: '#FFE9D5',
   black: '#0D0D0D',
   offWhite: '#FEFAEF',
   green: '#00C48C',

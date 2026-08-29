@@ -74,7 +74,7 @@ export async function startDriverLivenessUpdates(accessToken: string): Promise<v
       foregroundService: {
         notificationTitle: "You're online on Wheelers",
         notificationBody: 'Receiving ride requests — location keeps you visible to riders.',
-        notificationColor: '#F0913F',
+        notificationColor: '#FF7700',
       },
     });
   } catch {

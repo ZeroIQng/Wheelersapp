@@ -13,7 +13,7 @@ export const brand = {
   /** Wordmark ink on the light artwork. */
   ink: "#0D0D0D",
   /** Wordmark ink on the dark artwork. */
-  inkOnDark: "#F0913F",
+  inkOnDark: "#FF7700",
   /** Hairline that reads correctly on the cream backdrop. */
   hairline: "#E6DFD2",
   /** Muted body copy on the cream backdrop. */
