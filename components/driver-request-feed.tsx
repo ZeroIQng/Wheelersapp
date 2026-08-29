@@ -59,9 +59,19 @@ export function DriverRequestFeed({ fullHeight = false }: { fullHeight?: boolean
     return () => clearInterval(timer);
   }, []);
 
-  const bids = Object.values(session.pendingBids).sort(
-    (a, b) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime(),
-  );
+  const bids = Object.values(session.pendingBids)
+    .filter((bid) => {
+      // Home's overlay carries only the LIVE auction: requests in-window and
+      // bids the clock is still running on (or already accepted — a trip is
+      // about to start). Everything past its window — 'waiting on rider'
+      // holdouts and grey terminal stories — lives on the Active tab only.
+      if (fullHeight) return true;
+      if (bid.acceptedAt) return true;
+      if (bid.outcome) return false;
+      const clockMs = new Date(bid.offer.bidsCloseAt ?? bid.offer.expiresAt).getTime();
+      return !Number.isFinite(clockMs) || clockMs > now;
+    })
+    .sort((a, b) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime());
   const answered = new Set(bids.map((bid) => bid.offer.rideId));
   const requests = session.offers
     .filter((offer) => !answered.has(offer.rideId))
