@@ -261,6 +261,150 @@ export function harvestOffers(
   };
 }
 
+/**
+ * The driver tapped a request card — fresh, stale, or even a missed
+ * tombstone. Tapping must never delete: a missed card revives into the
+ * queue (still biddable) instead of being pruned out from under the tap.
+ */
+export function selectOfferState(prev: DriverSessionState, rideId: string): DriverSessionState {
+  const queued = prev.offers.find((offer) => offer.rideId === rideId);
+  const revived = queued ?? prev.missedOffers.find((m) => m.offer.rideId === rideId)?.offer;
+  if (!revived) return prev;
+  return {
+    ...prev,
+    offers: queued ? prev.offers : [...prev.offers, revived],
+    missedOffers: queued
+      ? prev.missedOffers
+      : prev.missedOffers.filter((m) => m.offer.rideId !== rideId),
+    status: prev.currentRide ? prev.status : 'offered',
+    currentOffer: revived,
+  };
+}
+
+/**
+ * Bring a persisted market snapshot back after a reload. The session used to
+ * live only in memory, so a JS reload emptied the Active tab mid-auction.
+ * Live state (anything that arrived over the socket since) wins over the
+ * snapshot; the normal sweep then applies every linger rule.
+ */
+export function rehydrateMarket(
+  prev: DriverSessionState,
+  snapshot: unknown,
+  now: number = Date.now(),
+): DriverSessionState {
+  const record = snapshot && typeof snapshot === 'object' ? (snapshot as Record<string, unknown>) : null;
+  if (!record) return prev;
+
+  const knownRides = new Set([
+    ...prev.offers.map((offer) => offer.rideId),
+    ...Object.keys(prev.pendingBids),
+    ...prev.missedOffers.map((m) => m.offer.rideId),
+    ...(prev.currentRide ? [prev.currentRide.rideId] : []),
+  ]);
+
+  const offers = Array.isArray(record.offers)
+    ? (record.offers as RideOffer[]).filter(
+        (offer) => offer?.rideId && !knownRides.has(offer.rideId),
+      )
+    : [];
+  const missedOffers = Array.isArray(record.missedOffers)
+    ? (record.missedOffers as MissedOffer[]).filter(
+        (m) => m?.offer?.rideId && !knownRides.has(m.offer.rideId),
+      )
+    : [];
+  const pendingBids: Record<string, PendingBid> = {};
+  if (record.pendingBids && typeof record.pendingBids === 'object') {
+    for (const [rideId, bid] of Object.entries(record.pendingBids as Record<string, PendingBid>)) {
+      if (!knownRides.has(rideId) && bid?.offer) pendingBids[rideId] = bid;
+    }
+  }
+  if (offers.length === 0 && missedOffers.length === 0 && Object.keys(pendingBids).length === 0) {
+    return prev;
+  }
+
+  const merged: DriverSessionState = {
+    ...prev,
+    offers: [...prev.offers, ...offers],
+    missedOffers: [...prev.missedOffers, ...missedOffers].slice(0, MISSED_OFFER_CAP),
+    pendingBids: { ...pendingBids, ...prev.pendingBids },
+  };
+  return pruneExpiredBids(merged, now);
+}
+
+/** How far back a server-side bid record is worth resurrecting as a card. */
+const BID_BACKFILL_WINDOW_MS = 10 * 60_000;
+
+/**
+ * Rebuild bid cards from GET /drivers/me/bids — the server's memory of what
+ * this driver had on the table, for when the local one was wiped (reinstall,
+ * reload, new phone). Socket truth wins; records only fill gaps.
+ */
+export function hydrateBidRecords(
+  prev: DriverSessionState,
+  records: Array<{
+    rideId: string;
+    amountNgn: number;
+    status: string;
+    createdAt: string;
+    resolvedAt: string | null;
+    ride: {
+      pickupAddress: string;
+      destAddress: string;
+      riderOfferNgn: number | null;
+      agreedFareNgn: number | null;
+      fareEstimateNgn: number | null;
+    };
+  }>,
+  now: number = Date.now(),
+): DriverSessionState {
+  let pendingBids = prev.pendingBids;
+  for (const rec of records) {
+    if (!rec?.rideId || pendingBids[rec.rideId]) continue;
+    if (prev.currentRide?.rideId === rec.rideId) continue;
+    const createdMs = Date.parse(rec.createdAt);
+    if (!Number.isFinite(createdMs) || now - createdMs > BID_BACKFILL_WINDOW_MS) continue;
+
+    const offer: RideOffer = {
+      rideId: rec.rideId,
+      riderId: '',
+      pickup: { lat: 0, lng: 0, address: rec.ride.pickupAddress },
+      destination: { lat: 0, lng: 0, address: rec.ride.destAddress },
+      stops: [],
+      fareEstimateNgn: rec.ride.fareEstimateNgn ?? rec.amountNgn,
+      riderOfferNgn: rec.ride.riderOfferNgn ?? undefined,
+      expiresAt: new Date(createdMs + 90_000).toISOString(),
+      receivedAtMs: createdMs,
+    };
+    let bid: PendingBid | null = null;
+    if (rec.status === 'PENDING') {
+      bid = { offer, amountNgn: rec.amountNgn, sentAt: rec.createdAt };
+    } else if (rec.status === 'ACCEPTED') {
+      bid = {
+        offer,
+        amountNgn: rec.amountNgn,
+        sentAt: rec.createdAt,
+        acceptedAt: rec.resolvedAt ?? rec.createdAt,
+        agreedFareNgn: rec.ride.agreedFareNgn ?? rec.amountNgn,
+      };
+    } else if (rec.status === 'EXPIRED' || rec.status === 'LOST') {
+      const resolvedMs = rec.resolvedAt ? Date.parse(rec.resolvedAt) : createdMs;
+      if (now - resolvedMs > RESOLVED_BID_LINGER_MS) continue;
+      bid = {
+        offer,
+        amountNgn: rec.amountNgn,
+        sentAt: rec.createdAt,
+        outcome: rec.status === 'LOST' ? 'lost' : 'expired',
+        resolvedAt: rec.resolvedAt ?? rec.createdAt,
+      };
+    }
+    if (!bid) continue;
+    if (pendingBids === prev.pendingBids) pendingBids = { ...pendingBids };
+    pendingBids[rec.rideId] = bid;
+  }
+  if (pendingBids === prev.pendingBids) return prev;
+  return pruneExpiredBids({ ...prev, pendingBids }, now);
+}
+
 /** The driver read the missed card and swiped it away. */
 export function dismissMissedOffer(prev: DriverSessionState, rideId: string): DriverSessionState {
   const missedOffers = prev.missedOffers.filter((m) => m.offer.rideId !== rideId);

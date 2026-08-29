@@ -28,7 +28,10 @@ const {
   pruneExpiredBids,
   dismissBid,
   dismissMissedOffer,
+  hydrateBidRecords,
   isOfferStale,
+  rehydrateMarket,
+  selectOfferState,
   ringDeadlineMs,
   RING_WINDOW_MS,
   STALE_OFFER_LINGER_MS,
@@ -415,4 +418,87 @@ test('ringDeadlineMs is receivedAt + 30s, clamped to the offer expiry', () => {
   // a request already near expiry rings only until the auction closes
   const late = { ...offer, expiresAt: new Date(NOW + 10_000).toISOString() };
   assert.equal(ringDeadlineMs(late), NOW + 10_000);
+});
+
+/* ── tapping never deletes; reloads never empty the Active tab ── */
+
+test('tapping a stale request opens it instead of pruning it away', () => {
+  let s = reduceDriverSession(online(), 'ride:offer', offerPayload('ride-t1'), NOW);
+  s = pruneExpiredBids(s, NOW + 31_000); // stale but lingering
+  s = selectOfferState(s, 'ride-t1');
+  assert.equal(s.offers.length, 1);
+  assert.equal(s.currentOffer?.rideId, 'ride-t1');
+});
+
+test('tapping a missed tombstone revives it into the queue, biddable again', () => {
+  const dead = NOW + 30_000 + STALE_OFFER_LINGER_MS + 1_000;
+  let s = reduceDriverSession(online(), 'ride:offer', offerPayload('ride-t2'), NOW);
+  s = pruneExpiredBids(s, dead);
+  assert.equal(s.missedOffers.length, 1);
+  s = selectOfferState(s, 'ride-t2');
+  assert.equal(s.missedOffers.length, 0);
+  assert.equal(s.offers.length, 1);
+  assert.equal(s.currentOffer?.rideId, 'ride-t2');
+});
+
+test('rehydrateMarket restores a persisted snapshot without clobbering live state', () => {
+  const liveState = reduceDriverSession(online(), 'ride:offer', offerPayload('ride-live'), NOW);
+  const snapshot = {
+    offers: [
+      offerPayload('ride-live', { fareEstimateNgn: 1 }), // stale duplicate — live wins
+      { ...offerPayload('ride-snap'), receivedAtMs: NOW },
+    ],
+    pendingBids: {
+      'ride-bid': {
+        offer: { ...offerPayload('ride-bid'), receivedAtMs: NOW },
+        amountNgn: 6500,
+        sentAt: new Date(NOW).toISOString(),
+      },
+    },
+    missedOffers: [],
+  };
+  const s = rehydrateMarket(liveState, snapshot, NOW + 5_000);
+  assert.equal(s.offers.length, 2);
+  const live = s.offers.find((o) => o.rideId === 'ride-live');
+  assert.notEqual(live.fareEstimateNgn, 1);
+  assert.ok(s.pendingBids['ride-bid']);
+});
+
+test('hydrateBidRecords rebuilds bid cards from server records, socket truth first', () => {
+  const record = (rideId, status, extra = {}) => ({
+    rideId,
+    amountNgn: 7000,
+    status,
+    createdAt: new Date(NOW - 60_000).toISOString(),
+    resolvedAt: status === 'PENDING' ? null : new Date(NOW - 30_000).toISOString(),
+    ride: {
+      pickupAddress: PICKUP.address,
+      destAddress: DEST.address,
+      riderOfferNgn: 6000,
+      agreedFareNgn: null,
+      fareEstimateNgn: 5200,
+    },
+    ...extra,
+  });
+  let s = bidSent('ride-live'); // live socket bid must not be overwritten
+  s = hydrateBidRecords(
+    s,
+    [
+      record('ride-live', 'PENDING', { amountNgn: 1 }),
+      record('ride-pend', 'PENDING'),
+      record('ride-lost', 'LOST'),
+      record('ride-old', 'EXPIRED', {
+        createdAt: new Date(NOW - 60 * 60_000).toISOString(),
+        resolvedAt: new Date(NOW - 59 * 60_000).toISOString(),
+      }),
+      record('ride-gone', 'WITHDRAWN'),
+    ],
+    NOW,
+  );
+  assert.notEqual(s.pendingBids['ride-live'].amountNgn, 1);
+  assert.ok(s.pendingBids['ride-pend']);
+  assert.equal(s.pendingBids['ride-pend'].outcome, undefined);
+  assert.equal(s.pendingBids['ride-lost'].outcome, 'lost');
+  assert.equal(s.pendingBids['ride-old'], undefined); // too old to resurrect
+  assert.equal(s.pendingBids['ride-gone'], undefined); // withdrawn stays gone
 });

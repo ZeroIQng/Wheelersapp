@@ -11,9 +11,12 @@ import {
   type ReactNode,
 } from 'react';
 
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
 import {
   getBackendWebSocketUrl,
   getDriverActiveRide,
+  getDriverBids,
   isBackendConfigured,
   type DriverActiveRide,
 } from '@/lib/api';
@@ -25,8 +28,10 @@ import {
   dismissBid as dismissBidState,
   dismissMissedOffer as dismissMissedOfferState,
   getString,
+  hydrateBidRecords,
   pruneExpiredBids,
-  pruneExpiredOffers,
+  rehydrateMarket,
+  selectOfferState,
   recordBid,
   reduceDriverSession,
   type DriverSessionState,
@@ -34,6 +39,9 @@ import {
 } from '@/lib/driver-session-reducer';
 import { estimateEtaSeconds, haversineKm } from '@/lib/geo';
 import { invalidateWalletCache } from '@/lib/wallet-overview';
+
+/** Where the live market snapshot survives JS reloads. */
+const MARKET_STORAGE_KEY = 'wheelers.driver.market.v1';
 
 export type {
   DriverRide,
@@ -285,6 +293,18 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
     return true;
   }, [getAccessToken]);
 
+  const backfillBids = useCallback(async (): Promise<void> => {
+    if (!isBackendConfigured() || !userRef.current) return;
+    try {
+      const accessToken = await getAccessTokenWithRetry(getAccessToken);
+      if (!accessToken) return;
+      const { items } = await getDriverBids({ accessToken, limit: 10 });
+      setSession((prev) => hydrateBidRecords(prev, items, Date.now()));
+    } catch {
+      // backfill is best-effort; the socket remains the source of truth
+    }
+  }, [getAccessToken]);
+
   const connect = useCallback(async (): Promise<WebSocket> => {
     if (!isBackendConfigured() || !isReady || !user) {
       throw new Error('Not configured or not signed in.');
@@ -340,6 +360,7 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
           // connect; this REST check is the belt to that brace — it survives
           // an older gateway and a dropped first frame.
           void syncActiveRide();
+          void backfillBids();
           resolve(socket);
         };
 
@@ -378,7 +399,7 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
       scheduleReconnect();
       throw err;
     }
-  }, [clearReconnectTimer, getAccessToken, handleGatewayMessage, isReady, scheduleReconnect, syncActiveRide, user]);
+  }, [backfillBids, clearReconnectTimer, getAccessToken, handleGatewayMessage, isReady, scheduleReconnect, syncActiveRide, user]);
 
   useEffect(() => {
     connectRef.current = connect;
@@ -591,21 +612,14 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
     [sendEnvelope],
   );
 
+  // Tapping must never delete. This used to prune expired offers on the way
+  // in, so tapping a stale card removed it instead of opening it.
   const selectOffer = useCallback((rideId: string) => {
-    setSession((prev) => {
-      const offers = pruneExpiredOffers(prev.offers);
-      const picked = offers.find((queued) => queued.rideId === rideId);
-      if (!picked) return { ...prev, offers };
-      return { ...prev, offers, status: 'offered', currentOffer: picked };
-    });
+    setSession((prev) => selectOfferState(prev, rideId));
   }, []);
 
   const closeOffer = useCallback(() => {
-    setSession((prev) => ({
-      ...prev,
-      offers: pruneExpiredOffers(prev.offers),
-      currentOffer: null,
-    }));
+    setSession((prev) => ({ ...prev, currentOffer: null }));
   }, []);
 
   const dismissMissedOffer = useCallback((rideId: string) => {
@@ -668,18 +682,44 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
   }, [isReady, user, syncActiveRide]);
 
   // A dropped ride:bid_timeout frame must not leave "waiting for rider" on
-  // screen forever — sweep bids past the auction window, and expired offers
-  // with them.
+  // screen forever. One sweep, all the linger rules — stale offers stay
+  // biddable through theirs; a second prune here used to delete them.
   useEffect(() => {
     const timer = setInterval(() => {
-      setSession((prev) => {
-        const pruned = pruneExpiredBids(prev, Date.now());
-        const offers = pruneExpiredOffers(pruned.offers);
-        return offers.length === pruned.offers.length ? pruned : { ...pruned, offers };
-      });
+      setSession((prev) => pruneExpiredBids(prev, Date.now()));
     }, 15_000);
     return () => clearInterval(timer);
   }, []);
+
+  // The market (requests, bids, missed cards) survives a JS reload: persist
+  // on change, rehydrate once on mount. Live socket truth always wins.
+  const marketHydratedRef = useRef(false);
+  useEffect(() => {
+    void (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(MARKET_STORAGE_KEY);
+        if (raw) {
+          const snapshot = JSON.parse(raw) as unknown;
+          setSession((prev) => rehydrateMarket(prev, snapshot, Date.now()));
+        }
+      } catch {
+        // a bad snapshot is not worth a crash
+      } finally {
+        marketHydratedRef.current = true;
+      }
+    })();
+  }, []);
+
+  const marketOffers = session.offers;
+  const marketBids = session.pendingBids;
+  const marketMissed = session.missedOffers;
+  useEffect(() => {
+    if (!marketHydratedRef.current) return;
+    AsyncStorage.setItem(
+      MARKET_STORAGE_KEY,
+      JSON.stringify({ offers: marketOffers, pendingBids: marketBids, missedOffers: marketMissed }),
+    ).catch(() => {});
+  }, [marketOffers, marketBids, marketMissed]);
 
   // Coming back from the background is exactly when a match was missed: the
   // socket is dead while the app is suspended, and the rider paid meanwhile.

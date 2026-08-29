@@ -123,12 +123,16 @@ export function DriverRequestFeed({ fullHeight = false }: { fullHeight?: boolean
     </ScrollView>
   );
 
-  // ── A request that ran out unanswered: greyed, dismissible, honest ──────
+  // ── A request that ran out unanswered: greyed, dismissible — and still
+  // tappable. Opening it revives the request so the driver can bid anyway.
   function renderMissedCard(entry: MissedOffer) {
     const { offer } = entry;
     const ask = offer.riderOfferNgn ?? offer.fareEstimateNgn;
     return (
-      <View key={`missed-${offer.rideId}`} style={[styles.card, styles.cardResolved]}>
+      <Pressable
+        key={`missed-${offer.rideId}`}
+        onPress={() => openDetails(offer.rideId)}
+        style={({ pressed }) => [styles.card, styles.cardResolved, pressed && styles.pressed]}>
         <View style={styles.topRow}>
           <AppText variant="label" color={theme.colors.muted}>
             {entry.reason === 'taken' ? 'Taken by another driver' : 'Expired — not answered ⏱'}
@@ -140,7 +144,10 @@ export function DriverRequestFeed({ fullHeight = false }: { fullHeight?: boolean
         <AppText variant="bodySmall" color={theme.colors.mutedLight} numberOfLines={1}>
           {offer.pickup.address} → {offer.destination.address} · {formatNgn(ask)}
         </AppText>
-      </View>
+        <AppText variant="caption" color={theme.colors.muted}>
+          Tap to view — you can still try a bid
+        </AppText>
+      </Pressable>
     );
   }
 
