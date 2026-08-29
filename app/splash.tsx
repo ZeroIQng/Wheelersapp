@@ -27,6 +27,17 @@ type SplashRoute = VariantPublicRoute | AuthenticatedRoute;
  */
 const MIN_SPLASH_MS = 900;
 
+/**
+ * Metro launches show the NATIVE splash for seconds while the bundle
+ * builds — the user has already watched a full splash by the time JS runs.
+ * Playing the JS act on top (min-hold + variant fade) reads as a SECOND
+ * splash. In dev we therefore just continue the native frame and leave the
+ * moment auth resolves; release builds keep the choreography, where the
+ * native phase is only a blink.
+ */
+const CONTINUE_NATIVE_ONLY = __DEV__;
+const EFFECTIVE_MIN_SPLASH_MS = CONTINUE_NATIVE_ONLY ? 0 : MIN_SPLASH_MS;
+
 function prefetchHomeData(getAccessToken: () => Promise<string | null | undefined>) {
   void prefetchRiderHistory(getAccessToken);
   void prefetchWalletOverview(getAccessToken);
@@ -43,7 +54,7 @@ export default function SplashScreen() {
     if (hasNavigated.current) return;
     hasNavigated.current = true;
 
-    const remaining = MIN_SPLASH_MS - (Date.now() - mountedAtRef.current);
+    const remaining = EFFECTIVE_MIN_SPLASH_MS - (Date.now() - mountedAtRef.current);
     if (remaining <= 0) {
       router.replace(href);
       return;
@@ -108,7 +119,7 @@ export default function SplashScreen() {
       if (!hasNavigated.current) {
         navigate(publicEntryRoute);
       }
-    }, MIN_SPLASH_MS + 1200);
+    }, EFFECTIVE_MIN_SPLASH_MS + 1200);
 
     return () => clearTimeout(timer);
   }, []);
@@ -235,8 +246,11 @@ function SplashShell({ onContinue }: { onContinue: () => void }) {
 
   useEffect(() => {
     // The base layer below is pixel-identical to the native splash, so the
-    // handoff is seamless; then the day's variant fades in over it.
+    // handoff is seamless; then the day's variant fades in over it — except
+    // in dev, where the native splash already ran long and any second act
+    // would read as a second splash.
     NativeSplash.hideAsync();
+    if (CONTINUE_NATIVE_ONLY) return;
     Animated.timing(variantOpacity, {
       toValue: 1,
       duration: 450,
@@ -247,7 +261,10 @@ function SplashShell({ onContinue }: { onContinue: () => void }) {
 
   return (
     <View style={styles.root}>
-      <StatusBar style={variant.statusBar} backgroundColor={variant.background} />
+      <StatusBar
+        style={CONTINUE_NATIVE_ONLY ? "dark" : variant.statusBar}
+        backgroundColor={CONTINUE_NATIVE_ONLY ? undefined : variant.background}
+      />
 
       {/* Base: the native splash frame, continued — pixel-matched to what
           THIS binary bakes in, so the handoff is invisible. */}
