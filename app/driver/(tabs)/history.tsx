@@ -22,6 +22,20 @@ import { theme } from '@/theme';
 
 type Tab = 'rides' | 'bids' | 'transactions';
 
+type RideFilter = 'all' | 'completed' | 'cancelled';
+
+const RIDE_FILTERS: { key: RideFilter; label: string }[] = [
+  { key: 'all', label: 'All' },
+  { key: 'completed', label: 'Completed' },
+  { key: 'cancelled', label: 'Cancelled' },
+];
+
+function matchesRideFilter(status: string, filter: RideFilter): boolean {
+  if (filter === 'completed') return status === 'COMPLETED';
+  if (filter === 'cancelled') return status === 'CANCELLED';
+  return true;
+}
+
 function isTab(value: unknown): value is Tab {
   return value === 'rides' || value === 'bids' || value === 'transactions';
 }
@@ -66,6 +80,7 @@ export default function DriverHistoryScreen() {
     if (isTab(requestedTab)) setActiveTab(requestedTab);
   }, [requestedTab]);
   const [rides, setRides] = useState<DriverHistoryRide[]>([]);
+  const [rideFilter, setRideFilter] = useState<RideFilter>('all');
   const [bids, setBids] = useState<DriverBidRecord[]>([]);
   const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
   const [loadingRides, setLoadingRides] = useState(true);
@@ -105,6 +120,7 @@ export default function DriverHistoryScreen() {
   }, [fetchData]);
 
   const loading = activeTab === 'transactions' ? loadingTxns : loadingRides;
+  const filteredRides = rides.filter((ride) => matchesRideFilter(ride.status, rideFilter));
 
   return (
     <AppScreen
@@ -168,15 +184,39 @@ export default function DriverHistoryScreen() {
       ) : activeTab === 'bids' ? (
         <DriverBidsList history={bids} />
       ) : activeTab === 'rides' ? (
-        rides.length === 0 ? (
-          <View style={[styles.emptyWrap, { paddingVertical: responsive.vh(6, 28, 48) }]}>
-            <AppText variant="body" color={theme.colors.muted} style={styles.emptyText}>
-              No rides yet. Go online to start accepting ride requests.
-            </AppText>
+        <View style={styles.list}>
+          <View style={styles.filterRow}>
+            {RIDE_FILTERS.map((f) => {
+              const selected = rideFilter === f.key;
+              return (
+                <Pressable
+                  key={f.key}
+                  onPress={() => setRideFilter(f.key)}
+                  style={[
+                    styles.filterChip,
+                    isDark && { backgroundColor: theme.colors.darkSurface, borderColor: theme.colors.darkBorder },
+                    selected && styles.filterChipActive,
+                  ]}>
+                  <AppText
+                    variant="caption"
+                    color={selected ? theme.colors.white : theme.colors.muted}
+                    numberOfLines={1}>
+                    {f.label}
+                  </AppText>
+                </Pressable>
+              );
+            })}
           </View>
-        ) : (
-          <View style={styles.list}>
-            {rides.map((ride) => {
+          {filteredRides.length === 0 ? (
+            <View style={[styles.emptyWrap, { paddingVertical: responsive.vh(6, 28, 48) }]}>
+              <AppText variant="body" color={theme.colors.muted} style={styles.emptyText}>
+                {rides.length === 0
+                  ? 'No rides yet. Go online to start accepting ride requests.'
+                  : `No ${rideFilter} rides in your recent history.`}
+              </AppText>
+            </View>
+          ) : (
+            filteredRides.map((ride) => {
               const fare = ride.fareFinalNgn ?? ride.fareEstimateNgn;
               const date = ride.completedAt ?? ride.cancelledAt ?? ride.createdAt;
               return (
@@ -212,9 +252,9 @@ export default function DriverHistoryScreen() {
                   </View>
                 </AppCard>
               );
-            })}
-          </View>
-        )
+            })
+          )}
+        </View>
       ) : transactions.length === 0 ? (
         <View style={[styles.emptyWrap, { paddingVertical: responsive.vh(6, 28, 48) }]}>
           <AppText variant="body" color={theme.colors.muted} style={styles.emptyText}>
@@ -270,6 +310,22 @@ const styles = StyleSheet.create({
   },
 
   // Tabs
+  filterRow: {
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+  },
+  filterChip: {
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: 6,
+    borderRadius: theme.radii.pill,
+    borderWidth: theme.borders.regular,
+    borderColor: theme.colors.black,
+    backgroundColor: theme.colors.white,
+  },
+  filterChipActive: {
+    backgroundColor: theme.colors.black,
+    borderColor: theme.colors.black,
+  },
   tabs: {
     flexDirection: 'row',
     backgroundColor: theme.colors.white,
