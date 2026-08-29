@@ -331,8 +331,9 @@ export function rehydrateMarket(
   return pruneExpiredBids(merged, now);
 }
 
-/** How far back a server-side bid record is worth resurrecting as a card. */
-const BID_BACKFILL_WINDOW_MS = 10 * 60_000;
+/** Matches BID_LIFETIME_MS: a bid still open on the server comes back as an
+ *  open card after a reload for as long as it would have lived locally. */
+const BID_BACKFILL_WINDOW_MS = 30 * 60_000;
 
 /**
  * Rebuild bid cards from GET /drivers/me/bids — the server's memory of what
@@ -479,7 +480,13 @@ export function recordBid(
 }
 
 /** Fallback bid lifetime when the offer carried no clock: 90s auction + grace. */
-export const BID_LIFETIME_MS = 105_000;
+/**
+ * How long an unresolved bid stays a live "waiting" card with no word from
+ * the backend. A bid is money on the table until the RIDER acts — accepted,
+ * chose someone else, cancelled — so this is deliberately long: it is a
+ * backstop for dropped frames, not a clock the driver races.
+ */
+export const BID_LIFETIME_MS = 30 * 60_000;
 /** An accepted-but-never-matched bid holds on longer — the resync will
  *  usually turn it into a trip; after this, it's genuinely dead. */
 const ACCEPTED_BID_LIFETIME_MS = 10 * 60_000;

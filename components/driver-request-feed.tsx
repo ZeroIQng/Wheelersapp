@@ -157,7 +157,12 @@ export function DriverRequestFeed({ fullHeight = false }: { fullHeight?: boolean
     const riderAsk = offer.riderOfferNgn ?? offer.fareEstimateNgn;
     const accepted = Boolean(bid.acceptedAt);
     const countered = Boolean(bid.counteredAt) && riderAsk !== bid.amountNgn;
-    const timeLeft = countdown(bidDeadlineMs(bid) - 15_000, now);
+    // Show a ticking clock only while the offer's own auction window is
+    // still running. Past it the bid is simply OPEN — waiting on the rider —
+    // not a countdown to a fake deadline half an hour away.
+    const offerClockMs = new Date(offer.bidsCloseAt ?? offer.expiresAt).getTime();
+    const inAuctionTail = Number.isFinite(offerClockMs) && offerClockMs > now;
+    const timeLeft = inAuctionTail ? countdown(offerClockMs, now) : null;
 
     // A resolved bid stays as its story — greyed, dismissible — instead of
     // vanishing mid-thought.
@@ -198,6 +203,8 @@ export function DriverRequestFeed({ fullHeight = false }: { fullHeight?: boolean
           </AppText>
           {!accepted && timeLeft ? (
             <AppText variant="mono" color={theme.colors.muted}>⏳ {timeLeft}</AppText>
+          ) : !accepted && !bid.outcome ? (
+            <AppText variant="caption" color={theme.colors.muted}>open · waiting on rider</AppText>
           ) : null}
         </View>
         <AppText variant="bodySmall" color={theme.colors.muted} numberOfLines={1}>
