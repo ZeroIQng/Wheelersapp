@@ -488,11 +488,17 @@ export const RESOLVED_BID_LINGER_MS = 10 * 60_000;
 
 /** When this bid's auction actually closes — the offer's own clock. */
 export function bidDeadlineMs(bid: PendingBid): number {
+  const base = new Date(bid.counteredAt ?? bid.sentAt).getTime();
+  const ownLife = (Number.isFinite(base) ? base : 0) + BID_LIFETIME_MS;
   const clock = bid.offer.bidsCloseAt ?? bid.offer.expiresAt;
   const closes = new Date(clock).getTime();
-  if (Number.isFinite(closes)) return closes + 15_000; // frame-delivery grace
-  const base = new Date(bid.counteredAt ?? bid.sentAt).getTime();
-  return (Number.isFinite(base) ? base : 0) + BID_LIFETIME_MS;
+  // Every bid gets AT LEAST its own lifetime from the moment it was sent.
+  // A late bid on a stale request used to be born already past the offer's
+  // clock — the next sweep flipped it straight to "Request ended" while the
+  // rider had never even seen it. Backend truth (bid_lost / offer_accepted)
+  // still resolves it earlier either way.
+  if (Number.isFinite(closes)) return Math.max(closes + 15_000, ownLife);
+  return ownLife;
 }
 
 /**

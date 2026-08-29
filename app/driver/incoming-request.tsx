@@ -132,6 +132,16 @@ export default function IncomingRequestScreen() {
   }, [bidSent]);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const bidInputRef = useRef<TextInput>(null);
+  const sheetScrollRef = useRef<ScrollView>(null);
+
+  // The bid field and submit button live at the bottom of the sheet's scroll
+  // content — bring them into view the moment the keyboard is up.
+  useEffect(() => {
+    if (bidMode && keyboardHeight > 0) {
+      const t = setTimeout(() => sheetScrollRef.current?.scrollToEnd({ animated: true }), 80);
+      return () => clearTimeout(t);
+    }
+  }, [bidMode, keyboardHeight]);
 
   // Swipe-to-dismiss
   const translateY = useSharedValue(0);
@@ -396,9 +406,14 @@ export default function IncomingRequestScreen() {
             // Never taller than the screen, and always clear of the keyboard
             // so the bid field stays visible while typing.
             maxHeight: responsive.height - keyboardHeight - insets.top - responsive.scale(24),
+            // The card is anchored to the bottom of the SCREEN — without this
+            // it stays put and the keyboard covers the bid field on every
+            // device. Lift the whole sheet by the keyboard's height instead.
+            marginBottom: keyboardHeight,
             paddingBottom:
-              Math.max(insets.bottom, responsive.scale(16)) +
-              (keyboardHeight > 0 ? responsive.scale(8) : 0),
+              keyboardHeight > 0
+                ? responsive.scale(8)
+                : Math.max(insets.bottom, responsive.scale(16)),
           },
         ]}
       >
@@ -411,6 +426,7 @@ export default function IncomingRequestScreen() {
         </GestureDetector>
 
         <ScrollView
+          ref={sheetScrollRef}
           bounces={false}
           contentContainerStyle={[styles.cardScrollContent, { gap: responsive.scale(12) }]}
           keyboardShouldPersistTaps="handled"

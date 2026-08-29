@@ -287,12 +287,16 @@ test('an unresolved bid past its auction turns terminal, then leaves after the l
   const s = bidSent('ride-1');
   assert.equal(pruneExpiredBids(s, NOW + 40_000), s, 'young bids survive, same reference');
 
-  // Offer clock (30s card) + grace passes with no verdict → terminal, visible.
-  const stale = pruneExpiredBids(s, NOW + 50_000);
+  // A bid owns its lifetime from the moment it was sent — even when the
+  // offer's own 30s clock has passed, the bid is not yet dead...
+  assert.equal(pruneExpiredBids(s, NOW + 100_000), s, 'own lifetime beats the offer clock');
+
+  // ...but past its own lifetime with no verdict → terminal, visible.
+  const stale = pruneExpiredBids(s, NOW + 110_000);
   assert.equal(stale.pendingBids['ride-1'].outcome, 'expired', 'converted, not deleted');
 
   // …and only after the 10-minute linger does the card actually leave.
-  assert.deepEqual(pruneExpiredBids(stale, NOW + 50_000 + 601_000).pendingBids, {});
+  assert.deepEqual(pruneExpiredBids(stale, NOW + 110_000 + 601_000).pendingBids, {});
 
   // A counter refreshes the offer (fresh expiresAt) — negotiation alive.
   const countered = reduceDriverSession(s, 'ride:offer',
