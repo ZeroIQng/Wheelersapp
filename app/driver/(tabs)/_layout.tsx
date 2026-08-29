@@ -2,7 +2,7 @@ import { Tabs } from 'expo-router';
 import { StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Line, Path, Polyline, Rect } from 'react-native-svg';
-import { useInterstateRequests } from '@/lib/interstate-requests-context';
+import { useDriverSession } from '@/lib/driver-session';
 import { useQuestBadge } from '@/lib/quest-badge-context';
 import { useResponsive } from '@/lib/responsive';
 import { useAppTheme } from '@/lib/theme-context';
@@ -26,17 +26,32 @@ function HistoryIcon({ color, size }: { color: string; size: number }) {
   );
 }
 
-function InterstateIcon({ color, size }: { color: string; size: number }) {
+function ActiveIcon({ color, size }: { color: string; size: number }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-      <Rect x="4" y="3" width="16" height="13" rx="2" />
-      <Line x1="4" y1="11" x2="20" y2="11" />
-      <Line x1="12" y1="3" x2="12" y2="11" />
-      <Circle cx="7.5" cy="19" r="1.6" />
-      <Circle cx="16.5" cy="19" r="1.6" />
-      <Line x1="4" y1="16" x2="4" y2="18" />
-      <Line x1="20" y1="16" x2="20" y2="18" />
+      <Polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
     </Svg>
+  );
+}
+
+function ActiveIconWithBadge({
+  color,
+  size,
+  count,
+}: {
+  color: string;
+  size: number;
+  count: number;
+}) {
+  return (
+    <View>
+      <ActiveIcon color={count > 0 ? theme.colors.orange : color} size={size} />
+      {count > 0 ? (
+        <View style={tabStyles.countBadge}>
+          <Text style={tabStyles.countBadgeText}>{count > 9 ? '9+' : count}</Text>
+        </View>
+      ) : null}
+    </View>
   );
 }
 
@@ -78,27 +93,6 @@ function QuestsIconWithBadge({ color, size, showBadge }: { color: string; size: 
  * and nine waiting requests are different decisions, and the driver should be
  * able to tell them apart without opening the tab.
  */
-function InterstateIconWithBadge({
-  color,
-  size,
-  count,
-}: {
-  color: string;
-  size: number;
-  count: number;
-}) {
-  return (
-    <View>
-      <InterstateIcon color={count > 0 ? theme.colors.orange : color} size={size} />
-      {count > 0 ? (
-        <View style={tabStyles.countBadge}>
-          <Text style={tabStyles.countBadgeText}>{count > 9 ? '9+' : count}</Text>
-        </View>
-      ) : null}
-    </View>
-  );
-}
-
 function SettingsIcon({ color, size }: { color: string; size: number }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
@@ -145,7 +139,12 @@ const tabStyles = StyleSheet.create({
 export default function DriverTabsLayout() {
   const { isDark } = useAppTheme();
   const { showBadge } = useQuestBadge();
-  const { pendingCount } = useInterstateRequests();
+  const { session } = useDriverSession();
+  // The Active tab's number: requests on the table + live bids + the trip.
+  const activeCount =
+    session.offers.length +
+    Object.values(session.pendingBids).filter((bid) => !bid.outcome).length +
+    (session.currentRide ? 1 : 0);
   const insets = useSafeAreaInsets();
   const responsive = useResponsive();
 
@@ -194,14 +193,16 @@ export default function DriverTabsLayout() {
         }}
       />
       <Tabs.Screen
-        name="interstate"
+        name="active"
         options={{
-          title: 'Interstate',
+          title: 'Active',
           tabBarIcon: ({ color, size }) => (
-            <InterstateIconWithBadge color={color} size={size} count={pendingCount} />
+            <ActiveIconWithBadge color={color} size={size} count={activeCount} />
           ),
         }}
       />
+      {/* Interstate leaves the bar; the route stays reachable by link. */}
+      <Tabs.Screen name="interstate" options={{ href: null }} />
       <Tabs.Screen
         name="history"
         options={{

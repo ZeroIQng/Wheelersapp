@@ -35,7 +35,7 @@ const BID_INCREMENTS = [100, 200, 500];
  * counter updates that same card, and timeout/decline removes it. The same
  * ride never appears twice, and nothing on screen outlives its auction.
  */
-export function DriverRequestFeed() {
+export function DriverRequestFeed({ fullHeight = false }: { fullHeight?: boolean } = {}) {
   const router = useRouter();
   const { session, acceptRide, selectOffer, dismissBid } = useDriverSession();
   const [filters, setFilters] = useState<DriverFilters>(getDriverFilters());
@@ -99,7 +99,9 @@ export function DriverRequestFeed() {
   if (bids.length === 0 && requests.length === 0) return null;
 
   return (
-    <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
+    <ScrollView
+      style={fullHeight ? styles.scrollFull : styles.scroll}
+      showsVerticalScrollIndicator={false}>
       {bids.map((bid) => renderBidCard(bid))}
       {requests.map((offer) => renderRequestCard(offer))}
     </ScrollView>
@@ -297,6 +299,9 @@ export function DriverRequestFeed() {
 const styles = StyleSheet.create({
   scroll: {
     maxHeight: 380,
+  },
+  scrollFull: {
+    flex: 1,
   },
   card: {
     backgroundColor: theme.colors.white,

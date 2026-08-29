@@ -49,15 +49,12 @@ export function DriverBidsList({ history }: { history: DriverBidRecord[] }) {
   const router = useRouter();
   const { session } = useDriverSession();
 
-  const liveBids = Object.values(session.pendingBids ?? {}).sort(
-    (a, b) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime(),
-  );
-  const liveRideIds = new Set(liveBids.map((bid) => bid.offer.rideId));
-  // A live bid is also in the history (the gateway records it as it's sent) —
-  // show it once, in its live form, so the "paid" flip is visible.
-  const pastBids = history.filter((bid) => !liveRideIds.has(bid.rideId));
+  // Live negotiation moved to the Active tab — History tells finished
+  // stories only. Bids mid-flight are excluded here, not duplicated.
+  const liveNow = Object.values(session.pendingBids ?? {}).filter((b) => !b.outcome).length;
+  const pastBids = history;
 
-  if (liveBids.length === 0 && pastBids.length === 0) {
+  if (liveNow === 0 && pastBids.length === 0) {
     return (
       <View style={styles.emptyWrap}>
         <AppText variant="body" color={theme.colors.muted} style={styles.emptyText}>
@@ -69,60 +66,18 @@ export function DriverBidsList({ history }: { history: DriverBidRecord[] }) {
 
   return (
     <View style={styles.list}>
-      {liveBids.length > 0 ? (
-        <AppText variant="label" color={theme.colors.muted} style={styles.sectionTitle}>
-          Live
-        </AppText>
+      {liveNow > 0 ? (
+        <Pressable
+          onPress={() => router.push('/driver/(tabs)/active' as Href)}
+          style={({ pressed }) => [styles.liveLink, pressed && styles.pressed]}>
+          <AppText variant="bodySmall" color={theme.colors.orange}>
+            {liveNow} live bid{liveNow === 1 ? '' : 's'} in play — see the Active tab ›
+          </AppText>
+        </Pressable>
       ) : null}
-      {liveBids.map((bid) => {
-        const accepted = Boolean(bid.acceptedAt);
-        const fare = bid.agreedFareNgn ?? bid.amountNgn;
-        const statusLabel = accepted
-          ? bid.riderPaid
-            ? '✅ Rider paid — tap to continue'
-            : '✅ Rider accepted — tap to continue'
-          : '⏳ Waiting for rider';
-        return (
-          <Pressable
-            key={`live-${bid.offer.rideId}`}
-            onPress={() =>
-              router.push(`/driver/pending-bid?rideId=${encodeURIComponent(bid.offer.rideId)}` as Href)
-            }
-            style={({ pressed }) => [pressed && styles.pressed]}>
-            <AppCard style={[styles.card, accepted ? styles.cardAccepted : styles.cardLive]}>
-              <View style={styles.top}>
-                <View style={styles.info}>
-                  <AppText variant="bodyMedium" numberOfLines={1}>
-                    {bid.offer.pickup.address}
-                  </AppText>
-                  <AppText variant="bodySmall" color={theme.colors.muted} numberOfLines={1}>
-                    to {bid.offer.destination.address}
-                  </AppText>
-                </View>
-                <AppText variant="mono" color={theme.colors.orange} style={styles.amount} numberOfLines={1}>
-                  {formatNgn(fare)}
-                </AppText>
-              </View>
-              <View style={styles.bottom}>
-                <AppText variant="bodySmall" color={theme.colors.muted} numberOfLines={1}>
-                  {formatDate(bid.sentAt)}
-                </AppText>
-                <AppText
-                  variant="bodySmall"
-                  color={accepted ? theme.colors.orange : theme.colors.green}
-                  numberOfLines={1}
-                  style={styles.statusText}>
-                  {statusLabel}
-                </AppText>
-              </View>
-            </AppCard>
-          </Pressable>
-        );
-      })}
-
       {pastBids.length > 0 ? (
         <AppText variant="label" color={theme.colors.muted} style={styles.sectionTitle}>
-          {liveBids.length > 0 ? 'Earlier' : 'All bids'}
+          All bids
         </AppText>
       ) : null}
       {pastBids.map((bid) => {
@@ -182,6 +137,10 @@ const styles = StyleSheet.create({
   emptyText: {
     textAlign: 'center',
     maxWidth: '75%',
+  },
+  liveLink: {
+    paddingVertical: 6,
+    paddingHorizontal: 4,
   },
   pressed: {
     opacity: 0.7,
