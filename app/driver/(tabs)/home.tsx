@@ -2,7 +2,7 @@ import { Href, useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, Platform, Pressable, StyleSheet, View } from 'react-native';
 import MapView, { Circle, PROVIDER_GOOGLE } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -10,8 +10,8 @@ import { AppText } from '@/components/app-text';
 import { useAuth } from '@/lib/auth';
 import { getAccessTokenWithRetry } from '@/lib/access-token';
 import { getDriverStats, getDriverEarnings, type DriverStatsResponse } from '@/lib/api';
+import { DriverRequestFeed } from '@/components/driver-request-feed';
 import { useDriverSession } from '@/lib/driver-session';
-import { haversineKm } from '@/lib/geo';
 import { useAppLocation } from '@/lib/location';
 import { useAppNotifications } from '@/lib/notifications';
 import { useQuestBadge } from '@/lib/quest-badge-context';
@@ -44,7 +44,7 @@ const LAGOS_REGION = {
 export default function DriverHomeScreen() {
   const router = useRouter();
   const { getAccessToken } = useAuth();
-  const { session, goOnline, goOffline, selectOffer, sendGps } = useDriverSession();
+  const { session, goOnline, goOffline, sendGps } = useDriverSession();
 
   // Every live request. The driver picks one from this list — nothing opens by
   // itself, which is both what a driver expects and what stops the screen
@@ -168,16 +168,6 @@ export default function DriverHomeScreen() {
   }, [isOnline, session.currentRide, currentLocation, sendGps]);
   const driverLat = currentLocation?.lat ?? LAGOS_REGION.latitude;
   const driverLng = currentLocation?.lng ?? LAGOS_REGION.longitude;
-
-  // Nearest pickup first. Arrival order is meaningless to a driver deciding
-  // which job to take; how far they have to drive to reach the rider is not.
-  const sortedOffers = currentLocation
-    ? [...waitingOffers].sort(
-        (left, right) =>
-          haversineKm(currentLocation.lat, currentLocation.lng, left.pickup.lat, left.pickup.lng) -
-          haversineKm(currentLocation.lat, currentLocation.lng, right.pickup.lat, right.pickup.lng),
-      )
-    : waitingOffers;
 
   const handleToggleOnline = async () => {
     try {
@@ -311,10 +301,10 @@ export default function DriverHomeScreen() {
         </View>
       ) : null}
 
-      {/* Bids awaiting a rider's answer — visible until resolved. Each one
-          opens its own page: what was bid, on which trip, and whether the
-          rider has paid yet. */}
-      {!currentRide && pendingBids.length > 0 ? (
+      {/* The job feed — inDrive-style: one card per ride for its whole life.
+          New requests carry Accept/price chips inline; a sent bid becomes the
+          same card in a waiting state; a rider counter updates it in place. */}
+      {!currentRide && (waitingOffers.length > 0 || pendingBids.length > 0) ? (
         <View
           style={[
             styles.requestsOverlay,
@@ -324,128 +314,17 @@ export default function DriverHomeScreen() {
               right: responsive.gutter,
             },
           ]}>
-          <View style={styles.pendingBidCard}>
-            <Pressable
-              onPress={() => router.push('/driver/(tabs)/history?tab=bids' as Href)}
-              style={({ pressed }) => [styles.allBidsLink, pressed && styles.pendingBidPressed]}>
-              <AppText variant="caption" color={theme.colors.muted}>
-                {pendingBids.length === 1 ? 'Your bid' : `${pendingBids.length} bids`}
-              </AppText>
-              <AppText variant="caption" color={theme.colors.orange}>
-                All bids ›
-              </AppText>
+          <View style={styles.feedHeader}>
+            <AppText variant="caption" color={theme.colors.muted}>
+              {waitingOffers.length > 0
+                ? `${waitingOffers.length + pendingBids.length} on the table`
+                : 'Your bids'}
+            </AppText>
+            <Pressable onPress={() => router.push('/driver/(tabs)/history?tab=bids' as Href)}>
+              <AppText variant="caption" color={theme.colors.orange}>All bids ›</AppText>
             </Pressable>
-            {pendingBids.map((bid) => {
-              const accepted = Boolean(bid.acceptedAt);
-              return (
-                <Pressable
-                  key={bid.offer.rideId}
-                  onPress={() =>
-                    router.push(
-                      `/driver/pending-bid?rideId=${encodeURIComponent(bid.offer.rideId)}` as Href,
-                    )
-                  }
-                  style={({ pressed }) => [styles.pendingBidRow, pressed && styles.pendingBidPressed]}>
-                  <AppText variant="label" color={accepted ? theme.colors.orange : theme.colors.green}>
-                    {accepted
-                      ? `✅ Rider ${bid.riderPaid ? 'paid' : 'accepted'} · ${formatNgn(bid.agreedFareNgn ?? bid.amountNgn)}`
-                      : `⏳ Bid sent · ${formatNgn(bid.amountNgn)}`}
-                  </AppText>
-                  <AppText variant="bodySmall" color={theme.colors.muted} numberOfLines={1}>
-                    {bid.offer.pickup.address}
-                    {accepted ? ' — tap to view' : ' — waiting for rider · tap to view'}
-                  </AppText>
-                </Pressable>
-              );
-            })}
           </View>
-        </View>
-      ) : null}
-
-      {/* Incoming requests — always a list, even for one, so the driver reads
-          the same layout every time and a second request simply appears in it.
-          Sits at the top: nearest-first, distance leading, because "how far do
-          I drive to reach them" is the first thing that decides a job. */}
-      {waitingOffers.length > 0 ? (
-        <View
-          style={[
-            styles.requestsOverlay,
-            {
-              top:
-                insets.top +
-                responsive.scale(currentRide || pendingBids.length > 0 ? 132 : 56),
-              left: responsive.gutter,
-              right: responsive.gutter,
-            },
-          ]}>
-
-          <View style={styles.queueCard}>
-            <AppText variant="h3" color={theme.colors.orange} style={styles.queueHeading}>
-              🚗 {waitingOffers.length} ride request{waitingOffers.length === 1 ? '' : 's'}
-            </AppText>
-            <AppText variant="bodySmall" color={theme.colors.muted} style={styles.queueSub}>
-              Tap a request to view and bid
-            </AppText>
-            <ScrollView style={styles.queueScroll} showsVerticalScrollIndicator={false}>
-              {sortedOffers.map((queued) => {
-                const pickupKm = currentLocation
-                  ? haversineKm(
-                      currentLocation.lat,
-                      currentLocation.lng,
-                      queued.pickup.lat,
-                      queued.pickup.lng,
-                    )
-                  : null;
-                return (
-                  <Pressable
-                    key={queued.rideId}
-                    onPress={() => {
-                      void stopRideRequestSound();
-                      selectOffer(queued.rideId);
-                      router.push('/driver/incoming-request' as Href);
-                    }}
-                    style={({ pressed }) => [styles.queueRow, pressed && styles.queueRowPressed]}>
-                    {/* Distance to the rider, leading and largest — the number
-                        a driver decides on before anything else. */}
-                    <View style={styles.distanceBadge}>
-                      <AppText variant="h3" color={theme.colors.orange}>
-                        {/* Without a GPS fix this would be measured from a
-                            hardcoded city centre — a confident, wrong number.
-                            Show nothing rather than mislead. */}
-                        {pickupKm === null
-                          ? '--'
-                          : pickupKm < 10
-                            ? pickupKm.toFixed(1)
-                            : Math.round(pickupKm)}
-                      </AppText>
-                      <AppText variant="monoSmall" color={theme.colors.muted}>
-                        {pickupKm === null ? 'no GPS' : 'km away'}
-                      </AppText>
-                    </View>
-
-                    <View style={styles.queueRowText}>
-                      <AppText variant="body" numberOfLines={1}>
-                        {queued.pickup.address}
-                      </AppText>
-                      <AppText variant="bodySmall" color={theme.colors.muted} numberOfLines={1}>
-                        to {queued.destination.address}
-                      </AppText>
-                      <AppText variant="monoSmall" color={theme.colors.mutedLight}>
-                        {queued.plannedDistanceKm
-                          ? `${queued.plannedDistanceKm.toFixed(1)} km trip`
-                          : 'trip length unknown'}
-                        {queued.isGroupRide ? ` · group · ${queued.riderCount ?? 2} riders` : ''}
-                      </AppText>
-                    </View>
-
-                    <AppText variant="label" color={theme.colors.orange}>
-                      {formatNgn(queued.riderOfferNgn ?? queued.fareEstimateNgn)}
-                    </AppText>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-          </View>
+          <DriverRequestFeed />
         </View>
       ) : null}
 
@@ -560,6 +439,13 @@ const styles = StyleSheet.create({
   },
   requestsOverlay: {
     position: 'absolute',
+  },
+  feedHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+    marginBottom: 6,
   },
   queueScroll: {
     maxHeight: 240,

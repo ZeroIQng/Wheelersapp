@@ -22,6 +22,7 @@ import {
   applyActiveRideSnapshot,
   defaultDriverSession,
   getString,
+  pruneExpiredBids,
   pruneExpiredOffers,
   recordBid,
   reduceDriverSession,
@@ -418,8 +419,16 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
 
   const acceptRide = useCallback(
     async (rideId: string, counterOfferNgn?: number, origin?: { lat: number; lng: number }) => {
-      const offer = sessionRef.current.currentOffer;
-      if (!offer || offer.rideId !== rideId) {
+      // Bids come from the feed card as often as from the open request modal
+      // now — resolve the offer from wherever it lives.
+      const { currentOffer, offers, pendingBids } = sessionRef.current;
+      const offer =
+        (currentOffer?.rideId === rideId ? currentOffer : undefined) ??
+        offers.find((queued) => queued.rideId === rideId) ??
+        // Re-bidding/accepting on a countered negotiation: the request lives
+        // on the bid card by then, not in the queue.
+        pendingBids[rideId]?.offer;
+      if (!offer) {
         throw new Error('No matching ride offer to accept.');
       }
 
@@ -620,6 +629,20 @@ export function DriverSessionProvider({ children }: { children: ReactNode }) {
     if (!isBackendConfigured() || !isReady || !user) return;
     void syncActiveRide();
   }, [isReady, user, syncActiveRide]);
+
+  // A dropped ride:bid_timeout frame must not leave "waiting for rider" on
+  // screen forever — sweep bids past the auction window, and expired offers
+  // with them.
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setSession((prev) => {
+        const pruned = pruneExpiredBids(prev, Date.now());
+        const offers = pruneExpiredOffers(pruned.offers);
+        return offers.length === pruned.offers.length ? pruned : { ...pruned, offers };
+      });
+    }, 15_000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Coming back from the background is exactly when a match was missed: the
   // socket is dead while the app is suspended, and the rider paid meanwhile.

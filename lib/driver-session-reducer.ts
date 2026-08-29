@@ -103,6 +103,8 @@ export type PendingBid = {
   acceptedAt?: string;
   agreedFareNgn?: number;
   riderPaid?: boolean;
+  /** The rider came back with a different price after this bid was sent. */
+  counteredAt?: string;
 };
 
 export type DriverSessionState = {
@@ -212,7 +214,11 @@ function rideFromSnapshot(ride: DriverActiveRide): DriverRide {
 
 // ── Transitions ────────────────────────────────────────────────────────────
 
-/** A bid the driver just sent, remembered past the offer card's short life. */
+/**
+ * A bid the driver just sent, remembered past the offer card's short life.
+ * The ride also leaves the requests queue: one ride, one card — a request
+ * you've answered lives on your bid card, never beside it as a duplicate.
+ */
 export function recordBid(
   prev: DriverSessionState,
   offer: RideOffer,
@@ -221,11 +227,38 @@ export function recordBid(
 ): DriverSessionState {
   return {
     ...prev,
+    offers: prev.offers.filter((queued) => queued.rideId !== offer.rideId),
     pendingBids: {
       ...prev.pendingBids,
       [offer.rideId]: { offer, amountNgn, sentAt },
     },
   };
+}
+
+/** How long a sent bid stays alive with no answer: the backend auction runs
+ *  180s; a little grace covers clock skew and a re-armed timer. */
+export const BID_LIFETIME_MS = 210_000;
+/** An accepted-but-never-matched bid holds on longer — the resync will
+ *  usually turn it into a trip; after this, it's genuinely dead. */
+const ACCEPTED_BID_LIFETIME_MS = 10 * 60_000;
+
+/**
+ * Client-side backstop for bids the backend never resolved — a dropped
+ * ride:bid_timeout frame must not leave "waiting for rider" on screen
+ * forever. Returns `prev` untouched when nothing expired.
+ */
+export function pruneExpiredBids(prev: DriverSessionState, now: number = Date.now()): DriverSessionState {
+  const entries = Object.entries(prev.pendingBids);
+  if (entries.length === 0) return prev;
+
+  const kept = entries.filter(([, bid]) => {
+    const base = new Date(bid.counteredAt ?? bid.sentAt).getTime();
+    if (!Number.isFinite(base)) return false;
+    const lifetime = bid.acceptedAt ? ACCEPTED_BID_LIFETIME_MS : BID_LIFETIME_MS;
+    return now - base < lifetime;
+  });
+  if (kept.length === entries.length) return prev;
+  return { ...prev, pendingBids: Object.fromEntries(kept) };
 }
 
 /**
@@ -306,6 +339,32 @@ export function reduceDriverSession(
           ? (payload.groupMembers as GroupSeat[])
           : undefined,
     };
+
+    // A re-broadcast for a ride we've already BID on is the rider talking
+    // back (usually a counter-offer). It updates the bid card — it must
+    // never reappear in the requests queue as a seemingly new job.
+    const existingBid = prev.pendingBids[incoming.rideId];
+    if (existingBid) {
+      const previousAsk = existingBid.offer.riderOfferNgn ?? existingBid.offer.fareEstimateNgn;
+      const nextAsk = incoming.riderOfferNgn ?? incoming.fareEstimateNgn;
+      return {
+        ...prev,
+        offers: pruneExpiredOffers(prev.offers, now).filter(
+          (queued) => queued.rideId !== incoming.rideId,
+        ),
+        currentOffer:
+          prev.currentOffer?.rideId === incoming.rideId ? incoming : prev.currentOffer,
+        pendingBids: {
+          ...prev.pendingBids,
+          [incoming.rideId]: {
+            ...existingBid,
+            offer: incoming,
+            counteredAt:
+              nextAsk !== previousAsk ? new Date(now).toISOString() : existingBid.counteredAt,
+          },
+        },
+      };
+    }
 
     // Same rideId means a re-priced version of a request already in the
     // queue, so it replaces that entry rather than adding a duplicate.
@@ -431,6 +490,30 @@ export function reduceDriverSession(
           riderPaid: getString(payload.paymentMethod) !== 'CASH',
         },
       },
+    };
+  }
+
+  if (type === 'ride:bid_timeout') {
+    // Auction over, nobody chosen — the request and any bid on it are gone.
+    const rideId = getString(payload.rideId);
+    if (!rideId) return prev;
+    const hasBid = rideId in prev.pendingBids;
+    const hasOffer = prev.offers.some((queued) => queued.rideId === rideId);
+    if (!hasBid && !hasOffer && prev.currentOffer?.rideId !== rideId) return prev;
+
+    const pendingBids = { ...prev.pendingBids };
+    delete pendingBids[rideId];
+    const offers = prev.offers.filter((queued) => queued.rideId !== rideId);
+    return {
+      ...prev,
+      offers,
+      currentOffer: prev.currentOffer?.rideId === rideId ? offers[0] ?? null : prev.currentOffer,
+      status: prev.currentRide
+        ? prev.status
+        : offers.length > 0 || prev.currentOffer?.rideId !== rideId
+          ? prev.status
+          : 'online',
+      pendingBids,
     };
   }
 

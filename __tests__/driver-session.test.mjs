@@ -25,6 +25,7 @@ const {
   reduceDriverSession,
   recordBid,
   applyActiveRideSnapshot,
+  pruneExpiredBids,
   defaultDriverSession,
 } = createRequire(import.meta.url)(outFile);
 
@@ -223,6 +224,56 @@ test('a snapshot with no live trip changes nothing', () => {
     applyActiveRideSnapshot(before, { rideId: 'x', rideStatus: 'COMPLETED', pickup: PICKUP, destination: DEST, stops: [], agreedFareNgn: 0 }),
     before,
   );
+});
+
+test('bidding removes the request from the queue — one ride, one card', () => {
+  let s = reduceDriverSession(online(), 'ride:offer', offerPayload('ride-1'), NOW);
+  assert.equal(s.offers.length, 1);
+  s = recordBid(s, s.currentOffer, 6000, new Date(NOW).toISOString());
+  assert.equal(s.offers.length, 0, 'the answered request must not sit beside the bid card');
+  assert.ok(s.pendingBids['ride-1']);
+});
+
+test('a rider counter-offer updates the bid card instead of spawning a new request', () => {
+  let s = bidSent('ride-1');
+  // Backend re-broadcasts the request with the rider\'s new number.
+  s = reduceDriverSession(s, 'ride:offer', offerPayload('ride-1', { riderOfferNgn: 3600 }), NOW + 60_000);
+  assert.equal(s.offers.length, 0, 'no duplicate card');
+  const bid = s.pendingBids['ride-1'];
+  assert.equal(bid.offer.riderOfferNgn, 3600, 'the card carries the rider\'s new ask');
+  assert.ok(bid.counteredAt, 'marked as countered');
+  assert.equal(bid.amountNgn, 6000, 'my own bid amount is untouched');
+
+  // Same price re-broadcast (driver came online etc.) is not a "counter".
+  const again = reduceDriverSession(bidSent('ride-2'), 'ride:offer', offerPayload('ride-2'), NOW);
+  assert.equal(again.pendingBids['ride-2'].counteredAt, undefined);
+});
+
+test('ride:bid_timeout kills the bid and the request — the auction is over', () => {
+  const s = reduceDriverSession(bidSent('ride-1'), 'ride:bid_timeout', { rideId: 'ride-1' }, NOW);
+  assert.deepEqual(s.pendingBids, {});
+  assert.deepEqual(s.offers, []);
+  assert.equal(s.currentRide, null);
+
+  // Unknown ride: no-op, same reference.
+  const before = online();
+  assert.equal(reduceDriverSession(before, 'ride:bid_timeout', { rideId: 'ghost' }, NOW), before);
+});
+
+test('a bid the backend never resolved expires on its own after the auction window', () => {
+  const s = bidSent('ride-1');
+  assert.equal(pruneExpiredBids(s, NOW + 60_000), s, 'young bids survive, same reference');
+  const later = pruneExpiredBids(s, NOW + 211_000);
+  assert.deepEqual(later.pendingBids, {}, 'stale bid swept');
+
+  // A counter restarts the clock — the negotiation is clearly alive.
+  let countered = reduceDriverSession(s, 'ride:offer', offerPayload('ride-1', { riderOfferNgn: 3600 }), NOW + 200_000);
+  assert.ok(pruneExpiredBids(countered, NOW + 211_000).pendingBids['ride-1'], 'countered bid lives on');
+
+  // An accepted bid holds much longer (resync will normally convert it).
+  let accepted = reduceDriverSession(bidSent('ride-2'), 'ride:offer_accepted', { rideId: 'ride-2', paymentMethod: 'WALLET' }, NOW);
+  assert.ok(pruneExpiredBids(accepted, NOW + 300_000).pendingBids['ride-2']);
+  assert.deepEqual(pruneExpiredBids(accepted, NOW + 601_000).pendingBids, {});
 });
 
 test('the full happy path: offer → bid → paid → matched → arrived → started → completed', () => {
