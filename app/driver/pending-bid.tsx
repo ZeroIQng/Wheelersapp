@@ -1,12 +1,14 @@
 import { Href, useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef, useState } from 'react';
-import { Alert, StyleSheet, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, TextInput, View } from 'react-native';
 
 import { AppButton } from '@/components/app-button';
 import { AppScreen } from '@/components/app-screen';
 import { AppText } from '@/components/app-text';
+import { BID_LIFETIME_MS } from '@/lib/driver-session-reducer';
 import { useDriverSession } from '@/lib/driver-session';
+import { useAppLocation } from '@/lib/location';
 import { theme } from '@/theme';
 
 const VAT_RATE = 0.075;
@@ -53,7 +55,8 @@ export default function PendingBidScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ rideId?: string | string[] }>();
   const rideId = Array.isArray(params.rideId) ? params.rideId[0] : params.rideId;
-  const { session, syncActiveRide } = useDriverSession();
+  const { session, acceptRide, syncActiveRide } = useDriverSession();
+  const { currentLocation } = useAppLocation();
 
   const bid = rideId ? session.pendingBids[rideId] : undefined;
   const currentRide = session.currentRide;
@@ -62,10 +65,13 @@ export default function PendingBidScreen() {
 
   const [now, setNow] = useState(() => Date.now());
   const [busy, setBusy] = useState<'refresh' | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editAmount, setEditAmount] = useState('');
+  const [sendingBid, setSendingBid] = useState(false);
   const routedRef = useRef(false);
 
   useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 30_000);
+    const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, []);
 
@@ -105,6 +111,24 @@ export default function PendingBidScreen() {
   const vat = Math.round(fare * VAT_RATE);
   const payout = fare - vat - STATE_LEVY_NGN;
   const riderOffer = offer.riderOfferNgn ?? offer.fareEstimateNgn;
+
+  const sendNewBid = async (amountNgn: number) => {
+    if (!bid || sendingBid) return;
+    if (!Number.isFinite(amountNgn) || amountNgn <= 0) {
+      Alert.alert('Enter a valid amount', 'Type the fare you want to offer, e.g. 4500.');
+      return;
+    }
+    setSendingBid(true);
+    try {
+      await acceptRide(bid.offer.rideId, Math.round(amountNgn), currentLocation ?? undefined);
+      setEditOpen(false);
+      setEditAmount('');
+    } catch (err) {
+      Alert.alert('Could not update bid', err instanceof Error ? err.message : 'Please try again.');
+    } finally {
+      setSendingBid(false);
+    }
+  };
 
   const handleRefresh = async () => {
     setBusy('refresh');
@@ -146,8 +170,17 @@ export default function PendingBidScreen() {
             ? tripIsThisRide
               ? 'Your trip is ready.'
               : 'Setting up your trip — this usually takes a few seconds.'
-            : 'The rider is looking at bids. A bid stands until the rider decides or the request ends — you can leave this page; we will alert you when they decide.'}
+            : 'The rider is looking at bids — you can leave this page; we will alert you when they decide.'}
         </AppText>
+        {!accepted ? (() => {
+          const closesMs = new Date(bid.counteredAt ?? bid.sentAt).getTime() + BID_LIFETIME_MS - 30_000;
+          const left = Math.max(0, Math.floor((closesMs - now) / 1000));
+          return (
+            <AppText variant="mono" color={left < 30 ? theme.colors.danger : theme.colors.muted}>
+              ⏳ {Math.floor(left / 60)}:{String(left % 60).padStart(2, '0')} until this search ends
+            </AppText>
+          );
+        })() : null}
       </View>
 
       {/* The trip */}
@@ -215,6 +248,62 @@ export default function PendingBidScreen() {
           <AppText variant="label" color={theme.colors.green}>{formatNgn(payout)}</AppText>
         </View>
       </View>
+
+      {/* Change the bid — a bid is a negotiation, not a commitment. */}
+      {!accepted ? (
+        <View style={styles.card}>
+          <AppText variant="label" color={theme.colors.muted} style={styles.cardTitle}>
+            Change your bid
+          </AppText>
+          {riderOffer !== bid.amountNgn ? (
+            <AppButton
+              title={`Accept rider's ${formatNgn(riderOffer)}`}
+              onPress={() => void sendNewBid(riderOffer)}
+              loading={sendingBid}
+            />
+          ) : null}
+          {editOpen ? (
+            <>
+              <View style={styles.editRow}>
+                <AppText variant="h3">₦</AppText>
+                <TextInput
+                  style={styles.editInput}
+                  keyboardType="number-pad"
+                  autoFocus
+                  value={editAmount}
+                  onChangeText={(text) => setEditAmount(text.replace(/[^0-9]/g, ''))}
+                  placeholder={String(bid.amountNgn)}
+                  placeholderTextColor={theme.colors.mutedLight}
+                />
+              </View>
+              <View style={styles.chipRow}>
+                {[-200, -100, 100, 200].map((step) => (
+                  <Pressable
+                    key={step}
+                    onPress={() => setEditAmount(String(Math.max(0, (Number(editAmount) || bid.amountNgn) + step)))}
+                    style={({ pressed }) => [styles.chip, pressed && styles.chipPressed]}>
+                    <AppText variant="label">{step > 0 ? `+${step}` : step}</AppText>
+                  </Pressable>
+                ))}
+              </View>
+              <AppButton
+                title={`Send new bid${editAmount ? ` · ${formatNgn(Number(editAmount))}` : ''}`}
+                onPress={() => void sendNewBid(Number(editAmount))}
+                loading={sendingBid}
+              />
+            </>
+          ) : (
+            <AppButton
+              title="New amount…"
+              variant="ghost"
+              onPress={() => {
+                setEditAmount(String(bid.amountNgn));
+                setEditOpen(true);
+              }}
+            />
+          )}
+        </View>
+      ) : null}
 
       <View style={styles.actions}>
         {accepted ? (
@@ -301,6 +390,41 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: theme.colors.borderLight,
     marginVertical: theme.spacing.xs,
+  },
+  editRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.sm,
+    borderWidth: theme.borders.thick,
+    borderColor: theme.colors.black,
+    borderRadius: theme.radii.sm,
+    paddingHorizontal: theme.spacing.md,
+    backgroundColor: theme.colors.white,
+  },
+  editInput: {
+    flex: 1,
+    fontFamily: 'ClashDisplay_700Bold',
+    fontSize: 22,
+    color: theme.colors.black,
+    minHeight: 52,
+    paddingVertical: 0,
+  },
+  chipRow: {
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+  },
+  chip: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 44,
+    borderRadius: theme.radii.sm,
+    borderWidth: 1.5,
+    borderColor: theme.colors.black,
+    backgroundColor: theme.colors.white,
+  },
+  chipPressed: {
+    opacity: 0.6,
   },
   actions: {
     gap: theme.spacing.sm,

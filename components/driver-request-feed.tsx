@@ -141,9 +141,25 @@ export function DriverRequestFeed() {
             ))}
           </View>
         ) : (
-          <AppText variant="caption" color={theme.colors.mutedLight}>
-            Waiting for the rider — you can keep taking other requests
-          </AppText>
+          <View style={styles.actionsRow}>
+            {riderAsk !== bid.amountNgn ? (
+              <Pressable
+                disabled={busyRideId === offer.rideId}
+                onPress={() => void sendBid(offer, riderAsk)}
+                style={({ pressed }) => [styles.acceptBtn, pressed && styles.pressed]}>
+                <AppText variant="label" color={theme.colors.white}>Accept {formatNgn(riderAsk)}</AppText>
+              </Pressable>
+            ) : (
+              <AppText variant="caption" color={theme.colors.mutedLight} style={styles.waitNote}>
+                You can keep taking other requests
+              </AppText>
+            )}
+            <Pressable
+              onPress={() => router.push(`/driver/pending-bid?rideId=${encodeURIComponent(offer.rideId)}` as Href)}
+              style={({ pressed }) => [styles.chip, pressed && styles.pressed]}>
+              <AppText variant="label">Change bid</AppText>
+            </Pressable>
+          </View>
         )}
       </Pressable>
     );
@@ -310,6 +326,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     minHeight: 44,
     paddingHorizontal: theme.spacing.sm,
+  },
+  waitNote: {
+    flex: 1,
   },
   pressed: {
     opacity: 0.6,
