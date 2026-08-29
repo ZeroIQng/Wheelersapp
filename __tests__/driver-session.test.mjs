@@ -28,8 +28,10 @@ const {
   pruneExpiredBids,
   dismissBid,
   dismissMissedOffer,
+  isOfferStale,
   ringDeadlineMs,
   RING_WINDOW_MS,
+  STALE_OFFER_LINGER_MS,
   MISSED_OFFER_CAP,
   RESOLVED_BID_LINGER_MS,
   defaultDriverSession,
@@ -323,9 +325,15 @@ test('messages that are not session transitions are reported as unhandled', () =
 
 /* ── missed requests: a timer running out is a UI event, not a deletion ── */
 
-test('an untouched request that expires becomes a missed card, not a deletion', () => {
+test('a run-out request stays in the queue — stale and biddable, not deleted', () => {
   let s = reduceDriverSession(online(), 'ride:offer', offerPayload('ride-m1'), NOW);
   s = pruneExpiredBids(s, NOW + 31_000); // past expiresAt (NOW+30s)
+  // The countdown ending is a UI event: the offer is still there to bid on.
+  assert.equal(s.offers.length, 1);
+  assert.equal(isOfferStale(s.offers[0], NOW + 31_000), true);
+  assert.equal(s.missedOffers.length, 0);
+  // Only after the stale linger does it become a tombstone.
+  s = pruneExpiredBids(s, NOW + 30_000 + STALE_OFFER_LINGER_MS + 1_000);
   assert.equal(s.offers.length, 0);
   assert.equal(s.missedOffers.length, 1);
   assert.equal(s.missedOffers[0].offer.rideId, 'ride-m1');
@@ -355,15 +363,16 @@ test('bid_lost on an untouched request files it as missed (taken)', () => {
   assert.equal(s.missedOffers[0].reason, 'taken');
 });
 
-test('a re-broadcast revives a missed request back into the live queue', () => {
+test('a re-broadcast revives even a tombstoned request back into the live queue', () => {
+  const dead = NOW + 30_000 + STALE_OFFER_LINGER_MS + 1_000;
   let s = reduceDriverSession(online(), 'ride:offer', offerPayload('ride-m5'), NOW);
-  s = pruneExpiredBids(s, NOW + 31_000);
+  s = pruneExpiredBids(s, dead);
   assert.equal(s.missedOffers.length, 1);
   s = reduceDriverSession(
     s,
     'ride:offer',
-    offerPayload('ride-m5', { expiresAt: new Date(NOW + 120_000).toISOString() }),
-    NOW + 32_000,
+    offerPayload('ride-m5', { expiresAt: new Date(dead + 120_000).toISOString() }),
+    dead + 1_000,
   );
   assert.equal(s.missedOffers.length, 0);
   assert.equal(s.offers.length, 1);
@@ -374,16 +383,17 @@ test('missed cards leave after their linger, and the pile is capped', () => {
   for (let i = 0; i < MISSED_OFFER_CAP + 3; i += 1) {
     s = reduceDriverSession(s, 'ride:offer', offerPayload(`ride-c${i}`), NOW);
   }
-  s = pruneExpiredBids(s, NOW + 31_000);
+  const dead = NOW + 30_000 + STALE_OFFER_LINGER_MS + 1_000;
+  s = pruneExpiredBids(s, dead);
   assert.equal(s.missedOffers.length, MISSED_OFFER_CAP);
-  s = pruneExpiredBids(s, NOW + 31_000 + RESOLVED_BID_LINGER_MS + 1);
+  s = pruneExpiredBids(s, dead + RESOLVED_BID_LINGER_MS + 1);
   assert.equal(s.missedOffers.length, 0);
 });
 
 test('dismissMissedOffer removes exactly the swiped card', () => {
   let s = reduceDriverSession(online(), 'ride:offer', offerPayload('ride-m6'), NOW);
   s = reduceDriverSession(s, 'ride:offer', offerPayload('ride-m7'), NOW);
-  s = pruneExpiredBids(s, NOW + 31_000);
+  s = pruneExpiredBids(s, NOW + 30_000 + STALE_OFFER_LINGER_MS + 1_000);
   assert.equal(s.missedOffers.length, 2);
   s = dismissMissedOffer(s, 'ride-m6');
   assert.equal(s.missedOffers.length, 1);

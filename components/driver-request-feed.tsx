@@ -3,7 +3,13 @@ import { useEffect, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { AppText } from '@/components/app-text';
-import { bidDeadlineMs, type MissedOffer, type PendingBid, type RideOffer } from '@/lib/driver-session-reducer';
+import {
+  bidDeadlineMs,
+  isOfferStale,
+  type MissedOffer,
+  type PendingBid,
+  type RideOffer,
+} from '@/lib/driver-session-reducer';
 import { useDriverSession } from '@/lib/driver-session';
 import {
   getDriverFilters,
@@ -69,7 +75,14 @@ export function DriverRequestFeed({ fullHeight = false }: { fullHeight?: boolean
       }
       return true;
     })
-    .sort((a, b) => (distanceKm(a) ?? 99) - (distanceKm(b) ?? 99));
+    // Home's overlay shows only fresh requests; Active also keeps the stale
+    // ones — past their window, greyed, but biddable until the ride is taken.
+    .filter((offer) => fullHeight || !isOfferStale(offer, now))
+    .sort((a, b) => {
+      const staleDiff = Number(isOfferStale(a, now)) - Number(isOfferStale(b, now));
+      if (staleDiff !== 0) return staleDiff;
+      return (distanceKm(a) ?? 99) - (distanceKm(b) ?? 99);
+    });
 
   function distanceKm(offer: RideOffer): number | null {
     if (!currentLocation) return null;
@@ -234,15 +247,25 @@ export function DriverRequestFeed({ fullHeight = false }: { fullHeight?: boolean
     const riderAsk = offer.riderOfferNgn ?? offer.fareEstimateNgn;
     const km = distanceKm(offer);
     const expiresMs = new Date(offer.expiresAt).getTime();
-    const timeLeft = Number.isFinite(expiresMs) ? countdown(expiresMs, now) : null;
+    const stale = isOfferStale(offer, now);
+    const timeLeft = !stale && Number.isFinite(expiresMs) ? countdown(expiresMs, now) : null;
     const bidOpen = bidOpenFor === offer.rideId;
 
     return (
-      <View key={offer.rideId} style={[styles.card, styles.cardRequest]}>
+      <View
+        key={offer.rideId}
+        style={[styles.card, stale ? styles.cardStale : styles.cardRequest]}>
         <Pressable onPress={() => openDetails(offer.rideId)}>
           <View style={styles.topRow}>
-            <AppText variant="h2" color={theme.colors.orange}>{formatNgn(riderAsk)}</AppText>
+            <AppText variant="h2" color={stale ? theme.colors.muted : theme.colors.orange}>
+              {formatNgn(riderAsk)}
+            </AppText>
             <View style={styles.metaRight}>
+              {stale ? (
+                <AppText variant="caption" color={theme.colors.muted}>
+                  window ended · open until taken
+                </AppText>
+              ) : null}
               {timeLeft ? <AppText variant="mono" color={theme.colors.muted}>⏳ {timeLeft}</AppText> : null}
               <AppText variant="bodySmall" color={theme.colors.muted}>
                 {km === null ? '' : `${km < 10 ? km.toFixed(1) : Math.round(km)} km away`}
@@ -351,6 +374,10 @@ const styles = StyleSheet.create({
   cardAccepted: {
     borderColor: theme.colors.orange,
     backgroundColor: theme.colors.orangeLight,
+  },
+  cardStale: {
+    borderColor: theme.colors.mutedLight,
+    opacity: 0.75,
   },
   cardResolved: {
     borderColor: theme.colors.borderLight,

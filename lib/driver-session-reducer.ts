@@ -205,6 +205,21 @@ export function pruneExpiredOffers(offers: RideOffer[], now: number = Date.now()
  */
 export const RING_WINDOW_MS = 30_000;
 
+/**
+ * How long a run-out request stays BIDDABLE after its clock ends. The
+ * countdown ending is a UI event, not the death of the request: until the
+ * backend says taken/closed (bid_lost / bid_timeout / cancelled), the card
+ * stays in Active — greyed, but with working buttons. Only after this grace
+ * does it become a tombstone.
+ */
+export const STALE_OFFER_LINGER_MS = 10 * 60_000;
+
+/** Past its advertised window but not yet gone — greyed, still actionable. */
+export function isOfferStale(offer: RideOffer, now: number = Date.now()): boolean {
+  const expiresMs = new Date(offer.expiresAt).getTime();
+  return Number.isFinite(expiresMs) && expiresMs <= now;
+}
+
 /** When the audible alert for this request must stop (never past its expiry). */
 export function ringDeadlineMs(offer: RideOffer): number {
   const ringEnd = (offer.receivedAtMs ?? 0) + RING_WINDOW_MS;
@@ -227,7 +242,9 @@ export function harvestOffers(
   const newlyMissed: MissedOffer[] = [];
   for (const offer of prev.offers) {
     const expiresMs = new Date(offer.expiresAt).getTime();
-    if (!Number.isFinite(expiresMs) || expiresMs > now) {
+    // A stale offer stays in the queue (biddable from Active) for its whole
+    // linger — only a request that outlived even that becomes a tombstone.
+    if (!Number.isFinite(expiresMs) || expiresMs + STALE_OFFER_LINGER_MS > now) {
       live.push(offer);
     } else if (!prev.pendingBids[offer.rideId]) {
       newlyMissed.push({ offer, missedAt: now, reason: 'expired' });
