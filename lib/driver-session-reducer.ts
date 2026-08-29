@@ -344,6 +344,7 @@ export function hydrateBidRecords(
   prev: DriverSessionState,
   records: Array<{
     rideId: string;
+    riderId?: string;
     amountNgn: number;
     status: string;
     createdAt: string;
@@ -367,7 +368,7 @@ export function hydrateBidRecords(
 
     const offer: RideOffer = {
       rideId: rec.rideId,
-      riderId: '',
+      riderId: rec.riderId ?? '',
       pickup: { lat: 0, lng: 0, address: rec.ride.pickupAddress },
       destination: { lat: 0, lng: 0, address: rec.ride.destAddress },
       stops: [],

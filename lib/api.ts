@@ -1600,6 +1600,8 @@ export type DriverBidStatus =
 export interface DriverBidRecord {
   id: string;
   rideId: string;
+  /** Who asked — a re-bid from this record must address the rider. */
+  riderId?: string;
   amountNgn: number;
   etaSeconds: number;
   distanceKm: number | null;
