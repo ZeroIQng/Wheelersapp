@@ -172,7 +172,7 @@ const IS_DRIVER = process.env.EXPO_PUBLIC_APP_VARIANT === "driver";
  * (whose baked splash is the logo on #FF7700) — JS travels with binaries,
  * so this stays truthful.
  */
-const NATIVE_SPLASH_STYLE: "legacy-wordmark" | "brand" = "legacy-wordmark";
+const NATIVE_SPLASH_STYLE: "legacy-wordmark" | "brand" = "brand";
 
 const LEGACY_WORDMARKS = {
   light: {

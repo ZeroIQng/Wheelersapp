@@ -22,7 +22,8 @@
           "remote-notification"
         ],
         "ITSAppUsesNonExemptEncryption": false
-      }
+      },
+      "buildNumber": "23"
     },
     "android": {
       "backgroundColor": "#FEFAEF",
