@@ -47,10 +47,12 @@ function normalizeIdentifier(input: string): string {
 export default function AccountAuthScreen() {
   const router = useRouter();
   const { refreshAuthState } = useAuth();
-  // Entry screens link here with ?mode=signin so "Sign in" opens on the right
-  // tab instead of dropping returning users into the signup form.
+  // Sign-in is the ONE front door. Signup lives behind a "Don't have an
+  // account?" link (or an explicit ?mode=signup deep link) — a side-by-side
+  // tab pair defaulted to signup and walked Google's review bot straight
+  // into "email already exists", where it died and failed the whole review.
   const { mode: modeParam } = useLocalSearchParams<{ mode?: string }>();
-  const [mode, setMode] = useState<AuthMode>(modeParam === "signin" ? "signin" : "signup");
+  const [mode, setMode] = useState<AuthMode>(modeParam === "signup" ? "signup" : "signin");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
@@ -214,30 +216,7 @@ export default function AccountAuthScreen() {
 
       <RevealView delay={130}>
         <AppCard style={styles.authCard}>
-          <View style={styles.authTabs}>
-            <Pressable
-              onPress={() => setMode("signup")}
-              style={[styles.authTab, mode === "signup" ? styles.authTabActive : null]}
-            >
-              <AppText
-                variant="monoSmall"
-                color={mode === "signup" ? theme.colors.white : theme.colors.black}
-              >
-                SIGN UP
-              </AppText>
-            </Pressable>
-            <Pressable
-              onPress={() => setMode("signin")}
-              style={[styles.authTab, mode === "signin" ? styles.authTabActive : null]}
-            >
-              <AppText
-                variant="monoSmall"
-                color={mode === "signin" ? theme.colors.white : theme.colors.black}
-              >
-                SIGN IN
-              </AppText>
-            </Pressable>
-          </View>
+          <AppText variant="h3">{mode === "signup" ? "Create your account" : "Sign in"}</AppText>
 
           <View style={styles.fieldGroup}>
             <AppText variant="monoSmall" color={theme.colors.muted}>
@@ -308,6 +287,19 @@ export default function AccountAuthScreen() {
               void handleSubmit();
             }}
           />
+
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => setMode(mode === "signin" ? "signup" : "signin")}
+            style={styles.switchLink}
+          >
+            <AppText variant="bodySmall" color={theme.colors.muted}>
+              {mode === "signin" ? "Don't have an account? " : "Already have an account? "}
+            </AppText>
+            <AppText variant="bodySmall" color={theme.colors.orange}>
+              {mode === "signin" ? "Sign up" : "Sign in"}
+            </AppText>
+          </Pressable>
         </AppCard>
       </RevealView>
     </AppScreen>
@@ -320,22 +312,10 @@ const styles = StyleSheet.create({
   rings: { position: "absolute", top: -20, right: -32 },
   star: { position: "absolute", bottom: 42, left: 16 },
   authCard: { gap: theme.spacing.md },
-  authTabs: {
+  switchLink: {
     flexDirection: "row",
-    gap: theme.spacing.sm,
-  },
-  authTab: {
-    flex: 1,
-    minHeight: 44,
-    alignItems: "center",
     justifyContent: "center",
-    borderWidth: theme.borders.thick,
-    borderColor: theme.colors.black,
-    borderRadius: theme.radius.sm,
-    backgroundColor: theme.colors.white,
-  },
-  authTabActive: {
-    backgroundColor: theme.colors.black,
+    paddingVertical: theme.spacing.xs,
   },
   fieldGroup: {
     gap: theme.spacing.xs,

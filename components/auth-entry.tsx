@@ -127,10 +127,13 @@ export function AuthEntryScreen({
           <View style={styles.dividerLine} />
         </View>
 
+        {/* Sign-in is the front door; creating an account is the exception,
+            behind the footer link — not a primary button a review bot (or a
+            hurried human) falls into by default. */}
         <Pressable
           accessibilityRole="button"
           disabled={busy}
-          onPress={onEmailSignUp}
+          onPress={onEmailSignIn}
           style={({ pressed }) => [
             styles.button,
             styles.emailButton,
@@ -140,7 +143,7 @@ export function AuthEntryScreen({
         >
           <Ionicons name="mail-outline" size={20} color={brand.ink} />
           <AppText variant="label" color={brand.ink}>
-            Sign up with email
+            Sign in with email
           </AppText>
         </Pressable>
       </Animated.View>
@@ -150,14 +153,14 @@ export function AuthEntryScreen({
           accessibilityRole="button"
           disabled={busy}
           hitSlop={8}
-          onPress={onEmailSignIn}
+          onPress={onEmailSignUp}
           style={({ pressed }) => [styles.signInRow, pressed && styles.signInPressed]}
         >
           <AppText variant="bodySmall" color={brand.muted}>
-            Already have an account?{" "}
+            {"Don't have an account? "}
           </AppText>
           <AppText variant="label" color={theme.colors.orange}>
-            Sign in
+            Sign up
           </AppText>
         </Pressable>
 
