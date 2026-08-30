@@ -17,7 +17,7 @@ import {
 } from '@/lib/api';
 import { useResponsive } from '@/lib/responsive';
 import { useAppTheme } from '@/lib/theme-context';
-import { useWalletOverview } from '@/lib/wallet-overview';
+import { invalidateWalletCache, useWalletOverview } from '@/lib/wallet-overview';
 import { theme } from '@/theme';
 
 function formatNgn(amount: number): string {
@@ -108,6 +108,9 @@ export default function DriverWalletTabScreen() {
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
+    // The balance card reads the cached overview — a pull-to-refresh that
+    // skipped it left stale money on screen after a withdrawal.
+    invalidateWalletCache();
     await fetchData();
     setRefreshing(false);
   }, [fetchData]);

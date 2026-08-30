@@ -28,7 +28,7 @@ import {
 } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { useAppTheme } from '@/lib/theme-context';
-import { useWalletOverview } from '@/lib/wallet-overview';
+import { invalidateWalletCache, useWalletOverview } from '@/lib/wallet-overview';
 import { theme } from '@/theme';
 
 function formatNgn(amount: number): string {
@@ -231,6 +231,9 @@ export default function DriverWithdrawScreen() {
       const outcome = created
         ? await waitForWithdrawalOutcome({ accessToken, withdrawalId: created.id })
         : null;
+      // Whatever the outcome, the balance moved (reserved, settled, or
+      // released) — the cached overview is stale the moment we know it.
+      invalidateWalletCache();
 
       if (outcome && FAILED_WITHDRAWAL_STATUSES.includes(outcome.status)) {
         Alert.alert(
