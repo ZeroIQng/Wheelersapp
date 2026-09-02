@@ -27,6 +27,7 @@ import { setPlaceSearchBias } from "@/lib/google-places";
  * request can pass `{ force: true }` to show it again.
  */
 const BACKGROUND_DISCLOSURE_DECLINED_KEY = "wheelers.backgroundLocation.disclosureDeclined";
+const FOREGROUND_DISCLOSURE_DECLINED_KEY = "wheelers.foregroundLocation.disclosureDeclined";
 
 type AppLocation = {
   lat: number;
@@ -134,6 +135,7 @@ export function LocationProvider({ children }: { children: ReactNode }) {
   }, [currentLocation]);
   const [error, setError] = useState<string | null>(null);
   const [disclosureVisible, setDisclosureVisible] = useState(false);
+  const [disclosureScope, setDisclosureScope] = useState<"foreground" | "background">("background");
   const subscriptionRef = useRef<Location.LocationSubscription | null>(null);
   const disclosureResolverRef = useRef<((accepted: boolean) => void) | null>(null);
 
@@ -144,15 +146,20 @@ export function LocationProvider({ children }: { children: ReactNode }) {
    * app is closed, and the user must affirmatively accept it. This resolves
    * `true` only when the user taps "Allow" on that screen.
    */
-  const showBackgroundDisclosure = useCallback((): Promise<boolean> => {
+  const showDisclosure = useCallback((scope: "foreground" | "background"): Promise<boolean> => {
     // If a disclosure is already open, resolve the previous waiter as declined
     // so it never hangs, then hand the modal to the new caller.
     disclosureResolverRef.current?.(false);
     return new Promise<boolean>((resolve) => {
       disclosureResolverRef.current = resolve;
+      setDisclosureScope(scope);
       setDisclosureVisible(true);
     });
   }, []);
+  const showBackgroundDisclosure = useCallback(
+    (): Promise<boolean> => showDisclosure("background"),
+    [showDisclosure],
+  );
 
   const settleDisclosure = useCallback((accepted: boolean) => {
     setDisclosureVisible(false);
@@ -245,12 +252,35 @@ export function LocationProvider({ children }: { children: ReactNode }) {
     }
   }, [updateCurrentLocation]);
 
-  const requestLocationAccess = useCallback(async (): Promise<void> => {
+  const requestLocationAccess = useCallback(async (options?: { force?: boolean }): Promise<void> => {
     try {
       const foreground = await Location.getForegroundPermissionsAsync();
-      const foregroundResult = foreground.granted
-        ? foreground
-        : await Location.requestForegroundPermissionsAsync();
+      let foregroundResult = foreground;
+      if (!foreground.granted) {
+        // Play policy: the OS runtime prompt must be IMMEDIATELY preceded by
+        // an in-app disclosure with an affirmative action. This used to fire
+        // the prompt cold on first mount — the exact reason the app was
+        // rejected ("Inadequate Prominent Disclosure").
+        if (!options?.force) {
+          const declined = await AsyncStorage.getItem(FOREGROUND_DISCLOSURE_DECLINED_KEY);
+          if (declined) {
+            setPermissionState("denied");
+            setError("Location access is disabled.");
+            return;
+          }
+        }
+        if (foreground.canAskAgain) {
+          const accepted = await showDisclosure("foreground");
+          if (!accepted) {
+            await AsyncStorage.setItem(FOREGROUND_DISCLOSURE_DECLINED_KEY, "1");
+            setPermissionState("denied");
+            setError("Location access is disabled.");
+            return;
+          }
+          await AsyncStorage.removeItem(FOREGROUND_DISCLOSURE_DECLINED_KEY);
+        }
+        foregroundResult = await Location.requestForegroundPermissionsAsync();
+      }
 
       if (!foregroundResult.granted) {
         setPermissionState("denied");
@@ -270,7 +300,7 @@ export function LocationProvider({ children }: { children: ReactNode }) {
           : "Could not start location tracking.",
       );
     }
-  }, [refreshLocation, startWatchingLocation]);
+  }, [refreshLocation, showDisclosure, startWatchingLocation]);
 
   const requestBackgroundLocationAccess = useCallback(
     async (options?: RequestBackgroundOptions): Promise<void> => {
@@ -407,6 +437,7 @@ export function LocationProvider({ children }: { children: ReactNode }) {
     <LocationContext.Provider value={value}>
       {children}
       <BackgroundLocationDisclosure
+        scope={disclosureScope}
         visible={disclosureVisible}
         onAccept={() => settleDisclosure(true)}
         onDecline={() => settleDisclosure(false)}

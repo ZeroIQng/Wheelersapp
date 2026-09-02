@@ -11,6 +11,13 @@ type BackgroundLocationDisclosureProps = {
   visible: boolean;
   onAccept: () => void;
   onDecline: () => void;
+  /**
+   * Which OS prompt this disclosure precedes. Play policy wants a disclosure
+   * immediately before EVERY location permission prompt — the foreground one
+   * included, which used to fire cold on first launch (rejection: "requests
+   * ... not immediately preceded by an in-app disclosure").
+   */
+  scope?: "foreground" | "background";
 };
 
 /**
@@ -28,6 +35,7 @@ export function BackgroundLocationDisclosure({
   visible,
   onAccept,
   onDecline,
+  scope = "background",
 }: BackgroundLocationDisclosureProps) {
   const { isDark } = useAppTheme();
 
@@ -35,7 +43,39 @@ export function BackgroundLocationDisclosure({
   const border = isDark ? theme.colors.darkBorder : theme.colors.black;
   const muted = isDark ? theme.colors.darkMuted : theme.colors.muted;
 
-  const bullets: { icon: keyof typeof Ionicons.glyphMap; text: string }[] = isDriverApp
+  const foreground = scope === "foreground";
+
+  const foregroundBullets: { icon: keyof typeof Ionicons.glyphMap; text: string }[] = isDriverApp
+    ? [
+        {
+          icon: "people-outline",
+          text: "Show you ride requests from riders near your current position.",
+        },
+        {
+          icon: "navigate-outline",
+          text: "Place you on the map and power turn-by-turn trip navigation.",
+        },
+        {
+          icon: "time-outline",
+          text: "Only while you are using the app. Background use is asked separately, and only if you go online.",
+        },
+      ]
+    : [
+        {
+          icon: "location-outline",
+          text: "Set your pickup point and show drivers available near you.",
+        },
+        {
+          icon: "navigate-outline",
+          text: "Track your trip and keep your ETA accurate while you ride.",
+        },
+        {
+          icon: "time-outline",
+          text: "Only while you are using the app.",
+        },
+      ];
+
+  const backgroundBullets: { icon: keyof typeof Ionicons.glyphMap; text: string }[] = isDriverApp
     ? [
         {
           icon: "people-outline",
@@ -65,6 +105,8 @@ export function BackgroundLocationDisclosure({
         },
       ];
 
+  const bullets = foreground ? foregroundBullets : backgroundBullets;
+
   return (
     <Modal
       visible={visible}
@@ -85,9 +127,13 @@ export function BackgroundLocationDisclosure({
           </View>
 
           <AppText variant="h2" style={styles.title}>
-            {isDriverApp
-              ? "Wheelers Driver uses your location in the background"
-              : "Wheelers uses your location in the background"}
+            {foreground
+              ? isDriverApp
+                ? "Wheelers Driver uses your location"
+                : "Wheelers uses your location"
+              : isDriverApp
+                ? "Wheelers Driver uses your location in the background"
+                : "Wheelers uses your location in the background"}
           </AppText>
 
           <ScrollView
@@ -96,12 +142,20 @@ export function BackgroundLocationDisclosure({
             showsVerticalScrollIndicator={false}
           >
             <AppText variant="body" style={styles.lead}>
-              {isDriverApp
-                ? "Wheelers Driver collects location data to match you with nearby ride requests and show riders your live position while you are online, "
-                : "Wheelers collects location data to enable live trip tracking and safety monitoring during your ride, "}
-              <AppText variant="bodyMedium">
-                even when the app is closed or not in use.
-              </AppText>
+              {foreground ? (
+                isDriverApp
+                  ? "Wheelers Driver collects location data to show you nearby ride requests, place you on the map, and enable trip navigation while you are using the app. Your location is never sold or shared for advertising."
+                  : "Wheelers collects location data to set your pickup point, show nearby drivers, and track your trip while you are using the app. Your location is never sold or shared for advertising."
+              ) : (
+                <>
+                  {isDriverApp
+                    ? "Wheelers Driver collects location data to match you with nearby ride requests and show riders your live position while you are online, "
+                    : "Wheelers collects location data to enable live trip tracking and safety monitoring during your ride, "}
+                  <AppText variant="bodyMedium">
+                    even when the app is closed or not in use.
+                  </AppText>
+                </>
+              )}
             </AppText>
 
             <View style={styles.bullets}>
@@ -123,14 +177,19 @@ export function BackgroundLocationDisclosure({
             </View>
 
             <AppText variant="caption" color={muted} style={styles.footnote}>
-              {Platform.OS === "android"
-                ? 'On the next screen choose "Allow all the time" so tracking keeps working if you switch apps or lock your phone. You can change this anytime in Settings.'
-                : 'On the next prompt choose "Always Allow" so tracking keeps working if you switch apps or lock your phone. You can change this anytime in Settings.'}
+              {foreground
+                ? 'Choose "While using the app" on the next prompt. You can change this anytime in Settings.'
+                : Platform.OS === "android"
+                  ? 'On the next screen choose "Allow all the time" so tracking keeps working if you switch apps or lock your phone. You can change this anytime in Settings.'
+                  : 'On the next prompt choose "Always Allow" so tracking keeps working if you switch apps or lock your phone. You can change this anytime in Settings.'}
             </AppText>
           </ScrollView>
 
           <View style={styles.actions}>
-            <AppButton title="Allow background location" onPress={onAccept} />
+            <AppButton
+              title={foreground ? "Continue" : "Allow background location"}
+              onPress={onAccept}
+            />
             <AppButton title="Not now" variant="ghost" onPress={onDecline} />
           </View>
         </View>

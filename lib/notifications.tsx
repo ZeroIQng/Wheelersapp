@@ -1,7 +1,11 @@
 import { useAuth } from "@/lib/auth";
 import Constants from "expo-constants";
 import * as Notifications from "expo-notifications";
-import { Platform } from "react-native";
+import { Alert, Platform } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
+import { isDriverApp } from "@/lib/app-variant";
+
 import {
   createContext,
   useContext,
@@ -20,6 +24,30 @@ import {
   registerPushToken,
   type AppNotification,
 } from "@/lib/api";
+
+const NOTIFICATION_DISCLOSURE_DECLINED_KEY = "wheelers.notifications.disclosureDeclined";
+
+/**
+ * Play "Prominent Disclosure & Consent": every runtime permission prompt must
+ * be immediately preceded by an in-app disclosure with an affirmative action.
+ * The notification prompt used to fire cold on first mount.
+ */
+function showNotificationDisclosure(): Promise<boolean> {
+  return new Promise((resolve) => {
+    Alert.alert(
+      "Turn on notifications?",
+      isDriverApp
+        ? "Wheelers Driver sends notifications to alert you about new ride requests, rider messages, and payments — so you never miss a job while the app is in the background."
+        : "Wheelers sends notifications about your ride: driver found, driver arriving, trip updates, and payments.",
+      [
+        { text: "Not now", style: "cancel", onPress: () => resolve(false) },
+        { text: "Continue", onPress: () => resolve(true) },
+      ],
+      { cancelable: true, onDismiss: () => resolve(false) },
+    );
+  });
+}
+
 
 type NotificationsContextValue = {
   notifications: AppNotification[];
@@ -122,9 +150,26 @@ export function AppNotificationsProvider({ children }: { children: ReactNode }) 
 
     try {
       const existingPermissions = await Notifications.getPermissionsAsync();
-      const finalPermissions = existingPermissions.granted
-        ? existingPermissions
-        : await Notifications.requestPermissionsAsync();
+      let finalPermissions = existingPermissions;
+      if (!existingPermissions.granted) {
+        const declined = await AsyncStorage.getItem(NOTIFICATION_DISCLOSURE_DECLINED_KEY);
+        if (declined) {
+          setPermissionGranted(false);
+          return;
+        }
+        // Disclosure first, OS prompt only after an explicit "Continue".
+        const accepted = existingPermissions.canAskAgain
+          ? await showNotificationDisclosure()
+          : false;
+        if (!accepted) {
+          if (existingPermissions.canAskAgain) {
+            await AsyncStorage.setItem(NOTIFICATION_DISCLOSURE_DECLINED_KEY, "1");
+          }
+          setPermissionGranted(false);
+          return;
+        }
+        finalPermissions = await Notifications.requestPermissionsAsync();
+      }
 
       setPermissionGranted(finalPermissions.granted);
 
