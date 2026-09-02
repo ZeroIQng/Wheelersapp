@@ -48,9 +48,13 @@ export default function DriverDashboardScreen() {
 
   useEffect(() => {
     if (notificationPromptedRef.current || permissionGranted) return;
+    // One consent conversation at a time: wait until the LOCATION flow has
+    // settled (granted or declined) before opening the notifications ask —
+    // both used to fire on mount and stack their dialogs on top of each other.
+    if (permissionState === 'idle') return;
     notificationPromptedRef.current = true;
     void requestNotificationAccess();
-  }, [permissionGranted, requestNotificationAccess]);
+  }, [permissionGranted, permissionState, requestNotificationAccess]);
 
   useEffect(() => {
     void (async () => {
